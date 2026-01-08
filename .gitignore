@@ -1,0 +1,43 @@
+﻿# 환경 변수 및 인증 정보 (절대 업로드 금지!)
+.env
+.env.local
+.env.*.local
+
+# 민감한 파일들
+auth.json
+auth-*.json
+credentials.json
+
+# Node.js
+node_modules/
+package-lock.json
+npm-debug.log
+yarn-error.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 테스트 결과 및 리포트
+playwright-report/
+test-results/
+playwright/.cache/
+
+# 로그 파일
+*.log
+logs/
+
+# 디버그 파일
+debug-*.png
+debug-*.html
+*.screenshot.png
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 기타
+.env

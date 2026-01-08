@@ -1,0 +1,21 @@
+{
+  "name": "my-playwright-tests",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "set MAKESTAR_ID=dykimqatest01@gmail.com && set MAKESTAR_PW=ehdud0331 && npx playwright test",
+    "test:main": "set MAKESTAR_ID=dykimqatest01@gmail.com && set MAKESTAR_PW=ehdud0331 && npx playwright test tests/makestar_main_features.spec.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@playwright/test": "^1.57.0",
+    "@types/node": "^25.0.3"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.3"
+  }
+}
