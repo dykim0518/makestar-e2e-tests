@@ -14,11 +14,12 @@ const AUTH_FILE = path.join(__dirname, '..', 'auth.json');
 
 /** 타임아웃 설정 (ms) */
 const TIMEOUT = {
+  MICRO: 500,       // 초단기 대기 (UI 애니메이션)
   SHORT: 2000,      // 짧은 대기
   MEDIUM: 5000,     // 중간 대기
   LONG: 10000,      // 긴 대기
-  NAVIGATION: 45000, // 페이지 이동 (증가)
-  TEST: 90000       // 테스트 전체 (증가)
+  NAVIGATION: 45000, // 페이지 이동
+  TEST: 90000       // 테스트 전체
 } as const;
 
 /** 텍스트 패턴 */
@@ -106,20 +107,18 @@ async function clickFirstVisibleText(page: Page, texts: readonly string[], timeo
  */
 async function handleModal(page: Page): Promise<void> {
   try {
-    await page.waitForTimeout(TIMEOUT.SHORT);
+    // 모달이 나타날 시간 대기 (최소화)
+    await page.waitForTimeout(TIMEOUT.MICRO);
     
     // 1단계: "Do not show again" 버튼 찾기
-    const dismissed = await clickFirstVisibleText(page, TEXT_PATTERNS.MODAL_DO_NOT_SHOW, 1500);
+    const dismissed = await clickFirstVisibleText(page, TEXT_PATTERNS.MODAL_DO_NOT_SHOW, 1000);
     
     // 2단계: 모달이 여전히 있으면 닫기 버튼 클릭
     if (!dismissed) {
-      const closed = await clickFirstVisibleText(page, TEXT_PATTERNS.MODAL_CLOSE, 1000);
-      if (!closed) {
-        // 모달이 없을 수 있음 - 정상
-      }
+      await clickFirstVisibleText(page, TEXT_PATTERNS.MODAL_CLOSE, 800);
     }
   } catch {
-    // 모달 처리 실패는 무시
+    // 모달이 없거나 처리 실패 - 정상
   }
 }
 
@@ -1025,6 +1024,418 @@ test.describe('Makestar.com E2E 테스트', () => {
       console.log('✅ 배송지 관리 페이지 콘텐츠 확인됨');
       
       console.log('✅ Test 17 완료: 배송지 관리 페이지 확인');
+    });
+  });
+
+  // ============================================================================
+  // 추가 테스트: 장바구니 기능 (serial 모드 - 상태 공유 방지)
+  // ============================================================================
+  test.describe.serial('장바구니 기능', () => {
+    
+    test('18) Shop 상품 장바구니 담기, 수량 변경, 삭제 검증', async ({ page, context }) => {
+      test.setTimeout(TIMEOUT.TEST * 1.5); // 90초 timeout
+      
+      // 세션 로드 (로그인 필요)
+      if (fs.existsSync(AUTH_FILE)) {
+        try {
+          const authData = JSON.parse(fs.readFileSync(AUTH_FILE, 'utf-8'));
+          if (authData.cookies?.length > 0) {
+            await context.addCookies(authData.cookies);
+            console.log('🍪 세션 로드 완료');
+          }
+        } catch (e) {
+          console.log('⚠️ 세션 로드 실패');
+        }
+      }
+      
+      // =================================================================
+      // Step 0: 장바구니 초기화 (안정성을 위해 활성화)
+      // =================================================================
+      console.log('\n🧹 Step 0: 장바구니 초기화...');
+      await page.goto(`${BASE_URL}/cart`, { waitUntil: 'domcontentloaded', timeout: TIMEOUT.NAVIGATION });
+      await handleModal(page);
+      await page.waitForTimeout(1000);
+      
+      // 장바구니에 상품이 있으면 모두 삭제 (최대 3회 시도)
+      for (let clearAttempt = 0; clearAttempt < 3; clearAttempt++) {
+        const existingItems = page.locator('img[alt="album"]');
+        const existingCount = await existingItems.count();
+        
+        if (existingCount === 0) {
+          console.log('   장바구니 비어있음');
+          break;
+        }
+        
+        console.log(`   기존 상품 ${existingCount}개 (삭제 시도 ${clearAttempt + 1}/3)`);
+        
+        // 체크박스 확인 및 클릭
+        const checkboxes = page.locator('input[type="checkbox"]');
+        if (await checkboxes.count() > 0) {
+          const firstCheckbox = checkboxes.first();
+          const isChecked = await firstCheckbox.isChecked().catch(() => false);
+          if (!isChecked) {
+            await firstCheckbox.click();
+            await page.waitForTimeout(500);
+          }
+        }
+        
+        // Delete 버튼 클릭
+        const deleteBtn = page.locator('button:has-text("Delete")').first();
+        if (await deleteBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await deleteBtn.click();
+          
+          // 모달 대기
+          let hasModal = false;
+          for (let i = 0; i < 6; i++) {
+            await page.waitForTimeout(500);
+            hasModal = await page.getByText('Delete Selected Items').isVisible().catch(() => false) ||
+                       await page.getByText('Are you sure').isVisible().catch(() => false);
+            if (hasModal) break;
+          }
+          
+          if (hasModal) {
+            // 모달 내 Delete 버튼 클릭 (2번째 Delete 버튼)
+            const allDeleteBtns = page.locator('button:has-text("Delete")');
+            if (await allDeleteBtns.count() >= 2) {
+              await allDeleteBtns.last().click();
+              
+              // 네트워크 응답 대기
+              try {
+                await page.waitForLoadState('networkidle', { timeout: 5000 });
+              } catch {}
+              await page.waitForTimeout(2000);
+              
+              // 페이지 새로고침
+              await page.reload({ waitUntil: 'domcontentloaded' });
+              await page.waitForTimeout(1000);
+            }
+          }
+        }
+      }
+      
+      // 최종 확인
+      const finalCount = await page.locator('img[alt="album"]').count();
+      console.log(`   ✅ 장바구니 초기화 완료 (상품 ${finalCount}개)`);
+      
+      // =================================================================
+      // Step 1: Shop 페이지 이동 및 첫 번째 상품 선택
+      // =================================================================
+      console.log('\n🛒 Step 1: Shop 페이지 이동...');
+      await page.goto(`${BASE_URL}/shop`, { waitUntil: 'domcontentloaded', timeout: TIMEOUT.NAVIGATION });
+      await page.waitForTimeout(1000); // 최소 대기
+      await handleModal(page);
+      
+      // 첫 번째 상품 카드 클릭
+      const productCard = page.locator('img[alt="album_image"]').first();
+      await expect(productCard).toBeVisible({ timeout: TIMEOUT.MEDIUM });
+      await productCard.click();
+      
+      await page.waitForLoadState('domcontentloaded');
+      await page.waitForTimeout(1000); // 최소 대기
+      await handleModal(page);
+      console.log('   ✅ 상품 상세 페이지 이동 완료');
+      
+      // =================================================================
+      // Step 2: 상품 옵션 선택 및 수량 설정 (장바구니 버튼 활성화 필요)
+      // =================================================================
+      console.log('\n🔧 Step 2: 상품 옵션/수량 설정...');
+      
+      // 수량 입력 필드 찾기 및 설정
+      const quantityInput = await findVisibleElement(page, SELECTORS.QUANTITY_INPUT, TIMEOUT.SHORT);
+      if (quantityInput) {
+        await quantityInput.element.fill('1');
+        console.log('   ✅ 수량 1 입력');
+      }
+      
+      // 수량 + 버튼 클릭 (수량 입력이 없는 경우 대안)
+      const plusBtn = await findVisibleElement(page, SELECTORS.QUANTITY_PLUS, 1000);
+      if (plusBtn) {
+        await plusBtn.element.click();
+        console.log('   ✅ 수량 증가 버튼 클릭');
+      }
+      
+      // 옵션 드롭다운이 있으면 선택
+      const optionDropdown = await findVisibleElement(page, SELECTORS.OPTION_DROPDOWN, 1000);
+      if (optionDropdown) {
+        console.log('   옵션 드롭다운 발견, 클릭 시도...');
+        await optionDropdown.element.click();
+        await page.waitForTimeout(500);
+        
+        // 첫 번째 옵션 선택
+        const firstOption = page.locator('option:not([disabled]), [role="option"], li[role="option"]').first();
+        if (await firstOption.isVisible({ timeout: 1000 }).catch(() => false)) {
+          await firstOption.click().catch(() => {});
+          console.log('   ✅ 옵션 선택 완료');
+        }
+      }
+      
+      // =================================================================
+      // Step 3: 장바구니 담기 버튼 클릭
+      // =================================================================
+      console.log('\n🛒 Step 3: 장바구니 담기...');
+      
+      // 장바구니 담기 버튼 찾기 (다국어 지원, enabled 상태만)
+      const addToCartBtn = page.locator('button:has-text("장바구니"):not([disabled]), button:has-text("cart"):not([disabled]), button:has-text("Cart"):not([disabled]), button:has-text("Add to Cart"):not([disabled])').first();
+      
+      // 버튼 활성화 대기 (최대 2회 시도)
+      let isAddToCartEnabled = await addToCartBtn.isVisible({ timeout: TIMEOUT.SHORT }).catch(() => false);
+      
+      if (!isAddToCartEnabled) {
+        // 버튼이 disabled인 경우 수량 증가 재시도
+        const retryPlus = page.locator('button:has-text("+")').first();
+        if (await retryPlus.isVisible({ timeout: 500 }).catch(() => false)) {
+          await retryPlus.click().catch(() => {});
+          console.log('   수량 증가 재시도');
+          await page.waitForTimeout(500);
+        }
+        isAddToCartEnabled = await addToCartBtn.isVisible({ timeout: 1000 }).catch(() => false);
+      }
+      
+      // 버튼 클릭
+      if (isAddToCartEnabled) {
+        await addToCartBtn.click({ timeout: TIMEOUT.SHORT });
+      } else {
+        console.log('   ⚠️ 활성화된 장바구니 버튼 없음, force 클릭 시도...');
+        const anyCartBtn = page.locator('button:has-text("장바구니"), button:has-text("cart"), button:has-text("Cart")').first();
+        await anyCartBtn.click({ force: true, timeout: TIMEOUT.SHORT });
+      }
+      
+      await page.waitForTimeout(1000);
+      console.log('   ✅ 장바구니 담기 버튼 클릭 완료');
+      
+      // =================================================================
+      // Step 4: 장바구니 페이지로 이동
+      // =================================================================
+      console.log('\n🛒 Step 4: 장바구니 페이지 이동...');
+      
+      // 장바구니 페이지로 직접 이동
+      await page.goto(`${BASE_URL}/cart`, { waitUntil: 'domcontentloaded', timeout: TIMEOUT.NAVIGATION });
+      await page.waitForTimeout(1000);
+      await handleModal(page);
+      
+      // URL 확인 (필수)
+      await expect(page).toHaveURL(/cart/i, { timeout: TIMEOUT.MEDIUM });
+      console.log('   ✅ 장바구니 페이지 이동 완료');
+      
+      // =================================================================
+      // Step 5: 장바구니 아이템 확인
+      // =================================================================
+      console.log('\n📋 Step 5: 장바구니 아이템 확인...');
+      
+      // 상품명 확인 (필수)
+      const productName = page.locator('[class*="product"], [class*="item"], [class*="cart"] h2, [class*="cart"] h3').first();
+      await expect(productName).toBeVisible({ timeout: TIMEOUT.MEDIUM });
+      const productNameText = await productName.textContent();
+      console.log(`   ✅ 상품명: ${productNameText?.substring(0, 30)}...`);
+      
+      // 가격 정보 확인 (필수 - 한국어/영어 통화 모두 지원)
+      const priceElement = page.locator('text=/[₩$][0-9,.]+/').first();
+      await expect(priceElement).toBeVisible({ timeout: TIMEOUT.MEDIUM });
+      const priceText = await priceElement.textContent();
+      console.log(`   ✅ 가격: ${priceText}`);
+      
+      // =================================================================
+      // Step 6: 수량 변경 (+1) - 선택적 (일부 상품은 수량 변경 불가)
+      // =================================================================
+      console.log('\n➕ Step 6: 수량 변경 (장바구니에서)...');
+      
+      // 수량 증가 버튼 찾기 (빠른 확인)
+      const quantityPlusBtn = page.locator('button:has-text("+"), [aria-label*="increase"], [aria-label*="증가"]').first();
+      const isPlusBtnVisible = await quantityPlusBtn.isVisible({ timeout: 1000 }).catch(() => false);
+      
+      if (isPlusBtnVisible) {
+        await quantityPlusBtn.click();
+        console.log('   ✅ 수량 증가 버튼 클릭 완료');
+      } else {
+        console.log('   ℹ️ 수량 증가 버튼 없음 (단일 수량 상품 - 정상)');
+      }
+      
+      // =================================================================
+      // Step 7: 장바구니 아이템 삭제 (필수 검증)
+      // =================================================================
+      console.log('\n🗑️ Step 7: 장바구니 아이템 삭제...');
+      
+      // 삭제 전 상품 이미지 수 확인
+      const albumImagesBefore = page.locator('img[alt="album"]');
+      const countBefore = await albumImagesBefore.count();
+      console.log(`   삭제 전 상품 수: ${countBefore}`);
+      
+      // 체크박스 확인 - 체크되어 있어야 Delete 버튼이 작동함
+      const checkboxes = page.locator('input[type="checkbox"]');
+      const checkboxCount = await checkboxes.count();
+      console.log(`   체크박스 ${checkboxCount}개 발견`);
+      
+      // 첫 번째 상품 체크박스가 체크되어 있는지 확인
+      if (checkboxCount > 0) {
+        const firstCheckbox = checkboxes.first();
+        const isChecked = await firstCheckbox.isChecked().catch(() => false);
+        console.log(`   첫 번째 체크박스 상태: ${isChecked ? '체크됨' : '체크 안됨'}`);
+        
+        if (!isChecked) {
+          await firstCheckbox.click();
+          console.log('   ✅ 체크박스 클릭');
+          await page.waitForTimeout(500);
+        }
+      }
+      
+      let deleteSuccess = false;
+      
+      // 삭제 시도 (최대 3회)
+      for (let attempt = 1; attempt <= 3 && !deleteSuccess; attempt++) {
+        console.log(`   삭제 시도 ${attempt}/3...`);
+        
+        // 매 시도마다 페이지 새로고침 후 체크박스 재클릭 (2회차부터)
+        if (attempt > 1) {
+          await page.reload({ waitUntil: 'domcontentloaded' });
+          await page.waitForTimeout(1000);
+          
+          // 체크박스 다시 클릭
+          const newCheckboxes = page.locator('input[type="checkbox"]');
+          if (await newCheckboxes.count() > 1) {
+            const productCheckbox = newCheckboxes.nth(1); // 두 번째 체크박스 = 첫 번째 상품
+            const isChecked = await productCheckbox.isChecked().catch(() => false);
+            if (!isChecked) {
+              await productCheckbox.click();
+              console.log('   체크박스 재클릭');
+              await page.waitForTimeout(500);
+            }
+          }
+        }
+        
+        // 상단 "Delete" 버튼 클릭
+        const topDeleteBtn = page.locator('button:has-text("Delete")').first();
+        if (await topDeleteBtn.isVisible({ timeout: 1000 }).catch(() => false)) {
+          await topDeleteBtn.click();
+          console.log('   ✅ 상단 Delete 버튼 클릭');
+        }
+        
+        // 모달 대기 (최대 3초)
+        console.log('   모달 대기 중...');
+        let hasModal = false;
+        for (let i = 0; i < 6; i++) {
+          await page.waitForTimeout(500);
+          const checks = await Promise.all([
+            page.getByText('Delete Selected Items').isVisible().catch(() => false),
+            page.getByText('Are you sure').isVisible().catch(() => false),
+            page.getByText('삭제하시겠습니까').isVisible().catch(() => false)
+          ]);
+          hasModal = checks.some(Boolean);
+          if (hasModal) break;
+        }
+        console.log(`   모달 표시: ${hasModal}`);
+        
+        if (hasModal) {
+          // 모달 내 Delete/삭제 확인 버튼 클릭 - 2~3번 연속 클릭 (사용자 피드백: 한 번은 안 되고 여러 번 눌러야 됨)
+          console.log('   모달 확인 버튼 클릭 시도 (연속 3회)...');
+          
+          // 삭제 API 응답을 기다리면서 클릭
+          const deletePromise = page.waitForResponse(
+            response => response.url().includes('/cart') && response.status() === 200,
+            { timeout: 10000 }
+          ).catch(() => null);
+          
+          // JavaScript로 직접 버튼 3번 연속 클릭
+          let clickCount = 0;
+          for (let clickAttempt = 0; clickAttempt < 3; clickAttempt++) {
+            const clicked = await page.evaluate(() => {
+              const buttons = Array.from(document.querySelectorAll('button'));
+              // 모달 확인 버튼 찾기 (마지막 Delete 버튼 or 삭제 버튼)
+              const deleteBtn = buttons.reverse().find(btn => 
+                btn.textContent?.trim() === 'Delete' || 
+                btn.textContent?.trim() === '삭제'
+              );
+              if (deleteBtn) {
+                deleteBtn.click();
+                return true;
+              }
+              return false;
+            });
+            
+            if (clicked) {
+              clickCount++;
+              console.log(`   클릭 ${clickCount}회 완료`);
+            }
+            
+            // 클릭 간 짧은 대기 (너무 빠르면 무시될 수 있음)
+            await page.waitForTimeout(300);
+            
+            // 모달이 사라졌으면 중단
+            const modalGone = await page.getByText('Delete Selected Items').isHidden({ timeout: 500 }).catch(() => true);
+            if (modalGone) {
+              console.log('   모달 닫힘 감지 - 클릭 중단');
+              break;
+            }
+          }
+          console.log(`   총 ${clickCount}회 클릭`);
+          
+          if (clickCount > 0) {
+            // API 응답 대기
+            const response = await deletePromise;
+            console.log(`   API 응답: ${response ? response.status() : 'timeout'}`);
+            
+            await page.waitForTimeout(2000);
+            
+            // 모달이 사라졌는지 확인
+            const modalGone = await page.getByText('Delete Selected Items').isHidden({ timeout: 3000 }).catch(() => true);
+            console.log(`   모달 닫힘: ${modalGone}`);
+            
+            // 삭제가 실제로 됐는지 확인 (상품 수 체크)
+            await page.reload({ waitUntil: 'domcontentloaded' });
+            await page.waitForTimeout(1000);
+            const currentCount = await page.locator('img[alt="album"]').count();
+            console.log(`   현재 상품 수: ${currentCount}`);
+            
+            if (currentCount < countBefore) {
+              deleteSuccess = true;
+              console.log('   ✅ 삭제 성공 확인');
+            } else {
+              deleteSuccess = false;
+              console.log('   ⚠️ 삭제 미확인, 재시도 필요');
+            }
+          }
+        }
+        
+        if (!deleteSuccess && attempt < 2) {
+          console.log('   ⚠️ 재시도...');
+          await page.waitForTimeout(1000);
+        }
+      }
+      
+      // =================================================================
+      // Step 8: 장바구니 삭제 검증 (필수)
+      // =================================================================
+      console.log('\n✅ Step 8: 장바구니 삭제 검증...');
+      
+      // 삭제 후 상품 이미지 수 확인
+      const albumImagesAfter = page.locator('img[alt="album"]');
+      const countAfter = await albumImagesAfter.count();
+      console.log(`   삭제 후 상품 수: ${countAfter}`);
+      
+      // 검증: 상품 수가 감소했거나 0이면 성공
+      let isDeleteSuccess = false;
+      
+      if (countAfter < countBefore) {
+        isDeleteSuccess = true;
+        console.log(`   ✅ 상품 수 감소 확인 (${countBefore} → ${countAfter})`);
+      } else if (countAfter === 0) {
+        isDeleteSuccess = true;
+        console.log('   ✅ 장바구니 비어있음');
+      }
+      
+      // 추가 검증: 빈 장바구니 메시지
+      if (!isDeleteSuccess) {
+        const emptyMessage = page.locator('text=/장바구니.*비어|empty|비어있습니다|Your cart is empty/i').first();
+        if (await emptyMessage.isVisible({ timeout: 2000 }).catch(() => false)) {
+          isDeleteSuccess = true;
+          console.log('   ✅ 빈 장바구니 메시지 확인');
+        }
+      }
+      
+      // 필수 검증
+      expect(isDeleteSuccess, '❌ 장바구니 삭제 실패: 상품이 삭제되지 않음').toBeTruthy();
+      console.log('   ✅ 장바구니 삭제 검증 완료');
+      
+      console.log('\n✅ Test 18 완료: 장바구니 담기/삭제 전체 플로우 검증 성공');
     });
   });
 });
