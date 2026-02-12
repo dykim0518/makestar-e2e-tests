@@ -1,0 +1,47 @@
+# Dependencies
+node_modules/
+
+# Playwright artifacts
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+playwright/.auth/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+auth.json
+admin-tokens.json
+playwright-session.json
+*-auth.json
+
+# Logs
+*.log
+
+# Debug artifacts
+debug-*.png
+debug-*.html
+page-content.txt
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+
+# Temporary files
+*.tmp
+*.bak
+
+# Test result files
+test-results.json
+test-results*.json
+
+# Claude settings
+.claude/
+
+# VS Code (optional - 팀 공유 시 제거)
+# .vscode/

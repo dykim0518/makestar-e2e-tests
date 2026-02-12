@@ -1,0 +1,12 @@
+{
+  // Playwright Test 확장 설정
+  "playwright.reuseBrowser": true,
+  "playwright.showTrace": false,
+  
+  // 테스트 탐색기 설정
+  "testing.automaticallyOpenPeekView": "never",
+  "testing.defaultGutterClickAction": "run",
+  
+  // TypeScript 설정
+  "typescript.preferences.importModuleSpecifier": "relative"
+}
