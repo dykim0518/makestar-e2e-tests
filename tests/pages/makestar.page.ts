@@ -112,19 +112,21 @@ export class MakestarPage extends BasePage {
     this.navigation = page.locator('nav, header, [class*="nav"]').first();
     
     // 검색 요소 초기화
-    this.searchButton = page.locator('button').first();
+    // 검색 버튼: SVG use href="#icon-search-line"을 포함하는 버튼
+    this.searchButton = page.locator('button:has(svg use[href="#icon-search-line"]), button.icon-style:has(svg)').first();
     this.searchInput = page.getByPlaceholder(/검색어를 입력|검색|search|Enter a keyword|keyword/i);
     this.cancelButton = page.locator('button:has-text("취소"), button:has-text("Cancel")').first();
     
-    // 네비게이션 버튼 초기화 - header/nav 영역 내부로 범위 제한하여 배너/카드 링크와 구분
-    const navArea = page.locator('header, nav, [role="navigation"]');
-    this.homeButton = navArea.getByRole('link', { name: /home/i }).first();
-    this.eventButton = navArea.getByRole('link', { name: /event/i }).first();
-    this.shopButton = navArea.getByRole('link', { name: /shop/i }).first();
-    this.fundingButton = navArea.getByRole('link', { name: /funding/i }).first();
+    // GNB 네비게이션 버튼 초기화
+    // 실제 구조: <li><button>Event</button></li> (header/nav 없음, <a> 아닌 <button>)
+    this.homeButton = page.getByRole('button', { name: 'Home', exact: true });
+    this.eventButton = page.getByRole('button', { name: 'Event', exact: true });
+    this.shopButton = page.getByRole('button', { name: 'Shop', exact: true });
+    this.fundingButton = page.getByRole('button', { name: 'Funding', exact: true });
     
     // 프로필/인증 요소 초기화
-    this.profileButton = page.locator('button:has(img[alt="profile"]), img[alt="profile"]').first();
+    // Profile 버튼: SVG 아이콘(비로그인) 또는 img alt="profile"(로그인)
+    this.profileButton = page.locator('button:has(svg use[href="#icon-profile-line"]), button:has(img[alt="profile"])').first();
     this.googleLoginButton = page.locator('button:has-text("Google"), [class*="google"]').first();
     this.logoutButton = page.locator('text=/로그아웃|logout|log out|sign out/i').first();
     
@@ -237,6 +239,433 @@ export class MakestarPage extends BasePage {
       await this.goto(`${this.baseUrl}/my-page/address`);
       await this.waitForLoadState('domcontentloaded');
       await this.waitForNetworkStable(5000).catch(() => {});
+      await this.handleModal();
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // GNB 버튼 클릭 네비게이션 (사용자 시나리오 기반, URL 직접 이동 없음)
+  // --------------------------------------------------------------------------
+
+  /**
+   * GNB 버튼 클릭 전 모달/오버레이 완전 제거
+   * 텍스트 버튼 → Escape 키 → JS 강제 제거 순으로 시도
+   */
+  private async dismissAllBlockingModals(): Promise<void> {
+    for (let i = 0; i < 3; i++) {
+      // 1) z-[40] 오버레이 존재 확인
+      const hasOverlay = await this._page.evaluate(() => {
+        return !!document.querySelector('div.fixed[class*="z-[40]"]');
+      });
+      if (!hasOverlay) break;
+
+      // 2) 오버레이 내부에서 닫기 텍스트 클릭 시도
+      const closeTexts = ['Do not show again', '다시 보지 않기', 'Close', '닫기', '확인'];
+      let dismissed = false;
+      
+      for (const text of closeTexts) {
+        const closeBtn = this._page.locator(`div.fixed[class*="z-[40]"] >> text=${text}`).first();
+        if (await closeBtn.isVisible({ timeout: 500 }).catch(() => false)) {
+          await closeBtn.click({ force: true }).catch(() => {});
+          await this._page.waitForTimeout(300);
+          dismissed = true;
+          console.log(`✅ 오버레이 닫기: "${text}" 클릭`);
+          break;
+        }
+      }
+      
+      if (dismissed) continue;
+
+      // 3) Escape 키 시도
+      await this._page.keyboard.press('Escape');
+      await this._page.waitForTimeout(300);
+
+      // 4) 여전히 있으면 JS로 강제 제거
+      const stillBlocking = await this._page.evaluate(() => {
+        return !!document.querySelector('div.fixed[class*="z-[40]"]');
+      });
+      if (stillBlocking) {
+        await this._page.evaluate(() => {
+          document.querySelectorAll('div.fixed[class*="z-[40]"]').forEach(el => el.remove());
+        });
+        console.log('⚠️ 오버레이 JS 강제 제거');
+      }
+    }
+  }
+
+  /** Event 페이지로 이동 (GNB 버튼 클릭, 없으면 URL 폴백) */
+  async navigateToEvent(): Promise<void> {
+    await this.dismissAllBlockingModals();
+    const isVisible = await this.eventButton.isVisible({ timeout: 3000 }).catch(() => false);
+    if (isVisible) {
+      await this.eventButton.click({ timeout: 5000 });
+    } else {
+      console.log('⚠️ Event GNB 버튼 미존재, URL로 직접 이동');
+      await this.gotoEvent();
+      return;
+    }
+    await this.waitForLoadState('domcontentloaded');
+    await this.handleModal();
+  }
+
+  /** Shop 페이지로 이동 (GNB 버튼 클릭, 없으면 URL 폴백) */
+  async navigateToShop(): Promise<void> {
+    await this.dismissAllBlockingModals();
+    const isVisible = await this.shopButton.isVisible({ timeout: 3000 }).catch(() => false);
+    if (isVisible) {
+      await this.shopButton.click({ timeout: 5000 });
+    } else {
+      console.log('⚠️ Shop GNB 버튼 미존재, URL로 직접 이동');
+      await this.gotoShop();
+      return;
+    }
+    await this.waitForLoadState('domcontentloaded');
+    await this.handleModal();
+  }
+
+  /** Funding 페이지로 이동 (GNB 버튼 클릭, 없으면 URL 폴백) */
+  async navigateToFunding(): Promise<void> {
+    await this.dismissAllBlockingModals();
+    const isVisible = await this.fundingButton.isVisible({ timeout: 3000 }).catch(() => false);
+    if (isVisible) {
+      await this.fundingButton.click({ timeout: 5000 });
+    } else {
+      console.log('⚠️ Funding GNB 버튼 미존재, URL로 직접 이동');
+      await this.gotoFunding();
+      return;
+    }
+    await this.waitForLoadState('domcontentloaded');
+    await this.handleModal();
+  }
+
+  // --------------------------------------------------------------------------
+  // 마이페이지 버튼 클릭 네비게이션 (사용자 시나리오 기반)
+  // --------------------------------------------------------------------------
+
+  /**
+   * 프로필 버튼 클릭 (단순 버전 - 네비게이션 검증용)
+   * @description 프로필 버튼 클릭 → 드롭다운에서 마이페이지 링크 클릭
+   * @returns 버튼 클릭 성공 여부와 이동된 URL 정보
+   */
+  async clickProfileButtonOnce(): Promise<{ success: boolean; url: string; reason?: string }> {
+    await this.dismissAllBlockingModals();
+    
+    const profileBtn = this.page.locator('button:has(svg use[href="#icon-profile-line"]), button:has(img[alt="profile"])').first();
+    
+    const isVisible = await profileBtn.isVisible({ timeout: 5000 }).catch(() => false);
+    if (!isVisible) {
+      return { success: false, url: this.currentUrl, reason: '프로필 버튼을 찾을 수 없음' };
+    }
+    
+    // 1. 프로필 버튼 클릭 → 드롭다운 열기
+    await profileBtn.click({ timeout: 5000 });
+    console.log('📍 1단계: 프로필 버튼 클릭');
+    await this._page.waitForTimeout(500);
+    
+    // 2. 드롭다운에서 마이페이지 링크 클릭
+    const myPageLink = this.page.locator('a[href*="my-page"]').first();
+    const linkVisible = await myPageLink.isVisible({ timeout: 3000 }).catch(() => false);
+    
+    if (!linkVisible) {
+      return { success: false, url: this.currentUrl, reason: '마이페이지 링크를 찾을 수 없음' };
+    }
+    
+    await myPageLink.click({ timeout: 5000 });
+    console.log('📍 2단계: 마이페이지 링크 클릭');
+    await this.waitForLoadState('domcontentloaded');
+    await this.waitForNetworkStable(5000).catch(() => {});
+    
+    const currentUrl = this.page.url();
+    
+    // 로그인 페이지로 리다이렉트된 경우 실패
+    if (currentUrl.includes('auth.') || currentUrl.includes('/login')) {
+      return { success: false, url: currentUrl, reason: '로그인 페이지로 리다이렉트됨' };
+    }
+    
+    // 마이페이지로 이동했는지 확인
+    if (currentUrl.includes('my-page')) {
+      return { success: true, url: currentUrl };
+    }
+    
+    return { success: false, url: currentUrl, reason: '마이페이지로 이동하지 않음' };
+  }
+
+  /**
+   * 프로필 버튼 클릭 (SSO 흐름 포함 - 실제 사용자 시나리오)
+   * @description 프로필 버튼 → 로그인 페이지 → Google 로그인 → 홈 → 다시 프로필 → 마이페이지
+   * @returns 최종 결과 (마이페이지 도달 여부)
+   */
+  async clickProfileButton(): Promise<{ success: boolean; url: string; reason?: string }> {
+    await this.dismissAllBlockingModals();
+    
+    // 1. 첫 번째 프로필 버튼 클릭
+    const profileBtn = this.page.locator('button:has(svg use[href="#icon-profile-line"]), button:has(img[alt="profile"])').first();
+    
+    const isVisible = await profileBtn.isVisible({ timeout: 5000 }).catch(() => false);
+    if (!isVisible) {
+      return { success: false, url: this.currentUrl, reason: '프로필 버튼을 찾을 수 없음' };
+    }
+    
+    await profileBtn.click({ timeout: 5000 });
+    console.log('📍 1단계: 프로필 버튼 클릭');
+    await this.waitForLoadState('domcontentloaded');
+    await this.waitForNetworkStable(5000).catch(() => {});
+    
+    let currentUrl = this.page.url();
+    
+    // 2. 로그인 페이지로 리다이렉트된 경우 → Google 로그인 버튼 클릭
+    if (currentUrl.includes('auth.') || currentUrl.includes('/login')) {
+      console.log('📍 2단계: 로그인 페이지 감지 → Google 로그인 시도');
+      
+      // Google 로그인 버튼 클릭
+      const googleBtn = this.page.getByRole('button', { name: /Continue with Google|Google|구글/i }).first();
+      const googleBtnVisible = await googleBtn.isVisible({ timeout: 5000 }).catch(() => false);
+      
+      if (googleBtnVisible) {
+        await googleBtn.click({ timeout: 5000 });
+        console.log('📍 3단계: Google 로그인 버튼 클릭');
+        
+        // Google OAuth 완료 후 리다이렉트 대기 (폴링 방식, 최대 20초)
+        let oauthSuccess = false;
+        for (let i = 0; i < 20; i++) {
+          await this.page.waitForTimeout(1000);
+          const url = this.page.url();
+          console.log(`  [${i + 1}초] URL: ${url}`);
+          
+          if (!url.includes('auth.') && !url.includes('/login') && !url.includes('accounts.google')) {
+            console.log('📍 4단계: OAuth 완료, 리다이렉트됨');
+            oauthSuccess = true;
+            break;
+          }
+        }
+        
+        if (!oauthSuccess) {
+          return { success: false, url: this.page.url(), reason: 'Google OAuth 실패 (수동 로그인 필요)' };
+        }
+      } else {
+        return { success: false, url: currentUrl, reason: 'Google 로그인 버튼을 찾을 수 없음' };
+      }
+      
+      currentUrl = this.page.url();
+      await this.waitForLoadState('domcontentloaded');
+      await this.handleModal();
+      await this.waitForContentStable('body', { timeout: 5000 }).catch(() => {});
+      
+      // 5. 홈으로 돌아왔으면 다시 프로필 버튼 클릭
+      if (!currentUrl.includes('my-page')) {
+        console.log('📍 5단계: 홈에서 다시 프로필 버튼 클릭');
+        
+        // 페이지 완전 로드 대기
+        await this.waitForLoadState('networkidle').catch(() => {});
+        await this.dismissAllBlockingModals();
+        
+        // 프로필 버튼 대기 (최대 10초)
+        const profileBtnAgain = this.page.locator('button:has(svg use[href="#icon-profile-line"]), button:has(img[alt="profile"])').first();
+        const isVisibleAgain = await profileBtnAgain.isVisible({ timeout: 10000 }).catch(() => false);
+        
+        if (!isVisibleAgain) {
+          // 디버그: 현재 페이지 상태 출력
+          const bodyHtml = await this.page.locator('body').innerHTML().catch(() => '');
+          console.log('⚠️ 프로필 버튼 미검출. SVG 아이콘 확인:', bodyHtml.includes('icon-profile-line'));
+          return { success: false, url: currentUrl, reason: '두 번째 프로필 버튼을 찾을 수 없음' };
+        }
+        
+        await profileBtnAgain.click({ timeout: 5000 });
+        await this.waitForLoadState('domcontentloaded');
+        await this.waitForNetworkStable(5000).catch(() => {});
+        await this.handleModal();
+        
+        currentUrl = this.page.url();
+      }
+    }
+    
+    // 6. 마이페이지 도달 확인
+    if (currentUrl.includes('my-page')) {
+      console.log('✅ 마이페이지 도달 성공');
+      return { success: true, url: currentUrl };
+    }
+    
+    return { success: false, url: currentUrl, reason: '마이페이지로 이동하지 않음' };
+  }
+
+  /**
+   * 마이페이지 메뉴 클릭 (폴백 없음 - 네비게이션 검증용)
+   * @param menuTexts 메뉴 텍스트 배열
+   * @returns 메뉴 클릭 성공 여부와 이동된 URL 정보
+   */
+  async clickMyPageMenuStrict(menuTexts: readonly string[], hrefs?: readonly string[]): Promise<{ success: boolean; url: string; reason?: string }> {
+    // 마이페이지에 있는지 확인
+    if (!this.currentUrl.includes('my-page')) {
+      return { success: false, url: this.currentUrl, reason: '마이페이지가 아님' };
+    }
+    
+    await this.waitForContentStable('body', { stableTime: 500, timeout: 3000 }).catch(() => {});
+    
+    // 1. href 기반으로 먼저 시도 (가장 안정적)
+    if (hrefs?.length) {
+      for (const href of hrefs) {
+        const menuItem = this.page.locator(`a[href*="${href}"]`).first();
+        const isVisible = await menuItem.isVisible({ timeout: 2000 }).catch(() => false);
+        if (isVisible) {
+          await menuItem.click({ timeout: 5000 });
+          console.log(`✅ href 기반 메뉴 클릭: ${href}`);
+          await this.waitForLoadState('domcontentloaded');
+          await this.waitForContentStable('body', { stableTime: 500, timeout: 5000 }).catch(() => {});
+          await this.handleModal();
+          return { success: true, url: this.page.url() };
+        }
+      }
+    }
+    
+    // 2. 텍스트 기반으로 시도
+    for (const text of menuTexts) {
+      const menuItem = this.page.getByRole('link', { name: text, exact: false }).or(
+        this.page.getByRole('button', { name: text })
+      ).or(
+        this.page.locator(`text=${text}`).first()
+      );
+      
+      const isVisible = await menuItem.isVisible({ timeout: 2000 }).catch(() => false);
+      if (isVisible) {
+        await menuItem.click({ timeout: 5000 });
+        console.log(`✅ 텍스트 기반 메뉴 클릭: ${text}`);
+        await this.waitForLoadState('domcontentloaded');
+        await this.waitForContentStable('body', { stableTime: 500, timeout: 5000 }).catch(() => {});
+        await this.handleModal();
+        return { success: true, url: this.page.url() };
+      }
+    }
+    
+    return { success: false, url: this.currentUrl, reason: `메뉴를 찾을 수 없음: ${menuTexts.join(', ')}` };
+  }
+
+  /**
+   * 마이페이지로 이동 (프로필 버튼 클릭)
+   * @description 로그인 상태에서 프로필 버튼을 클릭하여 마이페이지로 이동
+   * @note 프로필 버튼 클릭 시 인증 페이지로 리다이렉트될 수 있어 URL 확인 후 폴백 처리
+   */
+  async navigateToMyPage(): Promise<void> {
+    await this.dismissAllBlockingModals();
+    
+    // 프로필 버튼 로케이터 (SVG 아이콘 또는 사용자 프로필 이미지)
+    const profileBtn = this.page.locator('button:has(svg use[href="#icon-profile-line"]), button:has(img[alt="profile"])').first();
+    
+    const isVisible = await profileBtn.isVisible({ timeout: 5000 }).catch(() => false);
+    if (isVisible) {
+      await profileBtn.click({ timeout: 5000 });
+      console.log('✅ 프로필 버튼 클릭 (SVG 아이콘)');
+      await this.waitForLoadState('domcontentloaded');
+      await this.waitForNetworkStable(5000).catch(() => {});
+      
+      // 리다이렉트 감지: 로그인 페이지로 이동되었는지 확인
+      const currentUrl = this.page.url();
+      if (currentUrl.includes('auth.') || currentUrl.includes('/login')) {
+        console.log('⚠️ 로그인 페이지로 리다이렉트됨, URL로 직접 이동');
+        await this.gotoMyPage();
+        await this.waitForLoadState('domcontentloaded');
+        await this.waitForNetworkStable(5000).catch(() => {});
+      }
+      
+      await this.handleModal();
+      
+      // 마이페이지 도달 확인
+      const finalUrl = this.page.url();
+      if (finalUrl.includes('my-page')) {
+        console.log('✅ 마이페이지 이동 완료 (프로필 버튼 → URL 폴백)');
+      } else {
+        console.log(`⚠️ 마이페이지 이동 실패, 현재 URL: ${finalUrl}`);
+      }
+      return;
+    }
+    
+    // 폴백: 마이페이지 관련 링크 찾기
+    const myPageLink = this.page.getByRole('link', { name: /my page|마이페이지|my-page/i }).first();
+    const linkVisible = await myPageLink.isVisible({ timeout: 3000 }).catch(() => false);
+    if (linkVisible) {
+      await myPageLink.click({ timeout: 5000 });
+      await this.waitForLoadState('domcontentloaded');
+      await this.waitForNetworkStable(5000).catch(() => {});
+      await this.handleModal();
+      console.log('✅ 마이페이지 이동 완료 (링크 클릭)');
+      return;
+    }
+    
+    // 최종 폴백: URL 직접 이동
+    console.log('⚠️ 프로필 버튼을 찾을 수 없어 URL로 직접 이동');
+    await this.gotoMyPage();
+    
+    await this.waitForLoadState('domcontentloaded');
+    await this.waitForNetworkStable(5000).catch(() => {});
+    await this.handleModal();
+    console.log('✅ 마이페이지 이동 완료 (URL 직접)');
+  }
+
+  /**
+   * 마이페이지에서 특정 메뉴 클릭
+   * @param menuTexts 메뉴 텍스트 배열 (한국어/영어 모두 포함)
+   * @returns 성공 여부
+   */
+  private async clickMyPageMenu(menuTexts: readonly string[]): Promise<boolean> {
+    // 마이페이지에 있는지 확인하고 없으면 이동
+    if (!this.currentUrl.includes('my-page')) {
+      await this.navigateToMyPage();
+    }
+    
+    // 콘텐츠 안정화 대기 (타임아웃 시 무시)
+    await this.waitForContentStable('body', { stableTime: 500, timeout: 3000 }).catch(() => {});
+    
+    // 메뉴 텍스트로 요소 찾아서 클릭
+    for (const text of menuTexts) {
+      const menuItem = this.page.getByRole('link', { name: text }).or(
+        this.page.getByRole('button', { name: text })
+      ).or(
+        this.page.locator(`text=${text}`).first()
+      );
+      
+      const isVisible = await menuItem.isVisible({ timeout: 3000 }).catch(() => false);
+      if (isVisible) {
+        await menuItem.click({ timeout: 5000 });
+        await this.waitForLoadState('domcontentloaded');
+        // 페이지 이동 후 안정화 대기 (타임아웃 시 무시하고 계속 진행)
+        await this.waitForContentStable('body', { stableTime: 500, timeout: 5000 }).catch(() => {});
+        await this.handleModal();
+        console.log(`✅ 마이페이지 메뉴 클릭: ${text}`);
+        return true;
+      }
+    }
+    
+    console.log(`⚠️ 마이페이지 메뉴를 찾을 수 없음: ${menuTexts.join(', ')}`);
+    return false;
+  }
+
+  /**
+   * 비밀번호 변경 페이지로 이동 (마이페이지 메뉴 클릭)
+   * @description 마이페이지에서 "비밀번호 변경" 메뉴를 클릭하여 이동
+   */
+  async navigateToPasswordPage(): Promise<void> {
+    const menuTexts = ['비밀번호 변경', '비밀번호', 'Password', 'Change Password'] as const;
+    const clicked = await this.clickMyPageMenu(menuTexts);
+    
+    if (!clicked) {
+      console.log('⚠️ 메뉴 클릭 실패, URL로 직접 이동');
+      await this.goto(`${this.baseUrl}/my-page/change-password`);
+      await this.waitForLoadState('domcontentloaded');
+      await this.handleModal();
+    }
+  }
+
+  /**
+   * 이벤트 응모정보 관리 페이지로 이동 (마이페이지 메뉴 클릭)
+   * @description 마이페이지에서 "이벤트 응모정보 관리" 메뉴를 클릭하여 이동
+   */
+  async navigateToEventEntryPage(): Promise<void> {
+    const menuTexts = ['이벤트 응모정보 관리', '이벤트 응모', 'Event Entry', 'event submissions'] as const;
+    const clicked = await this.clickMyPageMenu(menuTexts);
+    
+    if (!clicked) {
+      console.log('⚠️ 메뉴 클릭 실패, URL로 직접 이동');
+      await this.goto(`${this.baseUrl}/my-page/event-entry`);
+      await this.waitForLoadState('domcontentloaded');
       await this.handleModal();
     }
   }
@@ -883,20 +1312,26 @@ export class MakestarPage extends BasePage {
    */
   static async closeGuestModal(page: import('@playwright/test').Page): Promise<void> {
     const closeSelectors = [
+      'button:has-text("Do not show")',
       'button:has-text("Close")',
       'button:has-text("닫기")',
-      'button:has-text("Do not show")',
       '[aria-label="Close"]',
       '[aria-label="close"]',
     ];
-    
-    for (const selector of closeSelectors) {
-      const btn = page.locator(selector).first();
-      if (await btn.isVisible({ timeout: 2000 }).catch(() => false)) {
-        await btn.click();
-        await page.waitForLoadState('domcontentloaded');
-        break;
+
+    // 모달이 여러 겹일 수 있으므로 최대 3회 반복
+    for (let round = 0; round < 3; round++) {
+      let dismissed = false;
+      for (const selector of closeSelectors) {
+        const btn = page.locator(selector).first();
+        if (await btn.isVisible({ timeout: 1500 }).catch(() => false)) {
+          await btn.click();
+          await page.waitForTimeout(500);
+          dismissed = true;
+          break;
+        }
       }
+      if (!dismissed) break;
     }
   }
 

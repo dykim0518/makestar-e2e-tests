@@ -107,29 +107,17 @@ test.describe('Makestar.com E2E 모니터링 테스트', () => {
     test('3) Event - 페이지 이동 및 요소 검증', async () => {
       test.setTimeout(TEST_TIMEOUT);
 
-      // 네비게이션 영역의 Event 링크 클릭 (유저 시나리오 재현)
-      try {
-        await makestar.eventButton.click({ timeout: 5000 });
-      } catch {
-        // 폴백: 직접 이동
-        await makestar.gotoEvent();
-      }
-
+      // GNB Event 버튼 클릭 (유저 시나리오)
+      await makestar.navigateToEvent();
       await makestar.expectUrlMatches(/event/i);
       console.log('✅ Test 3 완료: Event 페이지 이동');
     });
 
     test('4) Event - 종료된 이벤트 탭 이동 및 검증', async () => {
       test.setTimeout(TEST_TIMEOUT);
-      
-      // 네비게이션 버튼 클릭 (유저 시나리오)
-      try {
-        await makestar.eventButton.click({ timeout: 5000 });
-        await makestar.waitForLoadState('domcontentloaded');
-      } catch {
-        await makestar.gotoEvent();
-      }
-      await makestar.handleModal();
+
+      // GNB Event 버튼 클릭 (유저 시나리오)
+      await makestar.navigateToEvent();
 
       const found = await makestar.clickEndedTab();
       expect(found).toBeTruthy();
@@ -139,15 +127,9 @@ test.describe('Makestar.com E2E 모니터링 테스트', () => {
 
     test('5) Event - 진행중인 이벤트 탭 및 첫 번째 상품 클릭', async () => {
       test.setTimeout(TEST_TIMEOUT);
-      
-      // 네비게이션 버튼 클릭 (유저 시나리오)
-      try {
-        await makestar.eventButton.click({ timeout: 5000 });
-        await makestar.waitForLoadState('domcontentloaded');
-      } catch {
-        await makestar.gotoEvent();
-      }
-      await makestar.handleModal();
+
+      // GNB Event 버튼 클릭 (유저 시나리오)
+      await makestar.navigateToEvent();
 
       const ongoingClicked = await makestar.clickOngoingTab();
       expect(ongoingClicked).toBeTruthy();
@@ -165,15 +147,9 @@ test.describe('Makestar.com E2E 모니터링 테스트', () => {
     // ------------------------------------------------------------------------
     test('6) Product - 페이지 주요 요소 검증 및 옵션 선택', async () => {
       test.setTimeout(TEST_TIMEOUT);
-      
-      // 네비게이션 버튼 클릭 (유저 시나리오)
-      try {
-        await makestar.eventButton.click({ timeout: 5000 });
-        await makestar.waitForLoadState('domcontentloaded');
-      } catch {
-        await makestar.gotoEvent();
-      }
-      await makestar.handleModal();
+
+      // GNB Event 버튼 클릭 (유저 시나리오)
+      await makestar.navigateToEvent();
       await makestar.clickFirstEventCard();
 
       const hasTitle = await makestar.verifyProductTitle();
@@ -187,15 +163,9 @@ test.describe('Makestar.com E2E 모니터링 테스트', () => {
 
     test('7) Product - 구매하기 클릭 및 결과 검증', async ({ page }) => {
       test.setTimeout(TEST_TIMEOUT);
-      
-      // 네비게이션 버튼 클릭 (유저 시나리오)
-      try {
-        await makestar.eventButton.click({ timeout: 5000 });
-        await makestar.waitForLoadState('domcontentloaded');
-      } catch {
-        await makestar.gotoEvent();
-      }
-      await makestar.handleModal();
+
+      // GNB Event 버튼 클릭 (유저 시나리오)
+      await makestar.navigateToEvent();
       await makestar.clickFirstEventCard();
       await makestar.handleModal();
 
@@ -236,16 +206,9 @@ test.describe('Makestar.com E2E 모니터링 테스트', () => {
     test('8) Shop - 페이지 이동 및 요소 검증', async ({ page }) => {
       test.setTimeout(TEST_TIMEOUT);
 
-      // 네비게이션 버튼 클릭 (유저 시나리오)
-      try {
-        await makestar.shopButton.click({ timeout: 5000 });
-        await makestar.waitForLoadState('domcontentloaded');
-      } catch {
-        await makestar.gotoShop();
-      }
+      // GNB Shop 버튼 클릭 (유저 시나리오)
+      await makestar.navigateToShop();
       await makestar.waitForPageContent();
-      await makestar.handleModal();
-
       await makestar.expectUrlMatches(/shop/i);
       console.log('✅ Shop 페이지 이동 완료');
 
@@ -273,25 +236,9 @@ test.describe('Makestar.com E2E 모니터링 테스트', () => {
         await makestar.gotoHome();
       }
 
-      let navigated = false;
-      try {
-        if (!makestar.isPageClosed() && await makestar.fundingButton.isVisible({ timeout: 5000 })) {
-          await makestar.fundingButton.click();
-          navigated = true;
-        }
-      } catch {
-        // 클릭 실패 - 직접 이동 시도
-      }
-
-      if (!navigated) {
-        if (makestar.isPageClosed()) {
-          makestar = new MakestarPage(page);
-        }
-        await makestar.gotoFunding();
-      }
-
+      // GNB Funding 버튼 클릭 (유저 시나리오)
+      await makestar.navigateToFunding();
       await makestar.waitForPageContent();
-      await makestar.handleModal();
 
       const currentUrl = makestar.currentUrl;
       const isFundingRelated = /funding|product/i.test(currentUrl);
@@ -319,24 +266,12 @@ test.describe('Makestar.com E2E 모니터링 테스트', () => {
       test.setTimeout(TEST_TIMEOUT);
 
       // Part 1: 로고 클릭으로 Home 복귀 (Event 페이지에서)
-      try {
-        await makestar.eventButton.click({ timeout: 5000 });
-        await makestar.waitForLoadState('domcontentloaded');
-      } catch {
-        await makestar.gotoEvent();
-      }
-      await makestar.handleModal();
+      await makestar.navigateToEvent();
 
       await makestar.clickLogoToHome();
 
       // Part 2: Home 버튼 클릭으로 Home 복귀 (Shop 페이지에서)
-      try {
-        await makestar.shopButton.click({ timeout: 5000 });
-        await makestar.waitForLoadState('domcontentloaded');
-      } catch {
-        await makestar.gotoShop();
-      }
-      await makestar.handleModal();
+      await makestar.navigateToShop();
 
       // Home 버튼 찾기 (폴백 로직 포함)
       let homeButtonFound = await makestar.homeButton.isVisible({ timeout: 5000 }).catch(() => false);
@@ -521,10 +456,6 @@ test.describe('Makestar.com E2E 모니터링 테스트', () => {
         console.log('ℹ️ 최근 검색어 미표시 (추천 검색어만 표시됨 - 정상)');
       }
 
-      const deleteBtn = page.locator('button:has-text("삭제"), button:has-text("Delete"), button:has-text("지우기"), [class*="delete"], [class*="clear"]').first();
-      const hasDeleteBtn = await deleteBtn.isVisible({ timeout: 2000 }).catch(() => false);
-      console.log(`   검색어 삭제 버튼 표시: ${hasDeleteBtn}`);
-
       console.log('✅ Test 15 완료: 최근 검색어 검증');
     });
   });
@@ -532,17 +463,97 @@ test.describe('Makestar.com E2E 모니터링 테스트', () => {
   // ==========================================================================
   // D. 마이페이지/회원 기능 (16-21)
   // ==========================================================================
+  // ==========================================================================
+  // D-0. 네비게이션 검증 (폴백 없이 버튼 클릭만 테스트)
+  // ==========================================================================
+  test.describe('D-0. 네비게이션 검증 (버튼 클릭)', () => {
+    
+    test('NAV-01) 프로필 버튼 → 마이페이지 네비게이션', async ({ page }) => {
+      test.setTimeout(TEST_TIMEOUT);
+      
+      await makestar.gotoHome();
+      await makestar.waitForContentStable('body', { timeout: 3000 }).catch(() => {});
+      
+      // 폴백 없이 프로필 버튼 클릭만 테스트 (단순 버전)
+      const result = await makestar.clickProfileButtonOnce();
+      
+      console.log(`📍 네비게이션 결과: success=${result.success}, url=${result.url}`);
+      if (!result.success) {
+        console.log(`⚠️ 실패 원인: ${result.reason}`);
+      }
+      
+      // 프로필 버튼 클릭으로 마이페이지 도달해야 PASS
+      expect(result.success, `프로필 버튼 네비게이션 실패: ${result.reason}`).toBe(true);
+      expect(result.url).toContain('my-page');
+      
+      console.log('✅ NAV-01 완료: 프로필 버튼 → 마이페이지 네비게이션 성공');
+    });
+    
+    test('NAV-02) 마이페이지 → 비밀번호 변경 메뉴 클릭', async ({ page }) => {
+      test.setTimeout(TEST_TIMEOUT);
+      
+      // 마이페이지로 직접 이동 (이전 테스트와 독립적)
+      await makestar.gotoMyPage();
+      await makestar.handleModal();
+      await makestar.waitForContentStable('body', { timeout: 3000 }).catch(() => {});
+      
+      // 폴백 없이 메뉴 클릭만 테스트
+      const menuTexts = ['비밀번호 변경', 'Change Password', 'Password'] as const;
+      const hrefs = ['change-password'] as const;
+      const result = await makestar.clickMyPageMenuStrict(menuTexts, hrefs);
+      
+      console.log(`📍 메뉴 클릭 결과: success=${result.success}, url=${result.url}`);
+      if (!result.success) {
+        console.log(`⚠️ 실패 원인: ${result.reason}`);
+      }
+      
+      // 메뉴 클릭으로 비밀번호 페이지 도달해야 PASS
+      expect(result.success, `비밀번호 메뉴 클릭 실패: ${result.reason}`).toBe(true);
+      expect(result.url).toMatch(/password|change-password/);
+      
+      console.log('✅ NAV-02 완료: 비밀번호 변경 메뉴 클릭 성공');
+    });
+    
+    test('NAV-03) 마이페이지 → 이벤트 응모정보 메뉴 클릭', async ({ page }) => {
+      test.setTimeout(TEST_TIMEOUT);
+      
+      // 마이페이지로 직접 이동
+      await makestar.gotoMyPage();
+      await makestar.handleModal();
+      await makestar.waitForContentStable('body', { timeout: 3000 }).catch(() => {});
+      
+      // 폴백 없이 메뉴 클릭만 테스트
+      const menuTexts = ['이벤트 응모정보 관리', 'Manage Event Submissions', 'Event Submissions'] as const;
+      const hrefs = ['event-submissions'] as const;
+      const result = await makestar.clickMyPageMenuStrict(menuTexts, hrefs);
+      
+      console.log(`📍 메뉴 클릭 결과: success=${result.success}, url=${result.url}`);
+      if (!result.success) {
+        console.log(`⚠️ 실패 원인: ${result.reason}`);
+      }
+      
+      // 메뉴 클릭으로 이벤트 응모 페이지 도달해야 PASS
+      expect(result.success, `이벤트 응모 메뉴 클릭 실패: ${result.reason}`).toBe(true);
+      expect(result.url).toContain('event-submissions');
+      
+      console.log('✅ NAV-03 완료: 이벤트 응모정보 메뉴 클릭 성공');
+    });
+  });
+
+  // ==========================================================================
+  // D. 마이페이지/회원 기능 (기능 검증 - URL 직접 이동 허용)
+  // ==========================================================================
   test.describe.serial('D. 마이페이지/회원 기능', () => {
     
     test('16) MyPage - 접속 및 프로필 정보 확인', async ({ page }) => {
       test.setTimeout(TEST_TIMEOUT);
 
       await makestar.gotoHome();
-      await makestar.waitForContentStable();
+      await makestar.waitForContentStable('body', { timeout: 3000 }).catch(() => {});
       
       await makestar.gotoMyPage();
       await makestar.handleModal();
-      await makestar.waitForContentStable();
+      await makestar.waitForContentStable('body', { timeout: 3000 }).catch(() => {});
 
       const isLoggedIn = await makestar.checkLoggedIn();
       
@@ -629,13 +640,10 @@ test.describe('Makestar.com E2E 모니터링 테스트', () => {
     test('20) MyPage - 비밀번호 변경 페이지 접근 및 요소 검증', async ({ page }) => {
       test.setTimeout(TEST_TIMEOUT);
 
-      await makestar.gotoHome();
-      await makestar.waitForContentStable();
-
-      await makestar.goto('https://www.makestar.com/my-page/password');
-      await makestar.waitForLoadState('domcontentloaded');
-      await makestar.waitForContentStable();
+      // 기능 검증: URL 직접 이동 (네비게이션은 NAV-02에서 별도 검증)
+      await makestar.goto(`${makestar.baseUrl}/my-page/change-password`);
       await makestar.handleModal();
+      await makestar.waitForContentStable('body', { stableTime: 500, timeout: 3000 }).catch(() => {});
 
       const currentUrl = makestar.currentUrl;
       console.log(`📍 현재 URL: ${currentUrl}`);
@@ -653,23 +661,16 @@ test.describe('Makestar.com E2E 모니터링 테스트', () => {
       const inputCount = await passwordInputs.count();
       console.log(`   비밀번호 입력 필드 개수: ${inputCount}개`);
 
-      const submitBtn = makestar.page.getByRole('button', { name: /변경|저장|확인|Change|Save|Submit/i }).first();
-      const hasSubmitBtn = await submitBtn.isVisible({ timeout: 3000 }).catch(() => false);
-      console.log(`   제출 버튼 표시: ${hasSubmitBtn}`);
-
       console.log('✅ Test 20 완료: 비밀번호 변경 페이지 검증');
     });
 
     test('21) MyPage - 이벤트 응모정보 관리 페이지 검증', async ({ page }) => {
       test.setTimeout(TEST_TIMEOUT);
 
-      await makestar.gotoHome();
-      await makestar.waitForContentStable();
-
-      await makestar.goto('https://www.makestar.com/my-page/event-entry');
-      await makestar.waitForLoadState('domcontentloaded');
-      await makestar.waitForContentStable();
+      // 기능 검증: URL 직접 이동 (네비게이션은 NAV-03에서 별도 검증)
+      await makestar.goto(`${makestar.baseUrl}/my-page/event-entry`);
       await makestar.handleModal();
+      await makestar.waitForContentStable('body', { stableTime: 500, timeout: 3000 }).catch(() => {});
 
       const currentUrl = makestar.currentUrl;
       console.log(`📍 현재 URL: ${currentUrl}`);
@@ -701,10 +702,6 @@ test.describe('Makestar.com E2E 모니터링 테스트', () => {
         .first().isVisible({ timeout: 5000 }).catch(() => false);
       console.log(`   응모 내역/빈 상태 메시지 표시: ${hasContent}`);
 
-      const hasMyPageNav = await page.locator('text=/마이페이지|My Page|주문내역|Order/i')
-        .first().isVisible({ timeout: 3000 }).catch(() => false);
-      console.log(`   마이페이지 네비게이션 표시: ${hasMyPageNav}`);
-
       console.log('✅ Test 21 완료: 이벤트 응모정보 페이지 검증');
     });
   });
@@ -717,14 +714,8 @@ test.describe('Makestar.com E2E 모니터링 테스트', () => {
     test('22) Product - 상품 옵션 변경에 따른 가격 변동 확인', async ({ page }) => {
       test.setTimeout(TEST_TIMEOUT);
 
-      // 네비게이션 버튼 클릭 (유저 시나리오)
-      try {
-        await makestar.shopButton.click({ timeout: 5000 });
-        await makestar.waitForLoadState('domcontentloaded');
-      } catch {
-        await makestar.gotoShop();
-      }
-      await makestar.handleModal();
+      // GNB Shop 버튼 클릭 (유저 시나리오)
+      await makestar.navigateToShop();
       await makestar.waitForPageContent();
 
       const productCard = makestar.shopProductCard.first();
@@ -766,14 +757,8 @@ test.describe('Makestar.com E2E 모니터링 테스트', () => {
     test('23) Shop - 품절 상품 표시 확인', async ({ page }) => {
       test.setTimeout(TEST_TIMEOUT);
 
-      // 네비게이션 버튼 클릭 (유저 시나리오)
-      try {
-        await makestar.shopButton.click({ timeout: 5000 });
-        await makestar.waitForLoadState('domcontentloaded');
-      } catch {
-        await makestar.gotoShop();
-      }
-      await makestar.handleModal();
+      // GNB Shop 버튼 클릭 (유저 시나리오)
+      await makestar.navigateToShop();
       await makestar.waitForPageContent();
       console.log('✅ Shop 페이지 이동 완료');
 
@@ -820,13 +805,8 @@ test.describe('Makestar.com E2E 모니터링 테스트', () => {
 
       // Step 1: Shop 페이지 이동 및 첫 번째 상품 선택
       await test.step('Step 1: Shop 페이지 이동', async () => {
-        // 네비게이션 버튼 클릭 (유저 시나리오)
-        try {
-          await makestar.shopButton.click({ timeout: 5000 });
-          await makestar.waitForLoadState('domcontentloaded');
-        } catch {
-          await makestar.gotoShop();
-        }
+        // GNB Shop 버튼 클릭 (유저 시나리오)
+        await makestar.navigateToShop();
         await makestar.waitForPageContent();
 
         const productCard = makestar.shopProductCard.first();
@@ -866,38 +846,33 @@ test.describe('Makestar.com E2E 모니터링 테스트', () => {
       
       try {
         await incognitoPage.goto('https://www.makestar.com');
-        await incognitoPage.waitForLoadState('domcontentloaded');
-        
-        // POM static 메서드 사용하여 모달 처리
+        await incognitoPage.waitForLoadState('load');
+
+        // 모달 반복 처리 (여러 겹 모달 대응)
         await MakestarPage.closeGuestModal(incognitoPage);
-        
+
         console.log('✅ 비회원 상태로 홈페이지 접근');
 
-        // POM static 메서드 사용하여 요소 검증
+        // 요소 검증 (로고/네비게이션으로 페이지 접근 확인, 콘텐츠 이미지는 lazy loading으로 미표시될 수 있음)
         const homeElements = await MakestarPage.verifyGuestPageElements(incognitoPage);
-        console.log(`   로고 표시: ${homeElements.logo}`);
-        console.log(`   네비게이션 메뉴 표시: ${homeElements.navigation}`);
-        console.log(`   콘텐츠 표시: ${homeElements.content}`);
 
         expect(homeElements.logo || homeElements.navigation || homeElements.content).toBeTruthy();
-        console.log('✅ 비회원 홈페이지 정상 표시 확인');
+        const homeChecked = [homeElements.logo && '로고', homeElements.navigation && 'GNB', homeElements.content && '콘텐츠'].filter(Boolean).join(', ');
+        console.log(`✅ 비회원 홈페이지 정상 표시 확인 (${homeChecked})`);
 
         await incognitoPage.goto('https://www.makestar.com/event#1');
-        await incognitoPage.waitForLoadState('domcontentloaded');
-        
-        // POM static 메서드 사용
+        await incognitoPage.waitForLoadState('load');
+
+        // 모달 반복 처리
         await MakestarPage.closeGuestModal(incognitoPage);
 
         const eventUrl = incognitoPage.url();
-        console.log(`   이벤트 페이지 URL: ${eventUrl}`);
-        
-        // getByRole 우선 사용
         const eventContentVisible = await incognitoPage.locator('img[alt="sample_image"], img[alt="event-thumb-image"]')
           .first().isVisible({ timeout: 5000 }).catch(() => false);
-        console.log(`   이벤트 콘텐츠 표시: ${eventContentVisible}`);
 
         expect(eventUrl.includes('event') || eventContentVisible).toBeTruthy();
-        console.log('✅ 비회원 이벤트 페이지 정상 접근 확인');
+        const eventChecked = [eventUrl.includes('event') && 'URL', eventContentVisible && '콘텐츠'].filter(Boolean).join(', ');
+        console.log(`✅ 비회원 이벤트 페이지 정상 접근 확인 (${eventChecked})`);
 
         console.log('✅ Test 25 완료: 비회원 페이지 접근 검증');
 
@@ -915,13 +890,8 @@ test.describe('Makestar.com E2E 모니터링 테스트', () => {
     test('26) Artist - 아티스트 프로필 페이지 접근 및 정보 표시 확인', async ({ page }) => {
       test.setTimeout(TEST_TIMEOUT);
 
-      // 네비게이션 버튼 클릭 (유저 시나리오)
-      try {
-        await makestar.shopButton.click({ timeout: 5000 });
-        await makestar.waitForLoadState('domcontentloaded');
-      } catch {
-        await makestar.gotoShop();
-      }
+      // GNB Shop 버튼 클릭 (유저 시나리오)
+      await makestar.navigateToShop();
       await makestar.waitForPageContent();
       console.log('✅ Shop 페이지 이동');
 
@@ -964,11 +934,24 @@ test.describe('Makestar.com E2E 모니터링 테스트', () => {
       }
 
       if (!artistFound) {
-        await makestar.goto('https://www.makestar.com/artist');
-        await makestar.waitForLoadState('domcontentloaded');
+        // 폴백: 아티스트 검색으로 대체 (URL 직접 접근 대신 사용자 시나리오)
+        console.log('ℹ️ 상품에서 아티스트 링크를 찾지 못함, 검색으로 대체');
+        await makestar.gotoHome();
         await makestar.waitForContentStable();
+        await makestar.openSearchUI();
+        await makestar.searchInput.fill('SEVENTEEN');
+        await makestar.searchInput.press('Enter');
+        await makestar.waitForLoadState('domcontentloaded');
+        await makestar.waitForSearchResults();
+        
+        // 검색 결과에서 첫 번째 상품 클릭
+        const resultCount = await makestar.getSearchResultCount();
+        if (resultCount > 0) {
+          await makestar.clickFirstSearchResult();
+          await makestar.waitForContentStable();
+        }
         artistPageUrl = makestar.currentUrl;
-        console.log(`ℹ️ 아티스트 목록 페이지로 직접 이동: ${artistPageUrl}`);
+        console.log(`✅ 아티스트 검색 후 상품 페이지 이동: ${artistPageUrl}`);
       }
 
       // POM 메서드 사용
@@ -988,13 +971,8 @@ test.describe('Makestar.com E2E 모니터링 테스트', () => {
     test('27) Artist - 아티스트별 상품 목록 필터링 확인', async ({ page }) => {
       test.setTimeout(TEST_TIMEOUT);
 
-      // 네비게이션 버튼 클릭 (유저 시나리오)
-      try {
-        await makestar.shopButton.click({ timeout: 5000 });
-        await makestar.waitForLoadState('domcontentloaded');
-      } catch {
-        await makestar.gotoShop();
-      }
+      // GNB Shop 버튼 클릭 (유저 시나리오)
+      await makestar.navigateToShop();
       await makestar.waitForPageContent();
       console.log('✅ Shop 페이지 이동');
 

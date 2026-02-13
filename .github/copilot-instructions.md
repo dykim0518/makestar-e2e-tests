@@ -161,6 +161,55 @@ if (failed) test.skip(true, reason);
 3. **Iteration**: 에러 분석 → 코드 수정 → 통과까지 반복
 4. **뷰포트 문제**: Admin에서 실패 시 뷰포트 넓혀서 재시도
 
+## User Journey Navigation (사용자 시나리오 기반 네비게이션)
+
+테스트에서 페이지 이동 시 **URL 직접 접근(`goto()`)보다 사용자 시나리오처럼 버튼/링크 클릭**을 우선한다.
+
+### 1. 원칙
+- **버튼 클릭 우선**: `navigateToShop()`, `navigateToEvent()` 등 POM 메서드로 GNB 버튼 클릭
+- **URL 직접 접근 지양**: `goto('https://...')` 대신 사용자가 실제로 수행하는 클릭 액션 사용
+- **폴백 허용**: 버튼을 찾지 못할 경우에만 URL 직접 이동 (로그에 경고 출력)
+
+### 2. 적용 예시
+```typescript
+// ❌ 지양: URL 직접 접근
+await makestar.goto('https://www.makestar.com/my-page/password');
+
+// ✅ 권장: 사용자 시나리오 (버튼 클릭)
+await makestar.navigateToPasswordPage();  // 마이페이지 → 비밀번호 변경 메뉴 클릭
+```
+
+### 3. 예외 상황
+- **비회원 테스트**: 별도 컨텍스트에서 `goto()` 사용 (로그인 상태 불가)
+- **성능 측정**: `measurePageLoadTime(url)` 등 직접 URL 필요한 경우
+
+## Test Execution & Iteration Workflow (테스트 실행 및 반복 수정)
+
+테스트 작성/수정 후 반드시 **실행 → 검증 → 수정** 사이클을 완료한다.
+
+### 1. 실행 및 검증
+```bash
+# 전체 테스트 실행
+npx playwright test tests/<파일명>.spec.ts --retries=0 --reporter=list
+
+# 특정 테스트만 실행
+npx playwright test --grep='테스트명' --retries=0
+```
+
+### 2. 실패 시 대응 (Self-Healing Loop)
+1. **에러 로그 분석**: 타임아웃, 셀렉터 미검출, Assertion 실패 등 원인 파악
+2. **코드 수정**: POM 메서드 또는 테스트 로직 개선
+3. **재실행**: 수정 후 즉시 재실행하여 검증
+4. **반복**: 모든 테스트 통과까지 위 과정 반복
+
+### 3. 타임아웃 처리 가이드
+- `waitForContentStable()`: 타임아웃 시 `.catch(() => {})` 추가하여 진행
+- 네트워크 호출: `.catch()` 처리로 불필요한 대기 방지
+```typescript
+// 타임아웃 시 무시하고 계속 진행
+await makestar.waitForContentStable('body', { stableTime: 500, timeout: 3000 }).catch(() => {});
+```
+
 ## Test Integrity & Anti-Skip Policy (중요)
 
 에이전트는 테스트 실패 시 임의로 코드를 수정하여 상황을 회피하거나 스킵해서는 안 된다.
