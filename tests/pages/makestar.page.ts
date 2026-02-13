@@ -349,23 +349,47 @@ export class MakestarPage extends BasePage {
    */
   async clickProfileButtonOnce(): Promise<{ success: boolean; url: string; reason?: string }> {
     await this.dismissAllBlockingModals();
-    
+
     const profileBtn = this.page.locator('button:has(svg use[href="#icon-profile-line"]), button:has(img[alt="profile"])').first();
-    
+
     const isVisible = await profileBtn.isVisible({ timeout: 5000 }).catch(() => false);
     if (!isVisible) {
       return { success: false, url: this.currentUrl, reason: '프로필 버튼을 찾을 수 없음' };
     }
-    
+
     // 1. 프로필 버튼 클릭 → 드롭다운 열기
     await profileBtn.click({ timeout: 5000 });
     console.log('📍 1단계: 프로필 버튼 클릭');
     await this._page.waitForTimeout(500);
-    
+
+    // CI 환경 대응: SPA가 미로그인으로 판단하여 로그인 페이지로 리다이렉트된 경우
+    // storageState 쿠키로 보호 페이지 직접 접근하여 auth 워밍업 후 재시도
+    let currentUrl = this.page.url();
+    if (currentUrl.includes('auth.') || currentUrl.includes('/login')) {
+      console.log('⚠️ 로그인 페이지 리다이렉트 감지, auth 워밍업 시도');
+      await this.goto(`${this.baseUrl}/my-page`);
+      await this.waitForLoadState('domcontentloaded');
+      await this.waitForNetworkStable(5000).catch(() => {});
+
+      if (!this.page.url().includes('my-page')) {
+        return { success: false, url: this.page.url(), reason: '인증 실패 (storageState 쿠키 만료 가능)' };
+      }
+
+      // auth 활성화됨, 홈으로 돌아가서 프로필 버튼 재시도
+      await this.gotoHome();
+      await this.waitForContentStable('body', { stableTime: 500, timeout: 3000 }).catch(() => {});
+      await this.dismissAllBlockingModals();
+
+      const profileBtnRetry = this.page.locator('button:has(svg use[href="#icon-profile-line"]), button:has(img[alt="profile"])').first();
+      await profileBtnRetry.click({ timeout: 5000 });
+      console.log('📍 1단계(재시도): 프로필 버튼 클릭');
+      await this._page.waitForTimeout(500);
+    }
+
     // 2. 드롭다운에서 마이페이지 링크 클릭
     const myPageLink = this.page.locator('a[href*="my-page"]').first();
     const linkVisible = await myPageLink.isVisible({ timeout: 3000 }).catch(() => false);
-    
+
     if (!linkVisible) {
       return { success: false, url: this.currentUrl, reason: '마이페이지 링크를 찾을 수 없음' };
     }
@@ -375,13 +399,13 @@ export class MakestarPage extends BasePage {
     await this.waitForLoadState('domcontentloaded');
     await this.waitForNetworkStable(5000).catch(() => {});
     
-    const currentUrl = this.page.url();
-    
+    currentUrl = this.page.url();
+
     // 로그인 페이지로 리다이렉트된 경우 실패
     if (currentUrl.includes('auth.') || currentUrl.includes('/login')) {
       return { success: false, url: currentUrl, reason: '로그인 페이지로 리다이렉트됨' };
     }
-    
+
     // 마이페이지로 이동했는지 확인
     if (currentUrl.includes('my-page')) {
       return { success: true, url: currentUrl };
