@@ -137,10 +137,10 @@ const { totalTime, vitals } = await makestar.measurePageLoadTime(url);
 1. **한글 테스트명**: `test('1-1 사이트 접근 가능 여부', ...)`
 2. **Serial 그룹**: 인증 필요한 테스트는 `test.describe.serial()` 사용
 3. **뷰포트 전략**:
-   - **Admin 페이지**: Desktop 전용 (1920x1080), 모바일 스킵
+   - **Admin 페이지**: Desktop 전용 (1920x1080), 모바일이면 즉시 Fail
    - **B2C 페이지**: Mobile + Desktop 모두 테스트
    ```typescript
-   test.skip(({ viewport }) => viewport!.width < 1024, '데스크톱 전용');
+   expect(viewport === null || viewport.width >= 1024, '데스크톱 전용').toBeTruthy();
    ```
 4. **타임아웃 설정**: `tests/pages/base.page.ts`의 `DEFAULT_TIMEOUTS` 사용
 
@@ -148,9 +148,9 @@ const { totalTime, vitals } = await makestar.measurePageLoadTime(url);
 
 Worker 간 인증 실패 공유를 위해 `.auth-failed` 파일 사용:
 ```typescript
-// 첫 번째 테스트 실패 시 나머지 스킵
+// 첫 번째 테스트 실패 시 즉시 Fail 처리
 const { failed, reason } = isAuthFailed();
-if (failed) test.skip(true, reason);
+expect(failed, reason ?? '인증 실패').toBe(false);
 ```
 
 ## Self-Healing 워크플로우
@@ -216,19 +216,20 @@ await makestar.waitForContentStable('body', { stableTime: 500, timeout: 3000 }).
 
 ### 1. 임의 Skip 금지 규칙
 - **No Silent Skips**: 테스트 실패, 타임아웃, 셀렉터 미검출 시 `test.skip()`이나 `test.fixme()`를 추가하여 통과시키는 행위를 엄격히 금지한다.
+- **No Legacy Skips**: 기존 코드에 `test.skip()`/`test.fixme()`가 있어도 그대로 두지 말고, 실패 원인이 드러나도록 `expect`/`throw` 기반 Fail 처리로 전환한다.
 - **Fail-Fast & Report**: 실패 시 코드를 수정하기 전, 먼저 실패 원인(Assertion Error, Timeout, Locator Mismatch 등)을 분석하여 사용자에게 보고한다.
 - **Exception handling**: 네트워크 순변동 등으로 인한 일시적 오류는 Playwright의 `retry` 설정을 제안하되, 코드 자체에 무분별한 `try-catch`로 에러를 은닉하지 않는다.
 
 ### 2. 에러 분석 및 수정 워크플로우
 1. **분석**: Trace Viewer나 Log를 통해 에러가 발생한 정확한 라인과 원인을 파악한다.
 2. **보고**: 수정 전 "OOO 이유로 실패했습니다. 로케이터를 XXX로 수정해도 될까요?"라고 먼저 확인한다.
-3. **주석 기록**: 만약 환경 문제로 인해 부득이하게 스킵이 필요한 경우, QA Lead의 승인 하에 `// TODO: [사유] [날짜]` 형식의 주석을 반드시 남긴다.
+3. **처리 원칙**: 환경 문제/셀렉터 문제/데이터 문제 모두 `skip`이 아니라 `fail`로 노출하고 원인을 추적한다.
 
 ## Troubleshooting
 
 | 증상 | 원인 | 해결 |
 |------|------|------|
-| Admin 테스트 모바일에서 실패 | 사이드바가 콘텐츠 가림 | `test.skip()` 사용 (데스크톱 전용) |
+| Admin 테스트 모바일에서 실패 | 사이드바가 콘텐츠 가림 | 뷰포트 조건 `expect`로 즉시 Fail 후 데스크톱 환경에서 재실행 |
 | 401 Unauthorized | JWT 만료 (30분) | `npx playwright test tests/save-auth.spec.ts --headed` |
 | `.auth-failed` 파일 존재 | 이전 인증 실패 | 파일 삭제 후 재실행 |
 | AlbumBuddy 세션 만료 | ab-auth.json 쿠키 만료 | `npx playwright test tests/ab-save-auth.spec.ts --headed` |

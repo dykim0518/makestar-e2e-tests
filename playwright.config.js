@@ -114,7 +114,7 @@ export default defineConfig({
     // Admin 테스트 전용 (PC 환경만) - Setup 완료 후 실행
     {
       name: 'admin-pc',
-      testMatch: ['**/admin_product_pom.spec.ts'],
+      testMatch: ['**/admin_product_pom.spec.ts', '**/admin_order_pom_spec.ts'],
       dependencies: ['admin-setup'],  // Setup 프로젝트에 의존
       use: { 
         ...devices['Desktop Chrome'],

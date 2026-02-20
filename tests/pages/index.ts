@@ -38,6 +38,10 @@ export type { SKUSearchOptions } from './admin-sku-list.page';
 export { EventListPage } from './admin-event-list.page';
 export type { EventSearchOptions } from './admin-event-list.page';
 
+// Admin 주문 목록 페이지
+export { OrderListPage } from './admin-order-list.page';
+export type { OrderTabKey, OrderStatusSnapshot } from './admin-order-list.page';
+
 // Admin 대분류 목록 페이지
 export { CategoryListPage } from './admin-category-list.page';
 export type { CategorySearchOptions } from './admin-category-list.page';
