@@ -386,30 +386,60 @@ export class MakestarPage extends BasePage {
       }
       console.log('✅ auth 워밍업 성공, 홈으로 복귀 후 재시도');
 
-      // auth 활성화됨, 홈으로 돌아가서 프로필 버튼 재시도
-      await this.gotoHome();
-      await this.waitForContentStable('body', { stableTime: 500, timeout: 3000 }).catch(() => {});
+      // auth 활성화됨, 홈 full reload로 SPA auth 상태 재초기화
+      await this.goto(this.baseUrl);
+      await this.waitForLoadState('load');
+      await this.waitForNetworkStable(5000).catch(() => {});
+      await this.waitForContentStable('body', { stableTime: 1000, timeout: 5000 }).catch(() => {});
       await this.dismissAllBlockingModals();
 
       const profileBtnRetry = this.page.locator('button:has(svg use[href="#icon-profile-line"]), button:has(img[alt="profile"])').first();
       await profileBtnRetry.click({ timeout: 5000 });
       console.log('📍 1단계(재시도): 프로필 버튼 클릭');
-      await this._page.waitForTimeout(500);
+      await this._page.waitForTimeout(1000);
+
+      // 프로필 버튼 클릭으로 직접 마이페이지 네비게이션된 경우
+      currentUrl = this.page.url();
+      if (currentUrl.includes('my-page')) {
+        console.log('✅ 프로필 버튼 클릭 → 마이페이지 직접 이동');
+        return { success: true, url: currentUrl };
+      }
     }
 
-    // 2. 드롭다운에서 마이페이지 링크 클릭
-    const myPageLink = this.page.locator('a[href*="my-page"]').first();
-    const linkVisible = await myPageLink.isVisible({ timeout: 3000 }).catch(() => false);
+    // 2. 드롭다운에서 마이페이지 링크 클릭 (다양한 셀렉터 시도)
+    const myPageLinkSelectors = [
+      'a[href*="my-page"]',
+      'a[href*="/my-page"]',
+      'a:has-text("My Page")',
+      'a:has-text("마이페이지")',
+    ];
 
-    if (!linkVisible) {
+    let linkClicked = false;
+    for (const selector of myPageLinkSelectors) {
+      const link = this.page.locator(selector).first();
+      if (await link.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await link.click({ timeout: 5000 });
+        console.log(`📍 2단계: 마이페이지 링크 클릭 (${selector})`);
+        linkClicked = true;
+        break;
+      }
+    }
+
+    if (!linkClicked) {
+      // 디버깅: 현재 보이는 드롭다운/링크 목록 출력
+      const visibleLinks = await this.page.locator('a[href]').evaluateAll(els =>
+        els.filter(el => (el as HTMLElement).offsetWidth > 0).slice(0, 10).map(el => ({
+          href: el.getAttribute('href'),
+          text: el.textContent?.trim().substring(0, 30),
+        }))
+      );
+      console.log('🔍 현재 보이는 링크들:', JSON.stringify(visibleLinks));
       return { success: false, url: this.currentUrl, reason: '마이페이지 링크를 찾을 수 없음' };
     }
-    
-    await myPageLink.click({ timeout: 5000 });
-    console.log('📍 2단계: 마이페이지 링크 클릭');
+
     await this.waitForLoadState('domcontentloaded');
     await this.waitForNetworkStable(5000).catch(() => {});
-    
+
     currentUrl = this.page.url();
 
     // 로그인 페이지로 리다이렉트된 경우 실패
@@ -421,7 +451,7 @@ export class MakestarPage extends BasePage {
     if (currentUrl.includes('my-page')) {
       return { success: true, url: currentUrl };
     }
-    
+
     return { success: false, url: currentUrl, reason: '마이페이지로 이동하지 않음' };
   }
 
