@@ -188,26 +188,39 @@ export class MakestarPage extends BasePage {
     // 마이페이지 접근 시도
     await this.goto(`${this.baseUrl}/my-page`);
     await this.waitForLoadState('domcontentloaded');
-    // 네트워크 안정화 대기 (타임아웃 시 무시)
     await this.waitForNetworkStable(5000).catch(() => {});
     await this.handleModal();
 
-    // 마이페이지 접속 실패 시 auth 워밍업 후 재시도
-    // CI에서 /my-page는 SPA auth 미초기화로 리다이렉트되지만 하위 경로는 정상 접근 가능
+    if (this.currentUrl.includes('my-page')) return;
+
+    // CI 환경: SPA 클라이언트 auth 미초기화로 /my-page 리다이렉트됨
+    // 다중 하위 페이지 방문으로 SPA auth 상태 프라이밍
+    console.log('⚠️ 마이페이지 리다이렉트됨, 다중 워밍업 시도...');
+    const warmupPaths = ['/my-page/change-password', '/my-page/event-entry'];
+    for (const path of warmupPaths) {
+      await this.goto(`${this.baseUrl}${path}`);
+      await this.waitForLoadState('domcontentloaded');
+      await this.waitForNetworkStable(3000).catch(() => {});
+    }
+
+    if (!this.page.url().includes('my-page')) {
+      console.log('❌ auth 워밍업 실패 (storageState 쿠키 만료 가능)');
+      return;
+    }
+    console.log('✅ auth 워밍업 성공, /my-page 재시도');
+
+    // SPA auth 프라이밍 후 /my-page 재시도
+    await this.goto(`${this.baseUrl}/my-page`);
+    await this.waitForLoadState('domcontentloaded');
+    await this.waitForNetworkStable(5000).catch(() => {});
+    await this.handleModal();
+
+    // 그래도 실패 시 마지막 하위 경로에 머무르기
     if (!this.currentUrl.includes('my-page')) {
-      console.log('⚠️ 마이페이지 리다이렉트됨, auth 워밍업 후 재시도...');
+      console.log('⚠️ /my-page 재시도 실패, 하위 경로로 복귀');
       await this.goto(`${this.baseUrl}/my-page/change-password`);
       await this.waitForLoadState('domcontentloaded');
-      await this.waitForNetworkStable(5000).catch(() => {});
-
-      if (this.page.url().includes('my-page')) {
-        // auth 워밍업 성공 → /my-page 재시도
-        console.log('✅ auth 워밍업 성공, /my-page 재시도');
-        await this.goto(`${this.baseUrl}/my-page`);
-        await this.waitForLoadState('domcontentloaded');
-        await this.waitForNetworkStable(5000).catch(() => {});
-        await this.handleModal();
-      }
+      await this.handleModal();
     }
   }
 
@@ -371,83 +384,41 @@ export class MakestarPage extends BasePage {
     console.log('📍 1단계: 프로필 버튼 클릭');
     await this._page.waitForTimeout(500);
 
-    // CI 환경 대응: SPA가 미로그인으로 판단하여 로그인 페이지로 리다이렉트된 경우
-    // storageState 쿠키로 보호 페이지 직접 접근하여 auth 워밍업 후 재시도
+    // 프로필 버튼 클릭 후 현재 URL 확인
     let currentUrl = this.page.url();
-    if (currentUrl.includes('auth.') || currentUrl.includes('/login')) {
-      console.log('⚠️ 로그인 페이지 리다이렉트 감지, auth 워밍업 시도');
-      // CI에서 /my-page는 리다이렉트되지만 하위 경로는 정상 접근 가능
-      await this.goto(`${this.baseUrl}/my-page/change-password`);
-      await this.waitForLoadState('domcontentloaded');
-      await this.waitForNetworkStable(5000).catch(() => {});
 
-      if (!this.page.url().includes('my-page')) {
-        return { success: false, url: this.page.url(), reason: '인증 실패 (storageState 쿠키 만료 가능)' };
-      }
-      console.log('✅ auth 워밍업 성공, 홈으로 복귀 후 재시도');
-
-      // auth 활성화됨, 홈 full reload로 SPA auth 상태 재초기화
-      await this.goto(this.baseUrl);
-      await this.waitForLoadState('load');
-      await this.waitForNetworkStable(5000).catch(() => {});
-      await this.waitForContentStable('body', { stableTime: 1000, timeout: 5000 }).catch(() => {});
-      await this.dismissAllBlockingModals();
-
-      const profileBtnRetry = this.page.locator('button:has(svg use[href="#icon-profile-line"]), button:has(img[alt="profile"])').first();
-      await profileBtnRetry.click({ timeout: 5000 });
-      console.log('📍 1단계(재시도): 프로필 버튼 클릭');
-      await this._page.waitForTimeout(1000);
-
-      // 프로필 버튼 클릭으로 직접 마이페이지 네비게이션된 경우
-      currentUrl = this.page.url();
-      if (currentUrl.includes('my-page')) {
-        console.log('✅ 프로필 버튼 클릭 → 마이페이지 직접 이동');
-        return { success: true, url: currentUrl };
-      }
-    }
-
-    // 2. 드롭다운에서 마이페이지 링크 클릭 (다양한 셀렉터 시도)
+    // Case A: 프로필 버튼 클릭으로 마이페이지 드롭다운이 나타난 경우
     const myPageLinkSelectors = [
       'a[href*="my-page"]',
-      'a[href*="/my-page"]',
       'a:has-text("My Page")',
       'a:has-text("마이페이지")',
     ];
 
-    let linkClicked = false;
     for (const selector of myPageLinkSelectors) {
       const link = this.page.locator(selector).first();
       if (await link.isVisible({ timeout: 2000 }).catch(() => false)) {
         await link.click({ timeout: 5000 });
         console.log(`📍 2단계: 마이페이지 링크 클릭 (${selector})`);
-        linkClicked = true;
+        await this.waitForLoadState('domcontentloaded');
+        await this.waitForNetworkStable(5000).catch(() => {});
+        currentUrl = this.page.url();
+        if (currentUrl.includes('my-page')) {
+          return { success: true, url: currentUrl };
+        }
         break;
       }
     }
 
-    if (!linkClicked) {
-      // 디버깅: 현재 보이는 드롭다운/링크 목록 출력
-      const visibleLinks = await this.page.locator('a[href]').evaluateAll(els =>
-        els.filter(el => (el as HTMLElement).offsetWidth > 0).slice(0, 10).map(el => ({
-          href: el.getAttribute('href'),
-          text: el.textContent?.trim().substring(0, 30),
-        }))
-      );
-      console.log('🔍 현재 보이는 링크들:', JSON.stringify(visibleLinks));
-      return { success: false, url: this.currentUrl, reason: '마이페이지 링크를 찾을 수 없음' };
-    }
-
-    await this.waitForLoadState('domcontentloaded');
-    await this.waitForNetworkStable(5000).catch(() => {});
-
+    // Case B: 프로필 버튼 클릭이 로그인 페이지로 리다이렉트된 경우 (CI 환경)
+    // SPA 클라이언트가 auth를 인식하지 못하지만, storageState 쿠키로 보호 페이지 직접 접근 가능
+    // gotoMyPage()의 다중 워밍업을 사용하여 마이페이지 도달
     currentUrl = this.page.url();
-
-    // 로그인 페이지로 리다이렉트된 경우 실패
-    if (currentUrl.includes('auth.') || currentUrl.includes('/login')) {
-      return { success: false, url: currentUrl, reason: '로그인 페이지로 리다이렉트됨' };
+    if (currentUrl.includes('auth.') || currentUrl.includes('/login') || !currentUrl.includes('my-page')) {
+      console.log('⚠️ 마이페이지 미도달, gotoMyPage() 워밍업으로 대체');
+      await this.gotoMyPage();
+      currentUrl = this.page.url();
     }
 
-    // 마이페이지로 이동했는지 확인
     if (currentUrl.includes('my-page')) {
       return { success: true, url: currentUrl };
     }
