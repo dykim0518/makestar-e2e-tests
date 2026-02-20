@@ -492,15 +492,12 @@ test.describe('Makestar.com E2E 모니터링 테스트', () => {
     test('NAV-02) 마이페이지 → 비밀번호 변경 메뉴 클릭', async ({ page }) => {
       test.setTimeout(TEST_TIMEOUT);
 
-      // 마이페이지로 직접 이동 (이전 테스트와 독립적)
-      await makestar.gotoMyPage();
+      // CI 환경: /my-page는 SPA auth 미초기화로 리다이렉트되지만 하위 경로는 정상 접근 가능
+      // 다른 하위 경로(event-entry)에서 출발하여 메뉴 클릭 테스트
+      await makestar.goto(`${makestar.baseUrl}/my-page/event-entry`);
+      await makestar.waitForLoadState('domcontentloaded');
+      await makestar.waitForNetworkStable(5000).catch(() => {});
       await makestar.handleModal();
-      // CI 환경: SPA auth 미초기화로 리다이렉트될 수 있으므로 URL 검증 후 재시도
-      if (!makestar.currentUrl.includes('my-page')) {
-        console.log('⚠️ 마이페이지 미도달, 재시도');
-        await makestar.gotoMyPage();
-        await makestar.handleModal();
-      }
       await makestar.waitForContentStable('body', { timeout: 3000 }).catch(() => {});
       
       // 폴백 없이 메뉴 클릭만 테스트
@@ -523,15 +520,12 @@ test.describe('Makestar.com E2E 모니터링 테스트', () => {
     test('NAV-03) 마이페이지 → 이벤트 응모정보 메뉴 클릭', async ({ page }) => {
       test.setTimeout(TEST_TIMEOUT);
 
-      // 마이페이지로 직접 이동
-      await makestar.gotoMyPage();
+      // CI 환경: /my-page는 SPA auth 미초기화로 리다이렉트되지만 하위 경로는 정상 접근 가능
+      // 다른 하위 경로(change-password)에서 출발하여 메뉴 클릭 테스트
+      await makestar.goto(`${makestar.baseUrl}/my-page/change-password`);
+      await makestar.waitForLoadState('domcontentloaded');
+      await makestar.waitForNetworkStable(5000).catch(() => {});
       await makestar.handleModal();
-      // CI 환경: SPA auth 미초기화로 리다이렉트될 수 있으므로 URL 검증 후 재시도
-      if (!makestar.currentUrl.includes('my-page')) {
-        console.log('⚠️ 마이페이지 미도달, 재시도');
-        await makestar.gotoMyPage();
-        await makestar.handleModal();
-      }
       await makestar.waitForContentStable('body', { timeout: 3000 }).catch(() => {});
       
       // 폴백 없이 메뉴 클릭만 테스트

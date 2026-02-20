@@ -191,14 +191,23 @@ export class MakestarPage extends BasePage {
     // 네트워크 안정화 대기 (타임아웃 시 무시)
     await this.waitForNetworkStable(5000).catch(() => {});
     await this.handleModal();
-    
-    // 마이페이지 접속 실패 시 재시도
+
+    // 마이페이지 접속 실패 시 auth 워밍업 후 재시도
+    // CI에서 /my-page는 SPA auth 미초기화로 리다이렉트되지만 하위 경로는 정상 접근 가능
     if (!this.currentUrl.includes('my-page')) {
-      console.log('⚠️ 마이페이지 리다이렉트됨, 재시도...');
-      await this.goto(`${this.baseUrl}/my-page`);
+      console.log('⚠️ 마이페이지 리다이렉트됨, auth 워밍업 후 재시도...');
+      await this.goto(`${this.baseUrl}/my-page/change-password`);
       await this.waitForLoadState('domcontentloaded');
       await this.waitForNetworkStable(5000).catch(() => {});
-      await this.handleModal();
+
+      if (this.page.url().includes('my-page')) {
+        // auth 워밍업 성공 → /my-page 재시도
+        console.log('✅ auth 워밍업 성공, /my-page 재시도');
+        await this.goto(`${this.baseUrl}/my-page`);
+        await this.waitForLoadState('domcontentloaded');
+        await this.waitForNetworkStable(5000).catch(() => {});
+        await this.handleModal();
+      }
     }
   }
 
@@ -367,13 +376,15 @@ export class MakestarPage extends BasePage {
     let currentUrl = this.page.url();
     if (currentUrl.includes('auth.') || currentUrl.includes('/login')) {
       console.log('⚠️ 로그인 페이지 리다이렉트 감지, auth 워밍업 시도');
-      await this.goto(`${this.baseUrl}/my-page`);
+      // CI에서 /my-page는 리다이렉트되지만 하위 경로는 정상 접근 가능
+      await this.goto(`${this.baseUrl}/my-page/change-password`);
       await this.waitForLoadState('domcontentloaded');
       await this.waitForNetworkStable(5000).catch(() => {});
 
       if (!this.page.url().includes('my-page')) {
         return { success: false, url: this.page.url(), reason: '인증 실패 (storageState 쿠키 만료 가능)' };
       }
+      console.log('✅ auth 워밍업 성공, 홈으로 복귀 후 재시도');
 
       // auth 활성화됨, 홈으로 돌아가서 프로필 버튼 재시도
       await this.gotoHome();
