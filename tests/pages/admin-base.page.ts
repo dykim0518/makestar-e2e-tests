@@ -51,14 +51,14 @@ export const ADMIN_SELECTORS = {
   table: 'table',
   tableRows: 'table tbody tr',
   tableHeaders: 'table thead th',
-  noResultMessage: 'text=검색결과가 없습니다',
+  noResultMessage: ':text("검색결과가 없습니다")',
   pagination: {
     nav: 'nav[aria-label="Pagination"]',
     // Next/Previous 버튼은 Pagination nav 바깥에 위치함
     previousButton: 'button:has-text("Previous")',
     nextButton: 'button:has-text("Next")',
     pageButton: (num: number) => `nav[aria-label="Pagination"] button:has-text("${num}")`,
-    perPageSelect: 'text=10 / page',
+    perPageSelect: ':text("10 / page")',
   },
   breadcrumb: 'nav[aria-label="Breadcrumb"]',
   // 검색 버튼: 새 UI는 아이콘 버튼, 레거시 UI는 텍스트 버튼

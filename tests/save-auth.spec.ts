@@ -184,8 +184,7 @@ test('저장된 세션 확인', async ({ page, context }) => {
   if (!fs.existsSync(AUTH_FILE)) {
     console.log('❌ auth.json 파일이 없습니다.');
     console.log('먼저 로그인 세션을 저장하세요: npx playwright test tests/save-auth.spec.ts -g "로그인 세션 저장" --headed');
-    test.skip();
-    return;
+    throw new Error('auth.json 파일이 없어 저장된 세션 확인을 진행할 수 없습니다.');
   }
   
   // 세션 로드

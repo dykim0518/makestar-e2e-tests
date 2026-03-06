@@ -50,9 +50,7 @@ export function markAuthFailed(reason: string): void {
  */
 export function clearAuthFailed(): void {
   try {
-    if (fs.existsSync(AUTH_FAIL_FILE)) {
-      fs.unlinkSync(AUTH_FAIL_FILE);
-    }
+    fs.unlinkSync(AUTH_FAIL_FILE);
   } catch {}
 }
 
@@ -67,26 +65,22 @@ export function isTokenValidSync(): boolean {
   
   // 1. admin-tokens.json 확인
   try {
-    if (fs.existsSync(tokensFile)) {
-      const tokens = JSON.parse(fs.readFileSync(tokensFile, 'utf-8'));
-      const expiresAt = new Date(tokens.expiresAt).getTime();
-      if (expiresAt - bufferTime > now) {
-        return true;
-      }
+    const tokens = JSON.parse(fs.readFileSync(tokensFile, 'utf-8'));
+    const expiresAt = new Date(tokens.expiresAt).getTime();
+    if (expiresAt - bufferTime > now) {
+      return true;
     }
   } catch {}
-  
+
   // 2. auth.json의 refresh_token 쿠키 확인
   try {
-    if (fs.existsSync(authFile)) {
-      const auth = JSON.parse(fs.readFileSync(authFile, 'utf-8'));
-      const rtCookie = auth.cookies?.find((c: any) => c.name === 'refresh_token');
-      if (rtCookie?.value) {
-        const payload = JSON.parse(Buffer.from(rtCookie.value.split('.')[1], 'base64').toString());
-        const expiresAt = payload.exp * 1000;
-        if (expiresAt - bufferTime > now) {
-          return true;
-        }
+    const auth = JSON.parse(fs.readFileSync(authFile, 'utf-8'));
+    const rtCookie = auth.cookies?.find((c: any) => c.name === 'refresh_token');
+    if (rtCookie?.value) {
+      const payload = JSON.parse(Buffer.from(rtCookie.value.split('.')[1], 'base64').toString());
+      const expiresAt = payload.exp * 1000;
+      if (expiresAt - bufferTime > now) {
+        return true;
       }
     }
   } catch {}
@@ -104,22 +98,18 @@ export function getTokenRemaining(): { hours: number; minutes: number } {
   let expiresAt = 0;
   
   try {
-    if (fs.existsSync(tokensFile)) {
-      const tokens = JSON.parse(fs.readFileSync(tokensFile, 'utf-8'));
-      expiresAt = new Date(tokens.expiresAt).getTime();
-    }
+    const tokens = JSON.parse(fs.readFileSync(tokensFile, 'utf-8'));
+    expiresAt = new Date(tokens.expiresAt).getTime();
   } catch {}
-  
+
   try {
-    if (fs.existsSync(authFile)) {
-      const auth = JSON.parse(fs.readFileSync(authFile, 'utf-8'));
-      const rtCookie = auth.cookies?.find((c: any) => c.name === 'refresh_token');
-      if (rtCookie?.value) {
-        const payload = JSON.parse(Buffer.from(rtCookie.value.split('.')[1], 'base64').toString());
-        const rtExpires = payload.exp * 1000;
-        if (rtExpires > expiresAt) {
-          expiresAt = rtExpires;
-        }
+    const auth = JSON.parse(fs.readFileSync(authFile, 'utf-8'));
+    const rtCookie = auth.cookies?.find((c: any) => c.name === 'refresh_token');
+    if (rtCookie?.value) {
+      const payload = JSON.parse(Buffer.from(rtCookie.value.split('.')[1], 'base64').toString());
+      const rtExpires = payload.exp * 1000;
+      if (rtExpires > expiresAt) {
+        expiresAt = rtExpires;
       }
     }
   } catch {}
@@ -274,27 +264,40 @@ export async function verifyAuthentication(page: Page): Promise<{ success: boole
 // 자동화 테스트 번호 추출 헬퍼 함수
 // ============================================================================
 
+// ============================================================================
+// 자동화 테스트 번호 추출 공통 구현
+// ============================================================================
+
+/**
+ * 테이블 현재 페이지 행에서 정규식 패턴의 최대 N 값 스캔 (내부 구현)
+ */
+async function scanTableForMaxNumber(page: Page, pattern: RegExp): Promise<number> {
+  const rows = page.locator('table tbody tr');
+  const allTexts = await rows.evaluateAll(
+    (elements) => elements.map(el => el.textContent || '')
+  );
+  let maxN = 0;
+  for (const rowText of allTexts) {
+    const match = rowText.match(pattern);
+    if (match?.[1]) {
+      const n = parseInt(match[1], 10);
+      if (n > maxN) maxN = n;
+    }
+  }
+  return maxN;
+}
+
 /**
  * 목록에서 "[자동화테스트]" 패턴의 최대 N 값 추출
  * 패턴: "[자동화테스트] 샘플 대분류 {N}"
  */
 export async function getMaxAutomationTestNumber(page: Page): Promise<number> {
+  const PATTERN = /\[자동화테스트\]\s*샘플\s*대분류\s*(\d+)/;
   let maxN = 0;
-  
+
   try {
-    const rows = page.locator('table tbody tr');
-    const rowCount = await rows.count();
-    const pattern = /\[자동화테스트\]\s*샘플\s*대분류\s*(\d+)/;
-    
-    for (let i = 0; i < rowCount; i++) {
-      const rowText = await rows.nth(i).textContent() || '';
-      const match = rowText.match(pattern);
-      if (match && match[1]) {
-        const n = parseInt(match[1], 10);
-        if (n > maxN) maxN = n;
-      }
-    }
-    
+    maxN = await scanTableForMaxNumber(page, PATTERN);
+
     // 검색 기능이 있으면 "[자동화테스트]"로 필터링하여 재확인
     const keywordInput = page.locator('input[placeholder="검색어 입력"]');
     if (await keywordInput.isVisible({ timeout: 3000 }).catch(() => false)) {
@@ -302,23 +305,13 @@ export async function getMaxAutomationTestNumber(page: Page): Promise<number> {
       const searchButton = page.locator('button:has-text("조회하기"), img[cursor="pointer"]').first();
       await searchButton.click();
       await waitForTableUpdate(page);
-      
-      const filteredRows = page.locator('table tbody tr');
-      const filteredCount = await filteredRows.count();
-      
-      for (let i = 0; i < filteredCount; i++) {
-        const rowText = await filteredRows.nth(i).textContent() || '';
-        const match = rowText.match(pattern);
-        if (match && match[1]) {
-          const n = parseInt(match[1], 10);
-          if (n > maxN) maxN = n;
-        }
-      }
+      const filteredMax = await scanTableForMaxNumber(page, PATTERN);
+      if (filteredMax > maxN) maxN = filteredMax;
     }
   } catch (e) {
     console.log('ℹ️ 기존 자동화테스트 대분류 조회 실패, 1부터 시작합니다:', e);
   }
-  
+
   return maxN;
 }
 
@@ -326,52 +319,24 @@ export async function getMaxAutomationTestNumber(page: Page): Promise<number> {
  * SKU 목록에서 "[자동화테스트] 샘플 SKU {N}" 패턴의 최대 N 값 추출
  */
 export async function getMaxSkuAutomationTestNumber(page: Page): Promise<number> {
-  let maxN = 0;
-  
   try {
-    const rows = page.locator('table tbody tr');
-    const rowCount = await rows.count();
-    const pattern = /\[자동화테스트\]\s*샘플\s*SKU\s*(\d+)/i;
-    
-    for (let i = 0; i < rowCount; i++) {
-      const rowText = await rows.nth(i).textContent() || '';
-      const match = rowText.match(pattern);
-      if (match && match[1]) {
-        const n = parseInt(match[1], 10);
-        if (n > maxN) maxN = n;
-      }
-    }
+    return await scanTableForMaxNumber(page, /\[자동화테스트\]\s*샘플\s*SKU\s*(\d+)/i);
   } catch (e) {
     console.log('ℹ️ 기존 자동화테스트 SKU 조회 실패, 1부터 시작합니다:', e);
+    return 0;
   }
-  
-  return maxN;
 }
 
 /**
  * 상품 목록에서 "[자동화테스트] 샘플 상품 {N}" 패턴의 최대 N 값 추출
  */
 export async function getMaxProductAutomationTestNumber(page: Page): Promise<number> {
-  let maxN = 0;
-  
   try {
-    const rows = page.locator('table tbody tr');
-    const rowCount = await rows.count();
-    const pattern = /\[자동화테스트\]\s*샘플\s*상품\s*(\d+)/i;
-    
-    for (let i = 0; i < rowCount; i++) {
-      const rowText = await rows.nth(i).textContent() || '';
-      const match = rowText.match(pattern);
-      if (match && match[1]) {
-        const n = parseInt(match[1], 10);
-        if (n > maxN) maxN = n;
-      }
-    }
+    return await scanTableForMaxNumber(page, /\[자동화테스트\]\s*샘플\s*상품\s*(\d+)/i);
   } catch (e) {
     console.log('ℹ️ 기존 자동화테스트 상품 조회 실패, 1부터 시작합니다:', e);
+    return 0;
   }
-  
-  return maxN;
 }
 
 /**
@@ -394,12 +359,17 @@ export function formatDate(date: Date): string {
  */
 export function applyAdminTestConfig() {
   const tokenValid = isTokenValidSync();
-  
-  // 모바일 뷰포트 스킵 (관리자 페이지는 데스크톱 전용)
-  test.skip(({ viewport }) => viewport !== null && viewport.width < 1024, '이 테스트는 데스크톱 뷰포트에서만 실행됩니다');
-  
-  // 토큰 만료 시 테스트 스킵
-  test.skip(!tokenValid, `
+
+  test.beforeEach(async ({}, testInfo) => {
+    const viewport = testInfo.project.use.viewport;
+    expect(
+      viewport === null || viewport.width >= 1024,
+      '이 테스트는 데스크톱 뷰포트(너비 1024 이상)에서만 실행됩니다',
+    ).toBeTruthy();
+
+    expect(
+      tokenValid,
+      `
 ⚠️ 토큰이 만료되었습니다!
 
 수동으로 로그인하세요:
@@ -407,7 +377,9 @@ export function applyAdminTestConfig() {
 
 또는 터미널에서 실행하세요:
   npx playwright test tests/admin_test_pom.spec.ts --project=chromium
-`);
+`,
+    ).toBe(true);
+  });
   
   return { tokenValid };
 }

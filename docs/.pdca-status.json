@@ -1,0 +1,77 @@
+{
+  "version": "2.0",
+  "lastUpdated": "2026-03-05T08:46:51.701Z",
+  "activeFeatures": [
+    "tests"
+  ],
+  "primaryFeature": "tests",
+  "features": {
+    "tests": {
+      "phase": "do",
+      "phaseNumber": 3,
+      "matchRate": null,
+      "iterationCount": 0,
+      "requirements": [],
+      "documents": {},
+      "timestamps": {
+        "started": "2026-03-05T08:23:06.582Z",
+        "lastUpdated": "2026-03-05T08:46:51.701Z"
+      },
+      "lastFile": "/Users/makestar_edkim/Projects/my-playwright-tests/tests/pages/admin-event-create.page.ts"
+    }
+  },
+  "pipeline": {
+    "currentPhase": 1,
+    "level": "Dynamic",
+    "phaseHistory": []
+  },
+  "session": {
+    "startedAt": "2026-03-05T08:08:42.573Z",
+    "onboardingCompleted": false,
+    "lastActivity": "2026-03-05T08:46:51.701Z"
+  },
+  "history": [
+    {
+      "timestamp": "2026-03-05T08:23:06.582Z",
+      "feature": "tests",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-05T08:37:41.179Z",
+      "feature": "tests",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-05T08:37:53.139Z",
+      "feature": "tests",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-05T08:38:09.209Z",
+      "feature": "tests",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-05T08:41:49.589Z",
+      "feature": "tests",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-05T08:43:11.116Z",
+      "feature": "tests",
+      "phase": "do",
+      "action": "updated"
+    },
+    {
+      "timestamp": "2026-03-05T08:46:51.701Z",
+      "feature": "tests",
+      "phase": "do",
+      "action": "updated"
+    }
+  ]
+}

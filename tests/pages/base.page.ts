@@ -173,7 +173,8 @@ export abstract class BasePage {
         const btn = this._page.getByText(text, { exact: false }).first();
         if (await btn.isVisible({ timeout })) {
           await btn.click({ timeout: this.timeouts.medium, force: true });
-          await this._page.waitForTimeout(500);
+          // 클릭 후 버튼(모달)이 사라질 때까지 조건부 대기
+          await btn.waitFor({ state: 'hidden', timeout: this.timeouts.short }).catch(() => {});
           console.log(`✅ "${text}" 버튼 클릭`);
           return true;
         }
@@ -230,20 +231,18 @@ export abstract class BasePage {
     selectors: readonly string[],
     timeout: number = this.timeouts.medium
   ): Promise<ElementSearchResult | null> {
+    // Promise.any(): 첫 번째 성공 promise 반환, 모두 실패 시 AggregateError
+    // Promise.race()는 null을 가장 빨리 반환하는 promise가 이겨버리는 버그 있음
     const promises = selectors.map(async (selector) => {
-      try {
-        const element = this._page.locator(selector).first();
-        await element.waitFor({ state: 'visible', timeout });
-        return { element, selector };
-      } catch {
-        return null;
-      }
+      const element = this._page.locator(selector).first();
+      await element.waitFor({ state: 'visible', timeout });
+      return { element, selector };
     });
 
     try {
-      const result = await Promise.race(promises);
-      return result;
+      return await Promise.any(promises);
     } catch {
+      // 모든 selector에서 요소를 찾지 못함 (AggregateError)
       return null;
     }
   }
@@ -357,9 +356,7 @@ export abstract class BasePage {
    */
   async handleModal(): Promise<void> {
     try {
-      await this.wait(this.timeouts.micro);
-
-      // 1단계: "Do not show again" 버튼 찾기
+      // 1단계: "Do not show again" 버튼 찾기 (clickFirstVisibleText가 visibility 확인)
       const dismissed = await this.clickFirstVisibleText(this.modalDoNotShowTexts, 1000);
 
       // 2단계: 모달이 여전히 있으면 닫기 버튼 클릭
@@ -378,10 +375,11 @@ export abstract class BasePage {
     const allCloseTexts = [...this.modalDoNotShowTexts, ...this.modalCloseTexts];
     for (const text of allCloseTexts) {
       try {
-        const btn = this._page.locator(`text=${text}`).first();
+        const btn = this._page.getByText(text, { exact: false }).first();
         if (await btn.isVisible({ timeout: 1000 })) {
           await btn.click({ force: true });
-          await this.wait(500);
+          // 모달이 닫힐 때까지 조건부 대기
+          await btn.waitFor({ state: 'hidden', timeout: 1000 }).catch(() => {});
         }
       } catch {
         continue;

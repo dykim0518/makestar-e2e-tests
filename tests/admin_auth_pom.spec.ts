@@ -14,7 +14,7 @@
  */
 
 import { test, expect, chromium, type Page, type Browser } from '@playwright/test';
-import { setupAuthCookies, resetAuthCache } from './helpers/admin';
+import { setupAuthCookies, resetAuthCache, setupApiInterceptor } from './helpers/admin';
 import {
   isAuthFailed,
   markAuthFailed,
@@ -90,30 +90,23 @@ async function performGoogleLogin(): Promise<boolean> {
       return false;
     }
     
-    // refresh_token 또는 access_token 쿠키가 설정될 때까지 추가 대기
+    // refresh_token 또는 access_token 쿠키가 설정될 때까지 대기
+    // 로그인 후 networkidle로 쿠키 설정 완료 시점 감지 (폴링 루프 제거)
     console.log('⏳ 인증 토큰 설정 대기 중...');
+    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
     let tokenFound = false;
-    for (let i = 0; i < 30; i++) { // 최대 15초 대기
-      const cookies = await context.cookies();
-      const hasRefreshToken = cookies.some(c => c.name === 'refresh_token');
-      const hasAccessToken = cookies.some(c => c.name === 'access_token');
-      
-      if (hasRefreshToken || hasAccessToken) {
-        tokenFound = true;
-        console.log(`   ✅ 토큰 쿠키 발견: ${hasRefreshToken ? 'refresh_token ' : ''}${hasAccessToken ? 'access_token' : ''}`);
-        break;
-      }
-      
-      // 페이지 새로고침 또는 대기
-      await page.waitForTimeout(500);
+    const cookies = await context.cookies();
+    const hasRefreshToken = cookies.some(c => c.name === 'refresh_token');
+    const hasAccessToken = cookies.some(c => c.name === 'access_token');
+    tokenFound = hasRefreshToken || hasAccessToken;
+    if (tokenFound) {
+      console.log(`   ✅ 토큰 쿠키 발견: ${hasRefreshToken ? 'refresh_token ' : ''}${hasAccessToken ? 'access_token' : ''}`);
     }
     
     if (!tokenFound) {
       console.log('   ⚠️ 토큰 쿠키를 찾지 못했습니다. 페이지 새로고침 시도...');
-      // 페이지 새로고침 후 다시 시도
+      // 페이지 새로고침 후 다시 시도 (networkidle이 완료 시점을 보장)
       await page.reload({ waitUntil: 'networkidle' });
-      await page.waitForTimeout(2000);
-      
       const cookies = await context.cookies();
       tokenFound = cookies.some(c => c.name === 'refresh_token' || c.name === 'access_token');
     }
@@ -148,9 +141,6 @@ async function performGoogleLogin(): Promise<boolean> {
 // ============================================================================
 let tokenValid = isTokenValidSync();
 
-// 모바일 뷰포트 스킵 (관리자 페이지는 데스크톱 전용)
-test.skip(({ viewport }) => viewport !== null && viewport.width < 1024, '이 테스트는 데스크톱 뷰포트에서만 실행됩니다');
-
 // ============================================================================
 // 전역 설정
 // ============================================================================
@@ -181,22 +171,27 @@ test.beforeAll(async () => {
   }
 });
 
-test.beforeEach(async ({ page }) => {
+test.beforeEach(async ({ page }, testInfo) => {
+  const viewport = testInfo.project.use.viewport;
+  expect(
+    viewport === null || viewport.width >= 1024,
+    '이 테스트는 데스크톱 뷰포트(너비 1024 이상)에서만 실행됩니다',
+  ).toBeTruthy();
+
   const authStatus = isAuthFailed();
-  if (authStatus.failed) {
-    console.log(`\n🚫 인증 실패로 테스트 스킵: ${authStatus.reason}`);
-    test.skip(true, `인증 실패: ${authStatus.reason}`);
-    return;
-  }
-  
+  expect(authStatus.failed, `인증 실패: ${authStatus.reason ?? '원인 미상'}`).toBe(false);
+
   await setupAuthCookies(page);
+  
+  // 시스템 토큰으로 API 요청에 Authorization 헤더 자동 추가
+  await setupApiInterceptor(page);
 });
 
 // ##############################################################################
 // 인증 검증 테스트
 // ##############################################################################
 test.describe.serial('인증 검증', () => {
-  test('TC-AUTH-001: 어드민 페이지 접근 인증 확인', async ({ page }) => {
+  test('AUTH-VERIFY-01: 어드민 페이지 접근 인증 확인', async ({ page }) => {
     // 이 테스트가 실패하면 이후 모든 테스트는 스킵됨 (파일 기반 상태 공유)
     const adminUrl = 'https://stage-new-admin.makeuni2026.com/sku/list';
     

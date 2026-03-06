@@ -45,3 +45,6 @@ test-results*.json
 
 # VS Code (optional - 팀 공유 시 제거)
 # .vscode/
+
+# Local agent instructions (personal/local only)
+AGENTS.md

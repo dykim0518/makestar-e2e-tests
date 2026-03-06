@@ -23,6 +23,7 @@ export default defineConfig({
   reporter: [
     ['html', { open: 'never' }],
     ['list'],
+    ['json', { outputFile: 'test-results/results.json' }],
   ],
 
   timeout: 90000,
@@ -34,7 +35,6 @@ export default defineConfig({
     navigationTimeout: 30000,
     headless: true,
     viewport: { width: 1920, height: 1080 },
-    storageState: './auth.json',
   },
 
   projects: [
@@ -44,6 +44,36 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         viewport: { width: 1920, height: 1080 },
+        storageState: './auth.json',
+      },
+    },
+    {
+      name: 'albumbuddy-monitoring',
+      testMatch: ['**/ab_monitoring_pom.spec.ts'],
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1920, height: 1080 },
+        storageState: './ab-auth.json',
+      },
+    },
+    {
+      name: 'admin-setup',
+      testMatch: ['**/admin_auth_pom.spec.ts'],
+      retries: 0,
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1920, height: 1080 },
+        storageState: './auth.json',
+      },
+    },
+    {
+      name: 'admin-pc',
+      testMatch: ['**/admin_product_pom.spec.ts', '**/admin_order_pom.spec.ts'],
+      dependencies: ['admin-setup'],
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1920, height: 1080 },
+        storageState: './auth.json',
       },
     },
   ],

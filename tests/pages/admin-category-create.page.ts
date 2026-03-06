@@ -279,36 +279,39 @@ export class CategoryCreatePage extends AdminBasePage {
       timeout: 5000 
     }).catch(() => {});
     
-    // 검색 결과에서 검색어를 포함하는 유효 옵션 찾기
-    // "새로운 아티스트 등록" / "검색결과가 없습니다" 제외
-    const validOptions = this.page.locator('.multiselect__option:visible')
-      .filter({ hasNotText: /새로운 아티스트 등록|검색결과가 없습니다/ });
-    
-    // 검색어를 포함하는 옵션 찾기
-    const matchingOption = validOptions.filter({ hasText: artistName }).first();
-    
-    if (await matchingOption.isVisible({ timeout: 2000 }).catch(() => false)) {
-      const optionText = await matchingOption.textContent();
-      await matchingOption.click();
-      console.log(`ℹ️ 아티스트 선택: ${optionText?.trim()}`);
-    } else {
-      // 유효 옵션 중 첫 번째 선택 (정확한 매칭 실패시)
-      const firstValidOption = validOptions.first();
-      
-      if (await firstValidOption.isVisible({ timeout: 1000 }).catch(() => false)) {
-        const optionText = await firstValidOption.textContent();
-        // 텍스트가 비어있거나 잘못된 값이면 선택하지 않음
+    // 옵션 선택 시도 (최대 2회: 검색 결과 → 전체 목록 폴백)
+    const excludePattern = /새로운 아티스트 등록|검색결과가 없습니다/;
+    let selected = false;
+
+    for (let attempt = 0; attempt < 2 && !selected; attempt++) {
+      // 2차 시도: 검색어 클리어 후 전체 목록에서 선택
+      if (attempt === 1 && isInputVisible) {
+        console.log(`⚠️ 아티스트 "${artistName}" 검색 결과 없음 - 전체 목록에서 선택 시도`);
+        await searchInput.clear();
+        await this.wait(1500);
+      }
+
+      const validOptions = this.page.locator('.multiselect__option:visible')
+        .filter({ hasNotText: excludePattern });
+
+      const targetOption = attempt === 0
+        ? validOptions.filter({ hasText: artistName }).first()
+        : validOptions.first();
+
+      if (await targetOption.isVisible({ timeout: 2000 }).catch(() => false)) {
+        const optionText = await targetOption.textContent();
         if (optionText && !optionText.includes('undefined') && optionText.trim().length > 0 && !optionText.includes('()')) {
-          await firstValidOption.click();
-          console.log(`ℹ️ 아티스트 선택(첫번째): ${optionText?.trim()}`);
-        } else {
-          console.log('⚠️ 유효한 아티스트 옵션을 찾을 수 없음 - 검색 결과가 비어있음');
+          await targetOption.click();
+          console.log(`ℹ️ 아티스트 선택${attempt > 0 ? '(폴백)' : ''}: ${optionText?.trim()}`);
+          selected = true;
         }
-      } else {
-        console.log('⚠️ 아티스트 옵션을 찾을 수 없음');
       }
     }
-    
+
+    if (!selected) {
+      throw new Error(`아티스트 선택 실패: "${artistName}" 옵션을 찾을 수 없습니다`);
+    }
+
     await this.wait(300);
   }
 

@@ -76,13 +76,18 @@ HEADED=true npm run test:cmr
 | Secret | 설명 |
 |--------|------|
 | `AUTH_JSON` | `auth.json` 파일 내용 (로그인 세션) |
+| `AB_AUTH_JSON` | `ab-auth.json` 파일 내용 (AlbumBuddy 로그인 세션, 선택) |
 
 Settings > Secrets and variables > Actions > New repository secret
 
 ### 수동 실행
 
 Actions 탭 > Playwright Tests > Run workflow
-- `test_grep`: 특정 테스트 패턴 (예: `TC-HOME`, `TC-SEARCH`)
+- `suite`: `cmr | albumbuddy | admin | all`
+- `project`: Playwright 프로젝트 직접 지정(선택)
+- `spec`: 특정 스펙 파일 경로(선택)
+- `grep`: 특정 테스트 패턴 (예: `TC-HOME`, `TC-SEARCH`)
+- `retries`: 재시도 횟수
 
 ### CI 설정 (`playwright.ci.config.js`)
 

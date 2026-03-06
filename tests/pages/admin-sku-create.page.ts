@@ -418,77 +418,100 @@ export class SkuCreatePage extends AdminBasePage {
     await multiselect.click();
     await this.wait(500);
     
-    // combobox 내 검색 입력 찾기 (새 UI 구조)
-    const searchInput = multiselect.getByRole('textbox');
-    const isInputVisible = await searchInput.isVisible({ timeout: 3000 }).catch(() => false);
-    
+    // combobox 내 검색 입력 찾기 (다중 전략)
+    let searchInput = multiselect.getByRole('textbox');
+    let isInputVisible = await searchInput.isVisible({ timeout: 2000 }).catch(() => false);
+
+    // 폴백 1: 활성화된 multiselect 내 input
+    if (!isInputVisible) {
+      searchInput = this.page.locator('.multiselect--active input.multiselect__input');
+      isInputVisible = await searchInput.isVisible({ timeout: 2000 }).catch(() => false);
+    }
+
+    // 폴백 2: combobox 내 input 태그 직접
+    if (!isInputVisible) {
+      searchInput = multiselect.locator('input').first();
+      isInputVisible = await searchInput.isVisible({ timeout: 1000 }).catch(() => false);
+    }
+
     if (isInputVisible) {
       await searchInput.fill(searchTerm);
       await this.wait(1500); // API 응답 대기
-    }
-    
-    // 드롭다운 옵션 대기 (listbox 또는 기존 multiselect 구조)
-    const listbox = this.page.getByRole('listbox');
-    const hasListbox = await listbox.isVisible({ timeout: 3000 }).catch(() => false);
-    
-    let selectedOption = false;
-    
-    if (hasListbox) {
-      // 새 UI: listbox 내 option 사용
-      const options = this.page.getByRole('option');
-      const matchingOption = options.filter({ hasText: searchTerm }).filter({ hasNotText: excludePatterns }).first();
-      
-      if (await matchingOption.isVisible({ timeout: 2000 }).catch(() => false)) {
-        const optionText = await matchingOption.textContent();
-        await matchingOption.click();
-        console.log(`ℹ️ ${fieldName} 선택: ${optionText?.trim()}`);
-        selectedOption = true;
-      } else {
-        // 첫 번째 유효 옵션 선택
-        const firstOption = options.filter({ hasNotText: excludePatterns }).first();
-        if (await firstOption.isVisible({ timeout: 1000 }).catch(() => false)) {
-          const optionText = await firstOption.textContent();
-          await firstOption.click();
-          console.log(`ℹ️ ${fieldName} 선택(첫번째): ${optionText?.trim()}`);
-          selectedOption = true;
-        }
-      }
     } else {
-      // 레거시 UI: multiselect 구조 사용
-      await this.page.locator('.multiselect__content-wrapper:visible').waitFor({ 
-        state: 'visible', 
-        timeout: 5000 
-      }).catch(() => {});
-      
-      const validOptions = this.page.locator('.multiselect__option:visible')
-        .filter({ hasNotText: excludePatterns });
-      
-      const matchingOption = validOptions.filter({ hasText: searchTerm }).first();
-      
-      if (await matchingOption.isVisible({ timeout: 2000 }).catch(() => false)) {
-        const optionText = await matchingOption.textContent();
-        await matchingOption.click();
-        console.log(`ℹ️ ${fieldName} 선택: ${optionText?.trim()}`);
-        selectedOption = true;
-      } else {
-        const firstValidOption = validOptions.first();
-        if (await firstValidOption.isVisible({ timeout: 1000 }).catch(() => false)) {
-          const optionText = await firstValidOption.textContent();
-          if (optionText && !optionText.includes('undefined') && optionText.trim().length > 0) {
-            await firstValidOption.click();
+      console.log(`⚠️ ${fieldName} 검색 입력 필드를 찾을 수 없음 - 전체 옵션에서 선택 시도`);
+    }
+
+    let selectedOption = false;
+
+    // 옵션 선택 시도 (최대 2회: 검색 결과 → 전체 목록 폴백)
+    for (let attempt = 0; attempt < 2 && !selectedOption; attempt++) {
+
+      // "검색결과가 없습니다" 감지 시 검색어 클리어 후 재시도
+      if (attempt === 1 && isInputVisible) {
+        console.log(`⚠️ ${fieldName} "${searchTerm}" 검색 결과 없음 - 전체 목록에서 선택 시도`);
+        await searchInput.clear();
+        await this.wait(1500);
+      }
+
+      // 드롭다운 옵션 대기 (listbox 또는 기존 multiselect 구조)
+      const listbox = this.page.getByRole('listbox');
+      const hasListbox = await listbox.isVisible({ timeout: 3000 }).catch(() => false);
+
+      if (hasListbox) {
+        // 새 UI: listbox 내 option 사용
+        const options = this.page.getByRole('option');
+        const targetText = attempt === 0 ? searchTerm : '';
+        const matchingOption = targetText
+          ? options.filter({ hasText: targetText }).filter({ hasNotText: excludePatterns }).first()
+          : options.filter({ hasNotText: excludePatterns }).first();
+
+        if (await matchingOption.isVisible({ timeout: 2000 }).catch(() => false)) {
+          const optionText = await matchingOption.textContent();
+          await matchingOption.click();
+          console.log(`ℹ️ ${fieldName} 선택${attempt > 0 ? '(폴백)' : ''}: ${optionText?.trim()}`);
+          selectedOption = true;
+        } else if (attempt === 0) {
+          // 첫 번째 시도에서 매칭 실패 → 첫 번째 유효 옵션 시도
+          const firstOption = options.filter({ hasNotText: excludePatterns }).first();
+          if (await firstOption.isVisible({ timeout: 1000 }).catch(() => false)) {
+            const optionText = await firstOption.textContent();
+            await firstOption.click();
             console.log(`ℹ️ ${fieldName} 선택(첫번째): ${optionText?.trim()}`);
+            selectedOption = true;
+          }
+        }
+      } else {
+        // 레거시 UI: multiselect 구조 사용
+        await this.page.locator('.multiselect__content-wrapper:visible').waitFor({
+          state: 'visible',
+          timeout: 5000
+        }).catch(() => {});
+
+        const validOptions = this.page.locator('.multiselect__option:visible')
+          .filter({ hasNotText: excludePatterns });
+
+        const targetText = attempt === 0 ? searchTerm : '';
+        const matchingOption = targetText
+          ? validOptions.filter({ hasText: targetText }).first()
+          : validOptions.first();
+
+        if (await matchingOption.isVisible({ timeout: 2000 }).catch(() => false)) {
+          const optionText = await matchingOption.textContent();
+          if (optionText && !optionText.includes('undefined') && optionText.trim().length > 0) {
+            await matchingOption.click();
+            console.log(`ℹ️ ${fieldName} 선택${attempt > 0 ? '(폴백)' : ''}: ${optionText?.trim()}`);
             selectedOption = true;
           }
         }
       }
     }
     
-    if (!selectedOption) {
-      console.log(`⚠️ ${fieldName} 옵션을 찾을 수 없음`);
-    }
-    
     await this.wait(300);
     await this.closeModalIfVisible();
+
+    if (!selectedOption) {
+      throw new Error(`${fieldName} 선택 실패: "${searchTerm}" 옵션을 찾을 수 없습니다`);
+    }
   }
 
   /**
@@ -630,7 +653,7 @@ export class SkuCreatePage extends AdminBasePage {
     
     // 카테고리
     if (options.category) {
-      await this.selectCategory(options.category);
+      await this.selectSingleCategory(options.category);
     }
     
     // 발주처/유통사/아티스트

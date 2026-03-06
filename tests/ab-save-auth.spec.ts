@@ -14,7 +14,53 @@ import * as path from 'path';
 const AB_AUTH_FILE = path.join(__dirname, '..', 'ab-auth.json');
 const ALBUMBUDDY_BASE_URL = 'https://albumbuddy.kr';
 
-test('AlbumBuddy 로그인 세션 저장 (수동 로그인)', async ({ page, context }) => {
+/**
+ * 기존 세션이 유효한지 확인 (headless 모드용)
+ */
+async function checkExistingSession(page: any): Promise<boolean> {
+  if (!fs.existsSync(AB_AUTH_FILE)) {
+    return false;
+  }
+  
+  try {
+    const authData = JSON.parse(fs.readFileSync(AB_AUTH_FILE, 'utf-8'));
+    const cookies = authData.cookies || [];
+    const now = Date.now() / 1000;
+    const validCookies = cookies.filter((c: any) => !c.expires || c.expires > now);
+    
+    if (validCookies.length === 0) {
+      return false;
+    }
+    
+    // 실제 페이지에서 세션 유효성 확인
+    await page.context().addCookies(cookies);
+    await page.goto(`${ALBUMBUDDY_BASE_URL}/dashboard/purchasing`, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(3000);
+    
+    const currentUrl = page.url();
+    return currentUrl.includes('purchasing') && !currentUrl.includes('login');
+  } catch {
+    return false;
+  }
+}
+
+test('AlbumBuddy 로그인 세션 저장 (수동 로그인)', async ({ page, context, headless }) => {
+  // headless 모드에서는 기존 세션 유효성만 확인 (수동 로그인 불가)
+  // @ts-ignore - headless는 playwright 테스트 컨텍스트에서 제공되지 않으므로 use 설정에서 확인
+  const isHeadless = !process.env.HEADED && process.env.CI !== undefined;
+  
+  if (isHeadless || process.env.CI) {
+    console.log('📋 Headless/CI 모드: 기존 세션 유효성 확인');
+    const sessionValid = await checkExistingSession(page);
+    if (sessionValid) {
+      console.log('✅ 기존 세션이 유효합니다. 수동 로그인 생략.');
+      return;
+    }
+    console.log('❌ 세션이 유효하지 않습니다. 수동 로그인이 필요합니다.');
+    console.log('   npx playwright test tests/ab-save-auth.spec.ts --headed --project=chromium');
+    throw new Error('세션 만료 또는 없음 - 수동 로그인 필요 (--headed 모드로 실행)');
+  }
+  
   test.setTimeout(300000); // 5분 timeout
   
   console.log('');

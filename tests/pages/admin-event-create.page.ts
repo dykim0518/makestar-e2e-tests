@@ -230,17 +230,76 @@ export class EventCreatePage extends AdminBasePage {
         .first();
     }
     
-    const optionText = await targetOption.textContent() || '';
-    
-    if (await targetOption.isVisible({ timeout: 3000 }).catch(() => false)) {
+    // 옵션 가시성 확인 후 텍스트 추출 (textContent 호출 전 가시성 체크 - 타임아웃 방지)
+    if (await targetOption.isVisible({ timeout: 5000 }).catch(() => false)) {
+      const optionText = await targetOption.textContent() || '';
       await targetOption.click({ force: true });
       console.log(`ℹ️ 대분류 선택: ${optionText.trim()}`);
-    } else {
-      console.log(`⚠️ 대분류 "${categoryName || '첫 번째'}" 옵션을 찾을 수 없음`);
+      await this.wait(500);
+      return optionText.trim();
     }
-    
-    await this.wait(500);
-    return optionText.trim();
+
+    // 검색 입력으로 재시도
+    if (categoryName) {
+      console.log(`ℹ️ 대분류 "${categoryName}" 직접 선택 실패 - 검색 입력 시도`);
+      const searchInput = this.majorCategoryMultiselect.locator('input');
+      if (await searchInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await searchInput.fill(categoryName);
+        await this.wait(1500);
+
+        const searchedOption = this.page.locator('.multiselect__option:visible')
+          .filter({ hasNotText: invalidPatterns })
+          .filter({ hasText: categoryName })
+          .first();
+
+        if (await searchedOption.isVisible({ timeout: 3000 }).catch(() => false)) {
+          const optionText = await searchedOption.textContent() || '';
+          await searchedOption.click({ force: true });
+          console.log(`ℹ️ 대분류 검색 후 선택: ${optionText.trim()}`);
+          await this.wait(500);
+          return optionText.trim();
+        }
+      }
+    }
+
+    // 최종 폴백: 실제 대분류 우선 선택 (자동화테스트 카테고리는 SKU 미연결 가능성 높음)
+    console.log(`⚠️ 대분류 "${categoryName || '첫 번째'}" 검색 실패 - 실제 대분류에서 선택 시도`);
+
+    // 검색어 클리어 (전체 목록 표시)
+    const searchInput = this.majorCategoryMultiselect.locator('input');
+    if (await searchInput.isVisible({ timeout: 1000 }).catch(() => false)) {
+      await searchInput.clear();
+      await this.wait(1000);
+    }
+
+    // 우선: [자동화테스트] 접두사가 아닌 실제 대분류 선택
+    const realCategoryOption = this.page.locator('.multiselect__option:visible')
+      .filter({ hasNotText: invalidPatterns })
+      .filter({ hasNotText: /\[자동화테스트\]/ })
+      .first();
+
+    if (await realCategoryOption.isVisible({ timeout: 3000 }).catch(() => false)) {
+      const optionText = await realCategoryOption.textContent() || '';
+      await realCategoryOption.click({ force: true });
+      console.log(`ℹ️ 대분류 폴백 선택 (실제 대분류): ${optionText.trim()}`);
+      await this.wait(500);
+      return optionText.trim();
+    }
+
+    // 차선: 아무 유효 옵션이라도 선택
+    const fallbackOption = this.page.locator('.multiselect__option:visible')
+      .filter({ hasNotText: invalidPatterns })
+      .first();
+
+    if (await fallbackOption.isVisible({ timeout: 3000 }).catch(() => false)) {
+      const optionText = await fallbackOption.textContent() || '';
+      await fallbackOption.click({ force: true });
+      console.log(`ℹ️ 대분류 폴백 선택: ${optionText.trim()}`);
+      await this.wait(500);
+      return optionText.trim();
+    }
+
+    throw new Error(`대분류 선택 실패: "${categoryName || '첫 번째'}" 옵션을 찾을 수 없습니다`);
   }
 
   /**

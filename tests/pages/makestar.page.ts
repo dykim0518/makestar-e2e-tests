@@ -126,7 +126,8 @@ export class MakestarPage extends BasePage {
     
     // 프로필/인증 요소 초기화
     // Profile 버튼: SVG 아이콘(비로그인) 또는 img alt="profile"(로그인)
-    this.profileButton = page.locator('button:has(svg use[href="#icon-profile-line"]), button:has(img[alt="profile"])').first();
+    // 모바일에서는 로고 옆 마지막 img 버튼으로 폴백
+    this.profileButton = page.locator('button:has(svg use[href="#icon-profile-line"]), button:has(img[alt="profile"]), button:has(img[alt="Profile"])').first();
     this.googleLoginButton = page.locator('button:has-text("Google"), [class*="google"]').first();
     this.logoutButton = page.locator('text=/로그아웃|logout|log out|sign out/i').first();
     
@@ -185,13 +186,15 @@ export class MakestarPage extends BasePage {
 
   /** 마이페이지로 이동 (리다이렉트 대응 포함) */
   async gotoMyPage(): Promise<void> {
-    // 마이페이지 접근 시도
+    // 마이페이지 메인으로 이동 (하위 페이지에 있어도 메인으로 이동)
     await this.goto(`${this.baseUrl}/my-page`);
     await this.waitForLoadState('domcontentloaded');
     await this.waitForNetworkStable(5000).catch(() => {});
     await this.handleModal();
 
-    if (this.currentUrl.includes('my-page')) return;
+    // 정확히 /my-page 메인인지 확인 (하위 경로 제외)
+    const isMyPageMain = /\/my-page\/?$/.test(this.currentUrl);
+    if (isMyPageMain) return;
 
     // CI 환경: SPA 클라이언트 auth 미초기화로 /my-page 리다이렉트됨
     // 다중 하위 페이지 방문으로 SPA auth 상태 프라이밍
@@ -372,9 +375,16 @@ export class MakestarPage extends BasePage {
   async clickProfileButtonOnce(): Promise<{ success: boolean; url: string; reason?: string }> {
     await this.dismissAllBlockingModals();
 
-    const profileBtn = this.page.locator('button:has(svg use[href="#icon-profile-line"]), button:has(img[alt="profile"])').first();
+    let profileBtn = this.profileButton;
 
-    const isVisible = await profileBtn.isVisible({ timeout: 5000 }).catch(() => false);
+    let isVisible = await profileBtn.isVisible({ timeout: 3000 }).catch(() => false);
+    if (!isVisible) {
+      // 모바일 폴백: 모바일에서는 프로필 버튼 대신 햄버거 메뉴 버튼 사용
+      // (rounded-full 클래스 + SVG를 포함, search 버튼의 icon-style 클래스와 구별)
+      profileBtn = this.page.locator('button[class*="rounded-full"]:has(svg)').first();
+      isVisible = await profileBtn.isVisible({ timeout: 3000 }).catch(() => false);
+    }
+
     if (!isVisible) {
       return { success: false, url: this.currentUrl, reason: '프로필 버튼을 찾을 수 없음' };
     }
@@ -382,7 +392,10 @@ export class MakestarPage extends BasePage {
     // 1. 프로필 버튼 클릭 → 드롭다운 열기
     await profileBtn.click({ timeout: 5000 });
     console.log('📍 1단계: 프로필 버튼 클릭');
-    await this._page.waitForTimeout(500);
+    // 드롭다운이 나타날 때까지 조건부 대기
+    await this.page.waitForSelector('a[href*="my-page"], a:has-text("My Page"), a:has-text("마이페이지")', {
+      state: 'visible', timeout: 2000
+    }).catch(() => {});
 
     // 프로필 버튼 클릭 후 현재 URL 확인
     let currentUrl = this.page.url();
@@ -435,68 +448,68 @@ export class MakestarPage extends BasePage {
     await this.dismissAllBlockingModals();
     
     // 1. 첫 번째 프로필 버튼 클릭
-    const profileBtn = this.page.locator('button:has(svg use[href="#icon-profile-line"]), button:has(img[alt="profile"])').first();
-    
+    const profileBtn = this.profileButton;
+
     const isVisible = await profileBtn.isVisible({ timeout: 5000 }).catch(() => false);
     if (!isVisible) {
       return { success: false, url: this.currentUrl, reason: '프로필 버튼을 찾을 수 없음' };
     }
-    
+
     await profileBtn.click({ timeout: 5000 });
     console.log('📍 1단계: 프로필 버튼 클릭');
     await this.waitForLoadState('domcontentloaded');
     await this.waitForNetworkStable(5000).catch(() => {});
-    
+
     let currentUrl = this.page.url();
-    
+
     // 2. 로그인 페이지로 리다이렉트된 경우 → Google 로그인 버튼 클릭
     if (currentUrl.includes('auth.') || currentUrl.includes('/login')) {
       console.log('📍 2단계: 로그인 페이지 감지 → Google 로그인 시도');
-      
+
       // Google 로그인 버튼 클릭
       const googleBtn = this.page.getByRole('button', { name: /Continue with Google|Google|구글/i }).first();
       const googleBtnVisible = await googleBtn.isVisible({ timeout: 5000 }).catch(() => false);
-      
+
       if (googleBtnVisible) {
         await googleBtn.click({ timeout: 5000 });
         console.log('📍 3단계: Google 로그인 버튼 클릭');
-        
+
         // Google OAuth 완료 후 리다이렉트 대기 (폴링 방식, 최대 20초)
         let oauthSuccess = false;
         for (let i = 0; i < 20; i++) {
           await this.page.waitForTimeout(1000);
           const url = this.page.url();
           console.log(`  [${i + 1}초] URL: ${url}`);
-          
+
           if (!url.includes('auth.') && !url.includes('/login') && !url.includes('accounts.google')) {
             console.log('📍 4단계: OAuth 완료, 리다이렉트됨');
             oauthSuccess = true;
             break;
           }
         }
-        
+
         if (!oauthSuccess) {
           return { success: false, url: this.page.url(), reason: 'Google OAuth 실패 (수동 로그인 필요)' };
         }
       } else {
         return { success: false, url: currentUrl, reason: 'Google 로그인 버튼을 찾을 수 없음' };
       }
-      
+
       currentUrl = this.page.url();
       await this.waitForLoadState('domcontentloaded');
       await this.handleModal();
       await this.waitForContentStable('body', { timeout: 5000 }).catch(() => {});
-      
+
       // 5. 홈으로 돌아왔으면 다시 프로필 버튼 클릭
       if (!currentUrl.includes('my-page')) {
         console.log('📍 5단계: 홈에서 다시 프로필 버튼 클릭');
-        
+
         // 페이지 완전 로드 대기
         await this.waitForLoadState('networkidle').catch(() => {});
         await this.dismissAllBlockingModals();
-        
+
         // 프로필 버튼 대기 (최대 10초)
-        const profileBtnAgain = this.page.locator('button:has(svg use[href="#icon-profile-line"]), button:has(img[alt="profile"])').first();
+        const profileBtnAgain = this.profileButton;
         const isVisibleAgain = await profileBtnAgain.isVisible({ timeout: 10000 }).catch(() => false);
         
         if (!isVisibleAgain) {
@@ -533,6 +546,21 @@ export class MakestarPage extends BasePage {
     // 마이페이지에 있는지 확인
     if (!this.currentUrl.includes('my-page')) {
       return { success: false, url: this.currentUrl, reason: '마이페이지가 아님' };
+    }
+    
+    // 하위 경로에 있으면 마이페이지 메인으로 직접 이동
+    const isSubPage = /\/my-page\/[a-z-]+/.test(this.currentUrl);
+    if (isSubPage) {
+      console.log('📍 마이페이지 하위 경로 감지, 메인으로 직접 이동');
+      await this.goto(`${this.baseUrl}/my-page`);
+      await this.waitForLoadState('domcontentloaded');
+      await this.waitForNetworkStable(3000).catch(() => {});
+      await this.handleModal();
+      
+      // 여전히 하위 경로라면 메뉴 목록이 없을 수 있음
+      if (/\/my-page\/[a-z-]+/.test(this.currentUrl)) {
+        console.log('⚠️ 마이페이지 메인 접근 불가 (SPA auth 문제)');
+      }
     }
     
     await this.waitForContentStable('body', { stableTime: 500, timeout: 3000 }).catch(() => {});
@@ -584,7 +612,7 @@ export class MakestarPage extends BasePage {
     await this.dismissAllBlockingModals();
     
     // 프로필 버튼 로케이터 (SVG 아이콘 또는 사용자 프로필 이미지)
-    const profileBtn = this.page.locator('button:has(svg use[href="#icon-profile-line"]), button:has(img[alt="profile"])').first();
+    const profileBtn = this.profileButton;
     
     const isVisible = await profileBtn.isVisible({ timeout: 5000 }).catch(() => false);
     if (isVisible) {
@@ -741,8 +769,28 @@ export class MakestarPage extends BasePage {
     return false;
   }
 
-  /** 로고 클릭으로 홈 복귀 */
+  /** 로고 클릭으로 홈 복귀 (모달이 열려있으면 먼저 닫음) */
   async clickLogoToHome(): Promise<void> {
+    // 팝업 모달 처리 (Close, 닫기 등)
+    await this.handleModal();
+    
+    // 검색 모달/오버레이가 로고를 가릴 수 있으므로 닫기 시도
+    const overlaySelector = 'div.fixed[class*="z-[40]"], div.fixed.w-\\[100vw\\], div[class*="bg-[rgba(0,0,0"]';
+    const overlay = this.page.locator(overlaySelector).first();
+    
+    if (await overlay.isVisible({ timeout: 500 }).catch(() => false)) {
+      // ESC 키로 닫기 시도
+      await this.page.keyboard.press('Escape');
+      await overlay.waitFor({ state: 'hidden', timeout: 1000 }).catch(() => {});
+      
+      // 여전히 보이면 handleModal 재시도
+      if (await overlay.isVisible({ timeout: 300 }).catch(() => false)) {
+        await this.handleModal();
+        await overlay.waitFor({ state: 'hidden', timeout: 1000 }).catch(() => {});
+      }
+      console.log('✅ 오버레이 닫기 시도 완료');
+    }
+
     const logoResult = await this.findVisibleElement(this.logoSelectors, this.timeouts.long);
     if (!logoResult) {
       throw new Error('로고를 찾을 수 없습니다');

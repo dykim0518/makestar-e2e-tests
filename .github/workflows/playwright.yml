@@ -12,10 +12,33 @@ on:
   # 수동 실행 가능
   workflow_dispatch:
     inputs:
-      test_grep:
+      suite:
+        description: '실행할 테스트 스위트'
+        type: choice
+        options:
+          - cmr
+          - albumbuddy
+          - admin
+          - all
+        required: true
+        default: cmr
+      project:
+        description: 'Playwright project override (예: cmr-monitoring)'
+        required: false
+        default: ''
+      spec:
+        description: '특정 스펙 경로 (예: tests/cmr_monitoring_pom.spec.ts)'
+        required: false
+        default: ''
+      grep:
         description: '실행할 테스트 패턴 (예: TC-HOME, TC-SEARCH)'
         required: false
         default: ''
+      retries:
+        description: '재시도 횟수 (0~5)'
+        type: number
+        required: false
+        default: 2
 
 # 동시 실행 제한 (이전 실행 취소)
 concurrency:
@@ -24,7 +47,7 @@ concurrency:
 
 jobs:
   test:
-    name: CMR Monitoring
+    name: Playwright Monitoring
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -44,35 +67,164 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
-      # 인증 정보 설정 (GitHub Secrets에서 주입)
-      - name: Setup authentication
-        run: echo '${{ secrets.AUTH_JSON }}' > auth.json
+      # 인증 정보 설정 (GitHub Secrets에서 주입, 없으면 빈 상태 생성)
+      - name: Setup CMR/Admin authentication
+        run: |
+          if [ -n "${{ secrets.AUTH_JSON }}" ]; then
+            printf '%s' '${{ secrets.AUTH_JSON }}' > auth.json
+          else
+            printf '%s' '{"cookies":[],"origins":[]}' > auth.json
+          fi
+
+      - name: Setup AlbumBuddy authentication
+        run: |
+          if [ -n "${{ secrets.AB_AUTH_JSON }}" ]; then
+            printf '%s' '${{ secrets.AB_AUTH_JSON }}' > ab-auth.json
+          else
+            printf '%s' '{"cookies":[],"origins":[]}' > ab-auth.json
+          fi
 
       # 테스트 실행
       - name: Run Playwright tests
+        id: run_playwright
         run: |
-          if [ -n "${{ github.event.inputs.test_grep }}" ]; then
-            npx playwright test --config=playwright.ci.config.js -g "${{ github.event.inputs.test_grep }}"
-          else
-            npx playwright test --config=playwright.ci.config.js
+          SUITE_INPUT="${{ github.event.inputs.suite || 'cmr' }}"
+          PROJECT_INPUT="${{ github.event.inputs.project || '' }}"
+          SPEC_INPUT="${{ github.event.inputs.spec || '' }}"
+          GREP_INPUT="${{ github.event.inputs.grep || '' }}"
+          RETRIES_INPUT="${{ github.event.inputs.retries || '2' }}"
+
+          if ! [[ "${RETRIES_INPUT}" =~ ^[0-5]$ ]]; then
+            echo "retries 입력값은 0~5 정수만 허용됩니다: ${RETRIES_INPUT}"
+            exit 1
           fi
+
+          CMD=(npx playwright test --config=playwright.ci.config.js "--retries=${RETRIES_INPUT}")
+
+          if [ -n "${SPEC_INPUT}" ]; then
+            CMD+=("${SPEC_INPUT}")
+          fi
+
+          if [ -n "${PROJECT_INPUT}" ]; then
+            CMD+=("--project=${PROJECT_INPUT}")
+          else
+            case "${SUITE_INPUT}" in
+              cmr)
+                CMD+=("--project=cmr-monitoring")
+                ;;
+              albumbuddy)
+                CMD+=("--project=albumbuddy-monitoring")
+                ;;
+              admin)
+                CMD+=("--project=admin-setup" "--project=admin-pc")
+                ;;
+              all)
+                ;;
+              *)
+                echo "지원하지 않는 suite 입력값: ${SUITE_INPUT}"
+                exit 1
+                ;;
+            esac
+          fi
+
+          if [ -n "${GREP_INPUT}" ]; then
+            CMD+=("-g" "${GREP_INPUT}")
+          fi
+
+          PLAYWRIGHT_CMD="${CMD[*]}"
+          echo "playwright_command=${PLAYWRIGHT_CMD}" >> "$GITHUB_OUTPUT"
+          echo "suite=${SUITE_INPUT}" >> "$GITHUB_OUTPUT"
+          echo "project=${PROJECT_INPUT}" >> "$GITHUB_OUTPUT"
+          echo "spec=${SPEC_INPUT}" >> "$GITHUB_OUTPUT"
+          echo "grep=${GREP_INPUT}" >> "$GITHUB_OUTPUT"
+          echo "retries=${RETRIES_INPUT}" >> "$GITHUB_OUTPUT"
+
+          echo "▶ 실행 명령: ${PLAYWRIGHT_CMD}"
+          "${CMD[@]}"
         env:
           CI: true
+
+      - name: Publish run summary
+        if: always()
+        run: |
+          node <<'EOF'
+          const fs = require('fs');
+
+          const summaryPath = process.env.GITHUB_STEP_SUMMARY;
+          const outcome = process.env.RUN_OUTCOME || 'unknown';
+          const suite = process.env.RUN_SUITE || 'cmr';
+          const project = process.env.RUN_PROJECT || '';
+          const spec = process.env.RUN_SPEC || '';
+          const grep = process.env.RUN_GREP || '';
+          const retries = process.env.RUN_RETRIES || '2';
+          const command = process.env.RUN_COMMAND || '';
+          const resultFile = 'test-results/results.json';
+
+          const lines = [];
+          lines.push('## Playwright Run Summary');
+          lines.push('');
+          lines.push('| 항목 | 값 |');
+          lines.push('|---|---|');
+          lines.push(`| 결과 | ${outcome} |`);
+          lines.push(`| suite | ${suite} |`);
+          lines.push(`| project override | ${project || '-'} |`);
+          lines.push(`| spec | ${spec || '-'} |`);
+          lines.push(`| grep | ${grep || '-'} |`);
+          lines.push(`| retries | ${retries} |`);
+          lines.push(`| command | \`${command || '-'}\` |`);
+
+          if (fs.existsSync(resultFile)) {
+            try {
+              const raw = fs.readFileSync(resultFile, 'utf-8');
+              const data = JSON.parse(raw);
+              const stats = data.stats || {};
+              const durationMs = typeof stats.duration === 'number' ? stats.duration : null;
+              const durationSec = durationMs === null ? '-' : `${Math.round(durationMs / 1000)}s`;
+
+              lines.push('');
+              lines.push('### Test Stats');
+              lines.push('');
+              lines.push('| metric | value |');
+              lines.push('|---|---|');
+              lines.push(`| expected | ${stats.expected ?? '-'} |`);
+              lines.push(`| unexpected | ${stats.unexpected ?? '-'} |`);
+              lines.push(`| flaky | ${stats.flaky ?? '-'} |`);
+              lines.push(`| skipped | ${stats.skipped ?? '-'} |`);
+              lines.push(`| duration | ${durationSec} |`);
+            } catch (error) {
+              lines.push('');
+              lines.push(`- 결과 JSON 파싱 실패: ${error.message}`);
+            }
+          } else {
+            lines.push('');
+            lines.push('- `test-results/results.json` 파일이 없어 통계 파싱을 건너뜁니다.');
+          }
+
+          fs.appendFileSync(summaryPath, lines.join('\n') + '\n');
+          EOF
+        env:
+          RUN_OUTCOME: ${{ steps.run_playwright.outcome }}
+          RUN_SUITE: ${{ steps.run_playwright.outputs.suite }}
+          RUN_PROJECT: ${{ steps.run_playwright.outputs.project }}
+          RUN_SPEC: ${{ steps.run_playwright.outputs.spec }}
+          RUN_GREP: ${{ steps.run_playwright.outputs.grep }}
+          RUN_RETRIES: ${{ steps.run_playwright.outputs.retries }}
+          RUN_COMMAND: ${{ steps.run_playwright.outputs.playwright_command }}
 
       # 테스트 리포트 업로드 (항상 실행)
       - name: Upload Playwright Report
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: playwright-report
+          name: playwright-report-${{ github.run_id }}-${{ github.run_attempt }}
           path: playwright-report/
           retention-days: 30
 
       # 테스트 결과 (스크린샷, 트레이스) 업로드
       - name: Upload Test Results
         uses: actions/upload-artifact@v4
-        if: failure()
+        if: always()
         with:
-          name: test-results
+          name: test-results-${{ github.run_id }}-${{ github.run_attempt }}
           path: test-results/
           retention-days: 7
