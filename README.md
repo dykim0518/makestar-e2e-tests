@@ -84,6 +84,8 @@ Settings > Secrets and variables > Actions > New repository secret
 
 Actions 탭 > Playwright Tests > Run workflow
 - `suite`: `cmr | albumbuddy | admin | all`
+  - `admin`: GitHub Hosted Runner에서는 실행 불가 (사내 VPN/IP allowlist 필요)
+  - `all`: `cmr + albumbuddy` 실행, `admin`은 자동 제외
 - `project`: Playwright 프로젝트 직접 지정(선택)
 - `spec`: 특정 스펙 파일 경로(선택)
 - `grep`: 특정 테스트 패턴 (예: `TC-HOME`, `TC-SEARCH`)
@@ -93,7 +95,10 @@ Actions 탭 > Playwright Tests > Run workflow
 
 - headless 고정
 - chromium만 사용
-- `cmr_monitoring_pom.spec.ts`만 실행
+- 프로젝트별 실행:
+  - `cmr-monitoring`: `cmr_monitoring_pom.spec.ts`
+  - `albumbuddy-monitoring`: `ab_monitoring_pom.spec.ts`
+  - `admin-setup` + `admin-pc`: Admin 시나리오
 - globalSetup 비활성 (CI에서 수동 로그인 불가)
 
 ## 테스트 목록 (CMR 모니터링)
