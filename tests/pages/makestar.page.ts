@@ -962,7 +962,10 @@ export class MakestarPage extends BasePage {
 
   private readonly artistEntrySelectors = [
     'button:has(img[alt="arrow_right"])',
+    'button:has(svg use[href*="arrow"])',
     'a[href*="/artist/"]',
+    'a[href*="artist"]',
+    'a[href*="/brand/"]',
     'button:has-text("ARTIST")',
     'a:has-text("ARTIST")',
     'button:has-text("아티스트")',
@@ -971,6 +974,9 @@ export class MakestarPage extends BasePage {
     '[class*="artist"] button',
     '[class*="brand"] a',
   ] as const;
+
+  private readonly shopCategoryFallbacks = ['BEST', 'ALBUM', 'All'] as const;
+  private readonly artistKeywordFallbacks = ['SEVENTEEN', 'BTS'] as const;
 
   private isProductDetailUrl(url: string): boolean {
     return /\/product\/\d+/i.test(url) || /\/shop\/\d+/i.test(url);
@@ -1031,51 +1037,60 @@ export class MakestarPage extends BasePage {
     return false;
   }
 
-  /**
-   * 상품 상세 페이지에서 아티스트 진입 포인트 클릭
-   */
-  async clickArtistEntryFromProductDetail(): Promise<{
-    success: boolean;
-    url: string;
-    selector?: string;
-  }> {
-    for (const selector of this.artistEntrySelectors) {
-      const artistLink = this.page.locator(selector).first();
-      if (!await artistLink.isVisible({ timeout: this.timeouts.short }).catch(() => false)) {
-        continue;
-      }
+  private async returnToProductListing(): Promise<void> {
+    await this.page.goBack({
+      waitUntil: 'domcontentloaded',
+      timeout: this.timeouts.navigation,
+    }).catch(() => {});
+    await this.waitForLoadState('domcontentloaded').catch(() => {});
 
-      console.log(`✅ 아티스트 링크 발견: ${selector}`);
-      await artistLink.click({ timeout: this.timeouts.medium }).catch(() => {});
-
-      await Promise.race([
-        this.waitForUrlContains(/\/artist(\/|$|\?)/i, this.timeouts.medium),
-        this.waitForLoadState('domcontentloaded'),
-      ]).catch(() => {});
-      await this.waitForContentStable('body', { stableTime: 400, timeout: this.timeouts.medium }).catch(() => {});
-
-      const currentUrl = this.currentUrl;
-      if (this.isArtistProfileUrl(currentUrl)) {
-        return { success: true, url: currentUrl, selector };
-      }
+    const currentUrl = this.currentUrl;
+    if (!currentUrl.includes('/shop') && !currentUrl.includes('keyword=')) {
+      await this.navigateToShop();
     }
-
-    return { success: false, url: this.currentUrl };
+    await this.waitForPageContent();
   }
 
-  /**
-   * Shop 페이지에서 상품 상세를 거쳐 아티스트 프로필 페이지로 이동
-   * @param options.maxProducts 최대 시도 상품 수 (기본 8)
-   */
-  async openArtistProfileFromShop(
-    options: { maxProducts?: number } = {}
+  private async clickShopCategory(category: string): Promise<boolean> {
+    const categoryTargets = [
+      this.page.getByRole('link', { name: category, exact: true }).first(),
+      this.page.getByRole('button', { name: category, exact: true }).first(),
+      this.page.locator(`a:has-text("${category}"), button:has-text("${category}")`).first(),
+    ];
+
+    for (const target of categoryTargets) {
+      if (!await target.isVisible({ timeout: this.timeouts.short }).catch(() => false)) {
+        continue;
+      }
+      await target.click({ timeout: this.timeouts.medium }).catch(() => {});
+      await this.waitForLoadState('domcontentloaded').catch(() => {});
+      await this.waitForPageContent();
+      return true;
+    }
+
+    return false;
+  }
+
+  private async searchProductsByKeyword(keyword: string): Promise<boolean> {
+    await this.gotoHome();
+    await this.waitForContentStable('body', { stableTime: 400, timeout: this.timeouts.long }).catch(() => {});
+    await this.openSearchUI();
+    await this.searchInput.fill(keyword);
+    await this.searchInput.press('Enter');
+    await this.waitForLoadState('domcontentloaded').catch(() => {});
+    await this.waitForSearchResults(1).catch(() => false);
+    return (await this.getSearchResultCount()) > 0;
+  }
+
+  private async tryOpenArtistProfileFromCurrentListing(
+    maxProducts: number,
+    contextLabel: string
   ): Promise<ArtistProfileNavigationResult> {
     const totalProductCount = await this.getProductCardCount();
     if (totalProductCount === 0) {
-      return { success: false, reason: 'Shop 페이지에 상품 카드가 없습니다' };
+      return { success: false, reason: `${contextLabel}: 상품 카드가 없습니다` };
     }
 
-    const maxProducts = options.maxProducts ?? 8;
     const attemptCount = Math.min(totalProductCount, maxProducts);
 
     for (let i = 0; i < attemptCount; i++) {
@@ -1097,13 +1112,132 @@ export class MakestarPage extends BasePage {
       }
 
       console.log(`ℹ️ 상품 ${i + 1}번: 아티스트 진입 포인트 미발견, 다음 상품 시도`);
-      await this.navigateToShop();
-      await this.waitForPageContent();
+      await this.returnToProductListing();
     }
 
     return {
       success: false,
-      reason: `상위 ${attemptCount}개 상품에서 아티스트 진입 포인트를 찾지 못했습니다`,
+      reason: `${contextLabel}: 상위 ${attemptCount}개 상품에서 아티스트 진입 포인트를 찾지 못했습니다`,
+    };
+  }
+
+  /**
+   * 상품 상세 페이지에서 아티스트 진입 포인트 클릭
+   */
+  async clickArtistEntryFromProductDetail(): Promise<{
+    success: boolean;
+    url: string;
+    selector?: string;
+  }> {
+    const tryArtistTarget = async (target: Locator, label: string): Promise<{
+      success: boolean;
+      url: string;
+      selector?: string;
+    }> => {
+      if (!await target.isVisible({ timeout: this.timeouts.short }).catch(() => false)) {
+        return { success: false, url: this.currentUrl };
+      }
+
+      console.log(`✅ 아티스트 링크 발견: ${label}`);
+      await target.click({ timeout: this.timeouts.medium }).catch(() => {});
+
+      await Promise.race([
+        this.waitForUrlContains(/\/artist(\/|$|\?)/i, this.timeouts.medium),
+        this.waitForLoadState('domcontentloaded'),
+      ]).catch(() => {});
+      await this.waitForContentStable('body', { stableTime: 400, timeout: this.timeouts.medium }).catch(() => {});
+
+      const currentUrl = this.currentUrl;
+      if (this.isArtistProfileUrl(currentUrl)) {
+        return { success: true, url: currentUrl, selector: label };
+      }
+
+      return { success: false, url: currentUrl };
+    };
+
+    for (const selector of this.artistEntrySelectors) {
+      const selectorResult = await tryArtistTarget(this.page.locator(selector).first(), selector);
+      if (selectorResult.success) {
+        return selectorResult;
+      }
+    }
+
+    const semanticTargets: Array<{ label: string; locator: Locator }> = [
+      {
+        label: 'role=link[name~artist]',
+        locator: this.page.getByRole('link', { name: /artist|아티스트|brand|브랜드/i }).first(),
+      },
+      {
+        label: 'role=button[name~artist]',
+        locator: this.page.getByRole('button', { name: /artist|아티스트|brand|브랜드/i }).first(),
+      },
+    ];
+
+    for (const target of semanticTargets) {
+      const semanticResult = await tryArtistTarget(target.locator, target.label);
+      if (semanticResult.success) {
+        return semanticResult;
+      }
+    }
+
+    return { success: false, url: this.currentUrl };
+  }
+
+  /**
+   * Shop 페이지에서 상품 상세를 거쳐 아티스트 프로필 페이지로 이동
+   * @param options.maxProducts 최대 시도 상품 수 (기본 8)
+   */
+  async openArtistProfileFromShop(
+    options: { maxProducts?: number } = {}
+  ): Promise<ArtistProfileNavigationResult> {
+    const maxProducts = options.maxProducts ?? 8;
+    const reasons: string[] = [];
+
+    const primaryAttempt = await this.tryOpenArtistProfileFromCurrentListing(
+      maxProducts,
+      'Shop 기본 목록'
+    );
+    if (primaryAttempt.success) {
+      return primaryAttempt;
+    }
+    reasons.push(primaryAttempt.reason ?? 'Shop 기본 목록 탐색 실패');
+
+    for (const category of this.shopCategoryFallbacks) {
+      const categoryClicked = await this.clickShopCategory(category);
+      if (!categoryClicked) {
+        reasons.push(`카테고리 ${category}: 탭 클릭 실패`);
+        continue;
+      }
+      const categoryAttempt = await this.tryOpenArtistProfileFromCurrentListing(
+        Math.min(maxProducts, 4),
+        `카테고리 ${category}`
+      );
+      if (categoryAttempt.success) {
+        return categoryAttempt;
+      }
+      reasons.push(categoryAttempt.reason ?? `카테고리 ${category} 탐색 실패`);
+    }
+
+    for (const keyword of this.artistKeywordFallbacks) {
+      const hasSearchResults = await this.searchProductsByKeyword(keyword);
+      if (!hasSearchResults) {
+        reasons.push(`검색 ${keyword}: 결과 없음`);
+        continue;
+      }
+
+      const searchAttempt = await this.tryOpenArtistProfileFromCurrentListing(
+        Math.min(maxProducts, 4),
+        `검색 ${keyword}`
+      );
+      if (searchAttempt.success) {
+        return searchAttempt;
+      }
+      reasons.push(searchAttempt.reason ?? `검색 ${keyword} 탐색 실패`);
+    }
+
+    return {
+      success: false,
+      reason: reasons.join(' | '),
     };
   }
 
