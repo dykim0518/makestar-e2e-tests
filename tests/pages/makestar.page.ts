@@ -24,6 +24,16 @@ export interface ProductInfo {
   hasOptions: boolean;
 }
 
+/** Shop -> 상품 상세 -> 아티스트 페이지 이동 결과 */
+export interface ArtistProfileNavigationResult {
+  success: boolean;
+  productIndex?: number;
+  detailUrl?: string;
+  artistUrl?: string;
+  selector?: string;
+  reason?: string;
+}
+
 /** Web Vitals 측정 결과 타입 */
 export interface WebVitalsResult {
   /** First Contentful Paint (ms) */
@@ -949,6 +959,153 @@ export class MakestarPage extends BasePage {
   private readonly quantityPlusSelectors = [
     'button:has-text("+")', '[class*="plus"]', '[class*="increase"]', 'button[aria-label*="increase"]'
   ] as const;
+
+  private readonly artistEntrySelectors = [
+    'button:has(img[alt="arrow_right"])',
+    'a[href*="/artist/"]',
+    'button:has-text("ARTIST")',
+    'a:has-text("ARTIST")',
+    'button:has-text("아티스트")',
+    'a:has-text("아티스트")',
+    '[class*="artist"] a',
+    '[class*="artist"] button',
+    '[class*="brand"] a',
+  ] as const;
+
+  private isProductDetailUrl(url: string): boolean {
+    return /\/product\/\d+/i.test(url) || /\/shop\/\d+/i.test(url);
+  }
+
+  private isArtistProfileUrl(url: string): boolean {
+    return /\/artist(\/|$|\?)/i.test(url);
+  }
+
+  private async isSoldOutProductCard(card: Locator): Promise<boolean> {
+    return await card.evaluate((node) => {
+      let current: HTMLElement | null = node as HTMLElement;
+      for (let depth = 0; depth < 5 && current; depth++) {
+        const text = current.innerText || '';
+        if (/sold out/i.test(text)) {
+          return true;
+        }
+        current = current.parentElement;
+      }
+      return false;
+    }).catch(() => false);
+  }
+
+  private async clickProductCardByIndex(index: number): Promise<boolean> {
+    const card = this.shopProductCard.nth(index);
+    if (!await card.isVisible({ timeout: this.timeouts.short }).catch(() => false)) {
+      return false;
+    }
+
+    const isSoldOut = await this.isSoldOutProductCard(card);
+    if (isSoldOut) {
+      console.log(`   상품 ${index + 1}: 품절 - 건너뜀`);
+      return false;
+    }
+
+    const clickTargets = [
+      card.locator('xpath=ancestor::a[1]'),
+      card.locator('xpath=ancestor::button[1]'),
+      card.locator('xpath=ancestor::div[contains(@class, "cursor-pointer")][1]'),
+      card,
+    ];
+
+    for (const target of clickTargets) {
+      if (!await target.isVisible({ timeout: this.timeouts.short }).catch(() => false)) {
+        continue;
+      }
+
+      await target.click({ timeout: this.timeouts.medium }).catch(() => {});
+      await this.waitForLoadState('domcontentloaded').catch(() => {});
+      await this.waitForContentStable('body', { stableTime: 400, timeout: this.timeouts.medium }).catch(() => {});
+
+      if (this.isProductDetailUrl(this.currentUrl)) {
+        console.log(`✅ 상품 ${index + 1}번 카드 클릭 (구매 가능)`);
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * 상품 상세 페이지에서 아티스트 진입 포인트 클릭
+   */
+  async clickArtistEntryFromProductDetail(): Promise<{
+    success: boolean;
+    url: string;
+    selector?: string;
+  }> {
+    for (const selector of this.artistEntrySelectors) {
+      const artistLink = this.page.locator(selector).first();
+      if (!await artistLink.isVisible({ timeout: this.timeouts.short }).catch(() => false)) {
+        continue;
+      }
+
+      console.log(`✅ 아티스트 링크 발견: ${selector}`);
+      await artistLink.click({ timeout: this.timeouts.medium }).catch(() => {});
+
+      await Promise.race([
+        this.waitForUrlContains(/\/artist(\/|$|\?)/i, this.timeouts.medium),
+        this.waitForLoadState('domcontentloaded'),
+      ]).catch(() => {});
+      await this.waitForContentStable('body', { stableTime: 400, timeout: this.timeouts.medium }).catch(() => {});
+
+      const currentUrl = this.currentUrl;
+      if (this.isArtistProfileUrl(currentUrl)) {
+        return { success: true, url: currentUrl, selector };
+      }
+    }
+
+    return { success: false, url: this.currentUrl };
+  }
+
+  /**
+   * Shop 페이지에서 상품 상세를 거쳐 아티스트 프로필 페이지로 이동
+   * @param options.maxProducts 최대 시도 상품 수 (기본 8)
+   */
+  async openArtistProfileFromShop(
+    options: { maxProducts?: number } = {}
+  ): Promise<ArtistProfileNavigationResult> {
+    const totalProductCount = await this.getProductCardCount();
+    if (totalProductCount === 0) {
+      return { success: false, reason: 'Shop 페이지에 상품 카드가 없습니다' };
+    }
+
+    const maxProducts = options.maxProducts ?? 8;
+    const attemptCount = Math.min(totalProductCount, maxProducts);
+
+    for (let i = 0; i < attemptCount; i++) {
+      const movedToDetail = await this.clickProductCardByIndex(i);
+      if (!movedToDetail) {
+        continue;
+      }
+
+      const detailUrl = this.currentUrl;
+      const artistResult = await this.clickArtistEntryFromProductDetail();
+      if (artistResult.success) {
+        return {
+          success: true,
+          productIndex: i,
+          detailUrl,
+          artistUrl: artistResult.url,
+          selector: artistResult.selector,
+        };
+      }
+
+      console.log(`ℹ️ 상품 ${i + 1}번: 아티스트 진입 포인트 미발견, 다음 상품 시도`);
+      await this.navigateToShop();
+      await this.waitForPageContent();
+    }
+
+    return {
+      success: false,
+      reason: `상위 ${attemptCount}개 상품에서 아티스트 진입 포인트를 찾지 못했습니다`,
+    };
+  }
 
   /** 상품 제목 확인 */
   async verifyProductTitle(): Promise<boolean> {

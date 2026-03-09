@@ -915,92 +915,19 @@ test.describe('Makestar.com E2E 모니터링 테스트', () => {
       // POM 로케이터 사용
       const cardCount = await makestar.getSearchResultCount();
       expect(cardCount, 'Shop 페이지에 상품이 표시되어야 합니다').toBeGreaterThan(0);
-      
-      // Sold Out 오버레이가 없는 상품 카드 우선, 없으면 force 클릭
-      let clickedProduct = false;
-      const cards = await makestar.searchResultCards.all();
-      
-      // 1차: Sold Out이 아닌 상품 찾기
-      for (let i = 0; i < Math.min(cards.length, 10); i++) {
-        const card = cards[i];
-        const parent = card.locator('xpath=ancestor::div[contains(@class, "relative")]').first();
-        const hasSoldOut = await parent.locator('text=Sold Out').isVisible({ timeout: 300 }).catch(() => false);
-        
-        if (!hasSoldOut) {
-          await card.click({ timeout: 5000 });
-          clickedProduct = true;
-          console.log(`✅ 상품 ${i + 1}번 카드 클릭 (구매 가능)`);
-          break;
-        }
+
+      // 사용자 시나리오: Shop -> 상품 상세 -> 아티스트 프로필
+      const artistNavigation = await makestar.openArtistProfileFromShop({ maxProducts: 8 });
+      expect(
+        artistNavigation.success,
+        artistNavigation.reason ?? '상품 상세 페이지에서 아티스트 링크를 찾을 수 없습니다'
+      ).toBe(true);
+
+      if (artistNavigation.success) {
+        console.log(`📍 상품 상세 URL: ${artistNavigation.detailUrl}`);
+        console.log(`📍 아티스트 URL: ${artistNavigation.artistUrl}`);
+        console.log(`📍 사용 셀렉터: ${artistNavigation.selector}`);
       }
-      
-      // 2차: 모든 상품이 Sold Out이면 상품 카드 컨테이너 클릭 (데스크톱 호환)
-      if (!clickedProduct && cards.length > 0) {
-        console.log('ℹ️ 모든 상품 Sold Out, 상품 카드 컨테이너 클릭 시도');
-        // 이미지 대신 상품 카드 전체 컨테이너를 클릭 (데스크톱에서 img 위에 오버레이가 있을 수 있음)
-        const productCard = makestar.page.locator('div[class*="cursor-pointer"]:has(img[alt="album_image"])').first();
-        if (await productCard.isVisible({ timeout: 2000 }).catch(() => false)) {
-          await productCard.click({ timeout: 5000 });
-          console.log('✅ 상품 카드 컨테이너 클릭');
-        } else {
-          // 폴백: 상품명 텍스트 클릭
-          const productTitle = makestar.page.locator('p:has-text("Chang"), p:has-text("Album")').first();
-          if (await productTitle.isVisible({ timeout: 2000 }).catch(() => false)) {
-            await productTitle.click({ timeout: 5000 });
-            console.log('✅ 상품명 텍스트 클릭');
-          } else {
-            // 최후 폴백: force 클릭
-            await cards[0].click({ force: true, timeout: 5000 });
-            console.log('⚠️ force 클릭 사용');
-          }
-        }
-        clickedProduct = true;
-      }
-      
-      expect(clickedProduct, '클릭 가능한 상품이 없습니다').toBe(true);
-      
-      await makestar.waitForLoadState('domcontentloaded');
-      await makestar.waitForContentStable();
-      
-      // 상품 상세 페이지 이동 확인
-      const isProductDetail = makestar.currentUrl.includes('/product/') || makestar.currentUrl.includes('/shop/');
-      console.log(`📍 현재 URL: ${makestar.currentUrl}`);
-      console.log(`✅ 상품 상세 페이지 이동: ${isProductDetail ? '성공' : '페이지 이동 필요'}`);
-
-      // 아티스트 링크/버튼 셀렉터 (a 태그 또는 button)
-      const artistLinkSelectors = [
-        'button:has(img[alt="arrow_right"])',  // 상품 상세 페이지의 아티스트 버튼
-        'button:has-text("arrow_right")',
-        'a[href*="/artist/"]',
-        '[class*="artist"] a',
-        '[class*="artist"] button',
-        'a:has-text("ARTIST")',
-        '[class*="brand"] a',
-      ];
-
-      let artistFound = false;
-      let artistPageUrl = '';
-
-      for (const selector of artistLinkSelectors) {
-        const artistLink = makestar.page.locator(selector).first();
-        if (await artistLink.isVisible({ timeout: 3000 }).catch(() => false)) {
-          console.log(`✅ 아티스트 링크 발견: ${selector}`);
-          await artistLink.click();
-          await makestar.waitForLoadState('domcontentloaded');
-          await makestar.waitForContentStable();
-          
-          artistPageUrl = makestar.currentUrl;
-          
-          if (artistPageUrl.includes('/artist/') || artistPageUrl.includes('artist')) {
-            artistFound = true;
-            console.log(`✅ 아티스트 페이지 이동: ${artistPageUrl}`);
-            break;
-          }
-        }
-      }
-
-      // 사용자 시나리오: 상품 상세 → 아티스트 링크 클릭 (fallback 금지)
-      expect(artistFound, '상품 상세 페이지에서 아티스트 링크를 찾을 수 없습니다').toBe(true);
 
       // POM 메서드 사용
       const artistElements = await makestar.verifyArtistElements();
