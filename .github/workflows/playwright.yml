@@ -70,19 +70,23 @@ jobs:
       # 인증 정보 설정 (GitHub Secrets에서 주입, 없으면 빈 상태 생성)
       - name: Setup CMR/Admin authentication
         run: |
-          if [ -n "${{ secrets.AUTH_JSON }}" ]; then
-            printf '%s' '${{ secrets.AUTH_JSON }}' > auth.json
+          if [ -n "$AUTH_JSON" ]; then
+            printf '%s' "$AUTH_JSON" > auth.json
           else
             printf '%s' '{"cookies":[],"origins":[]}' > auth.json
           fi
+        env:
+          AUTH_JSON: ${{ secrets.AUTH_JSON }}
 
       - name: Setup AlbumBuddy authentication
         run: |
-          if [ -n "${{ secrets.AB_AUTH_JSON }}" ]; then
-            printf '%s' '${{ secrets.AB_AUTH_JSON }}' > ab-auth.json
+          if [ -n "$AB_AUTH_JSON" ]; then
+            printf '%s' "$AB_AUTH_JSON" > ab-auth.json
           else
             printf '%s' '{"cookies":[],"origins":[]}' > ab-auth.json
           fi
+        env:
+          AB_AUTH_JSON: ${{ secrets.AB_AUTH_JSON }}
 
       # 테스트 실행
       - name: Run Playwright tests
