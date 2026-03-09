@@ -98,8 +98,62 @@ Actions 탭 > Playwright Tests > Run workflow
 - 프로젝트별 실행:
   - `cmr-monitoring`: `cmr_monitoring_pom.spec.ts`
   - `albumbuddy-monitoring`: `ab_monitoring_pom.spec.ts`
-  - `admin-setup` + `admin-pc`: Admin 시나리오
+- `admin-setup` + `admin-pc`: Admin 시나리오
 - globalSetup 비활성 (CI에서 수동 로그인 불가)
+
+## 비개발자 실행/결과 확인 가이드
+
+### 1) 어디서 실행하나요?
+
+GitHub 저장소의 Actions 탭에서 실행합니다.
+
+1. [Actions](https://github.com/dykim0518/makestar-e2e-tests/actions) 접속
+2. 왼쪽에서 `Playwright Tests` 선택
+3. 우측 `Run workflow` 클릭
+4. 기본 추천값:
+   - `suite`: `cmr`
+   - `retries`: `0` (문제 재현 시), `1` (일반 모니터링 시)
+5. `Run workflow`로 실행
+
+### 2) 실행 중 어디를 보면 되나요?
+
+실행 화면에서 `Playwright Monitoring` 잡을 열고 아래 순서로 확인합니다.
+
+1. `Run Playwright tests` 단계가 진행 중인지 확인
+2. 완료 후 `Publish run summary`에서 통계 확인
+   - `unexpected`: 실패 개수
+   - `flaky`: 재시도 후 통과 개수
+
+### 3) 결과는 어디서 확인하나요?
+
+완료된 run 하단 Artifacts에서 확인합니다.
+
+- `playwright-report-...`
+  - 다운로드 후 `index.html` 열어 전체 테스트 리포트 확인
+- `test-results-...`
+  - 실패 시 `trace.zip`, `error-context.md`, `test-failed-1.png` 확인
+
+### 4) CMR-DATA-01 안정화 동작 (아티스트 프로필 이동)
+
+`CMR-DATA-01`은 상품 상세에서 아티스트 진입 링크가 없는 상품이 나와도 바로 실패하지 않고 아래 순서로 재시도합니다.
+
+```mermaid
+flowchart LR
+  A["Shop 기본 목록 진입"] --> B["상위 상품 순차 클릭(최대 8개)"]
+  B --> C{"아티스트 진입 링크 발견?"}
+  C -->|"Yes"| D["아티스트 프로필 이동 성공"]
+  C -->|"No"| E["카테고리 전환(BEST/ALBUM/All)"]
+  E --> F["카테고리 목록에서 재시도"]
+  F --> G{"성공?"}
+  G -->|"Yes"| D
+  G -->|"No"| H["검색 fallback(SEVENTEEN/BTS)"]
+  H --> I["검색 결과 목록에서 재시도"]
+  I --> J{"성공?"}
+  J -->|"Yes"| D
+  J -->|"No"| K["실패 + 상세 사유 출력"]
+```
+
+실패 시 로그에 어떤 단계까지 시도했는지(기본 목록/카테고리/검색)가 함께 남습니다.
 
 ## 테스트 목록 (CMR 모니터링)
 
