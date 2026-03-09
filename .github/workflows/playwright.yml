@@ -40,10 +40,12 @@ on:
         required: false
         default: 1
 
-# 동시 실행 제한 (이전 실행 취소)
+# 동시 실행 제한
+# - push/PR: 같은 브랜치 내 이전 실행 취소
+# - workflow_dispatch(대시보드 트리거): 각각 독립 실행 (큐잉)
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.event_name == 'workflow_dispatch' && format('dispatch-{0}', github.run_id) || format('{0}-{1}', github.workflow, github.ref) }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 jobs:
   test:
