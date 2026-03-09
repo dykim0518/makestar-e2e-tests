@@ -209,6 +209,9 @@ jobs:
           "${CMD[@]}"
         env:
           CI: true
+          DASHBOARD_URL: ${{ secrets.DASHBOARD_URL }}
+          DASHBOARD_API_SECRET: ${{ secrets.DASHBOARD_API_SECRET }}
+          SUITE_INPUT: ${{ github.event.inputs.suite || 'cmr' }}
 
       - name: Publish run summary
         if: always()

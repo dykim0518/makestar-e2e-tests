@@ -24,6 +24,7 @@ export default defineConfig({
     ['html', { open: 'never' }],
     ['list'],
     ['json', { outputFile: 'test-results/results.json' }],
+    ['./lib/live-reporter.js'],
   ],
 
   timeout: 90000,
