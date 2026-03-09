@@ -376,3 +376,25 @@ jobs:
           name: test-results-${{ steps.run_playwright.outputs.suite || 'suite' }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: test-results/
           retention-days: 7
+
+      # QA 대시보드에 결과 전송
+      - name: Push results to dashboard
+        if: always()
+        run: |
+          if [ ! -f "test-results/results.json" ]; then
+            echo "results.json not found, skipping dashboard push"
+            exit 0
+          fi
+          curl -s -X POST "$DASHBOARD_URL/api/results" \
+            -H "Authorization: Bearer $DASHBOARD_API_SECRET" \
+            -H "Content-Type: application/json" \
+            -H "X-GitHub-Run-Id: ${{ github.run_id }}" \
+            -H "X-GitHub-Suite: ${{ steps.run_playwright.outputs.suite }}" \
+            -H "X-GitHub-Sha: ${{ github.sha }}" \
+            -H "X-GitHub-Branch: ${{ github.ref_name }}" \
+            -H "X-GitHub-Triggered-By: ${{ github.event_name }}" \
+            --data-binary @test-results/results.json \
+            --max-time 15 || true
+        env:
+          DASHBOARD_URL: ${{ secrets.DASHBOARD_URL }}
+          DASHBOARD_API_SECRET: ${{ secrets.DASHBOARD_API_SECRET }}
