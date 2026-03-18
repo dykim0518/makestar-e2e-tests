@@ -1,0 +1,21 @@
+name: Claude Docs Update
+
+on:
+  pull_request_review_comment:
+    types: [created]
+  issue_comment:
+    types: [created]
+
+jobs:
+  claude-update:
+    if: contains(github.event.comment.body, '@claude')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Process Claude request
+        run: |
+          echo "Claude docs update triggered by comment"
+          echo "Comment: ${{ github.event.comment.body }}"
