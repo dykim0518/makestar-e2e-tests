@@ -160,12 +160,14 @@ export class MakestarPage extends BasePage {
       .locator('button:has-text("취소"), button:has-text("Cancel")')
       .first();
 
-    // GNB 네비게이션 버튼 초기화
-    // 실제 구조: <li><button>Event</button></li> (header/nav 없음, <a> 아닌 <button>)
-    this.homeButton = page.getByRole("button", { name: "Home", exact: true });
-    this.eventButton = page.getByRole("button", { name: "Event", exact: true });
-    this.shopButton = page.getByRole("button", { name: "Shop", exact: true });
-    this.fundingButton = page.getByRole("button", {
+    // GNB 네비게이션 링크 초기화
+    // 실제 DOM 구조: <li><a href="/shop">Shop</a></li>
+    // <button>이 아닌 <a> 태그이므로 getByRole("link") 사용
+    // (2026-03-19 확인: getByRole("button") → count=0, getByRole("link") → count=1)
+    this.homeButton = page.getByRole("link", { name: "Home", exact: true });
+    this.eventButton = page.getByRole("link", { name: "Event", exact: true });
+    this.shopButton = page.getByRole("link", { name: "Shop", exact: true });
+    this.fundingButton = page.getByRole("link", {
       name: "Funding",
       exact: true,
     });
@@ -400,53 +402,26 @@ export class MakestarPage extends BasePage {
     }
   }
 
-  /** Event 페이지로 이동 (GNB 버튼 클릭, 없으면 URL 폴백) */
+  /** Event 페이지로 이동 (GNB 링크 클릭) */
   async navigateToEvent(): Promise<void> {
     await this.dismissAllBlockingModals();
-    const isVisible = await this.eventButton
-      .isVisible({ timeout: 3000 })
-      .catch(() => false);
-    if (isVisible) {
-      await this.eventButton.click({ timeout: 5000 });
-    } else {
-      console.log("⚠️ Event GNB 버튼 미존재, URL로 직접 이동");
-      await this.gotoEvent();
-      return;
-    }
+    await this.eventButton.click({ timeout: 5000 });
     await this.waitForLoadState("domcontentloaded");
     await this.handleModal();
   }
 
-  /** Shop 페이지로 이동 (GNB 버튼 클릭, 없으면 URL 폴백) */
+  /** Shop 페이지로 이동 (GNB 링크 클릭) */
   async navigateToShop(): Promise<void> {
     await this.dismissAllBlockingModals();
-    const isVisible = await this.shopButton
-      .isVisible({ timeout: 3000 })
-      .catch(() => false);
-    if (isVisible) {
-      await this.shopButton.click({ timeout: 5000 });
-    } else {
-      console.log("⚠️ Shop GNB 버튼 미존재, URL로 직접 이동");
-      await this.gotoShop();
-      return;
-    }
+    await this.shopButton.click({ timeout: 5000 });
     await this.waitForLoadState("domcontentloaded");
     await this.handleModal();
   }
 
-  /** Funding 페이지로 이동 (GNB 버튼 클릭, 없으면 URL 폴백) */
+  /** Funding 페이지로 이동 (GNB 링크 클릭) */
   async navigateToFunding(): Promise<void> {
     await this.dismissAllBlockingModals();
-    const isVisible = await this.fundingButton
-      .isVisible({ timeout: 3000 })
-      .catch(() => false);
-    if (isVisible) {
-      await this.fundingButton.click({ timeout: 5000 });
-    } else {
-      console.log("⚠️ Funding GNB 버튼 미존재, URL로 직접 이동");
-      await this.gotoFunding();
-      return;
-    }
+    await this.fundingButton.click({ timeout: 5000 });
     await this.waitForLoadState("domcontentloaded");
     await this.handleModal();
   }
