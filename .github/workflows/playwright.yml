@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
     inputs:
       suite:
-        description: '실행할 테스트 스위트 (admin은 GitHub Hosted Runner에서 미지원)'
+        description: "실행할 테스트 스위트 (admin은 GitHub Hosted Runner에서 미지원)"
         type: choice
         options:
           - cmr
@@ -22,20 +22,28 @@ on:
           - all
         required: true
         default: cmr
+      environment:
+        description: "실행 환경 (CMR suite 전용, 나머지는 prod 고정)"
+        type: choice
+        options:
+          - prod
+          - stg
+        required: false
+        default: prod
       project:
-        description: 'Playwright project override (예: cmr-monitoring)'
+        description: "Playwright project override (예: cmr-monitoring)"
         required: false
-        default: ''
+        default: ""
       spec:
-        description: '특정 스펙 경로 (예: tests/cmr_monitoring_pom.spec.ts)'
+        description: "특정 스펙 경로 (예: tests/cmr_monitoring_pom.spec.ts)"
         required: false
-        default: ''
+        default: ""
       grep:
-        description: '실행할 테스트 패턴 (예: TC-HOME, TC-SEARCH)'
+        description: "실행할 테스트 패턴 (예: TC-HOME, TC-SEARCH)"
         required: false
-        default: ''
+        default: ""
       retries:
-        description: '재시도 횟수 (0~5, 기본 1)'
+        description: "재시도 횟수 (0~5, 기본 1)"
         type: number
         required: false
         default: 1
@@ -60,8 +68,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: "20"
+          cache: "npm"
 
       - name: Install dependencies
         run: npm ci
@@ -70,15 +78,21 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       # 인증 정보 설정 (GitHub Secrets에서 주입, 없으면 빈 상태 생성)
+      # STG 환경에서는 STG_AUTH_JSON secret을 사용
       - name: Setup CMR/Admin authentication
         run: |
-          if [ -n "$AUTH_JSON" ]; then
+          ENV_INPUT="${{ github.event.inputs.environment || 'prod' }}"
+          if [ "${ENV_INPUT}" = "stg" ] && [ -n "$STG_AUTH_JSON" ]; then
+            printf '%s' "$STG_AUTH_JSON" > auth.json
+            echo "✅ STG 인증 정보 설정 완료"
+          elif [ -n "$AUTH_JSON" ]; then
             printf '%s' "$AUTH_JSON" > auth.json
           else
             printf '%s' '{"cookies":[],"origins":[]}' > auth.json
           fi
         env:
           AUTH_JSON: ${{ secrets.AUTH_JSON }}
+          STG_AUTH_JSON: ${{ secrets.STG_AUTH_JSON }}
 
       - name: Setup AlbumBuddy authentication
         run: |
@@ -99,6 +113,13 @@ jobs:
           SPEC_INPUT="${{ github.event.inputs.spec || '' }}"
           GREP_INPUT="${{ github.event.inputs.grep || '' }}"
           RETRIES_INPUT="${{ github.event.inputs.retries || '1' }}"
+          ENV_INPUT="${{ github.event.inputs.environment || 'prod' }}"
+
+          # STG 환경일 때 BASE URL 설정
+          if [ "${ENV_INPUT}" = "stg" ]; then
+            export MAKESTAR_BASE_URL="https://stage-new.makeuni2026.com"
+            echo "🔧 STG 환경: MAKESTAR_BASE_URL=${MAKESTAR_BASE_URL}"
+          fi
 
           if ! [[ "${RETRIES_INPUT}" =~ ^[0-5]$ ]]; then
             echo "retries 입력값은 0~5 정수만 허용됩니다: ${RETRIES_INPUT}"
@@ -197,6 +218,7 @@ jobs:
 
           echo "playwright_command=${PLAYWRIGHT_CMD}" >> "$GITHUB_OUTPUT"
           echo "suite=${SUITE_INPUT}" >> "$GITHUB_OUTPUT"
+          echo "environment=${ENV_INPUT}" >> "$GITHUB_OUTPUT"
           echo "effective_targets=${EFFECTIVE_TARGETS_JOINED}" >> "$GITHUB_OUTPUT"
           echo "skip_reasons=${SKIP_REASONS_JOINED}" >> "$GITHUB_OUTPUT"
           echo "project=${PROJECT_INPUT}" >> "$GITHUB_OUTPUT"
@@ -230,6 +252,7 @@ jobs:
           const spec = process.env.RUN_SPEC || '';
           const grep = process.env.RUN_GREP || '';
           const retries = process.env.RUN_RETRIES || '1';
+          const environment = process.env.RUN_ENVIRONMENT || 'prod';
           const command = process.env.RUN_COMMAND || '';
           const resultFile = 'test-results/results.json';
           const skipReasons = skipReasonsRaw
@@ -252,6 +275,7 @@ jobs:
           lines.push('|---|---|');
           lines.push(`| 결과 | ${outcomeLabel} |`);
           lines.push(`| 요청 suite | ${suite} |`);
+          lines.push(`| 환경 | ${environment} |`);
           lines.push(`| 실제 실행 프로젝트 | ${effectiveTargets || '-'} |`);
           lines.push(`| project override | ${project || '-'} |`);
           lines.push(`| spec | ${spec || '-'} |`);
@@ -359,6 +383,7 @@ jobs:
         env:
           RUN_OUTCOME: ${{ steps.run_playwright.outcome }}
           RUN_SUITE: ${{ steps.run_playwright.outputs.suite }}
+          RUN_ENVIRONMENT: ${{ steps.run_playwright.outputs.environment }}
           RUN_EFFECTIVE_TARGETS: ${{ steps.run_playwright.outputs.effective_targets }}
           RUN_SKIP_REASONS: ${{ steps.run_playwright.outputs.skip_reasons }}
           RUN_PROJECT: ${{ steps.run_playwright.outputs.project }}
