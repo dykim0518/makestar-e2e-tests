@@ -57,7 +57,7 @@ npm run test:cmr
 # Admin 테스트 (인증 Setup 포함)
 npm run test:admin
 
-# 전체 실행
+# 전체 실행 (수동 인증 저장 스펙 제외: save-auth / ab-save-auth)
 npm test
 
 # 특정 테스트만 실행

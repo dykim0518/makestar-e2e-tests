@@ -370,18 +370,32 @@ test.describe('상품 상세 및 Request Item', () => {
       albumbuddy = new AlbumBuddyPage(page);
       await albumbuddy.gotoHome();
 
-      await expect(albumbuddy.requestItemButton).toBeVisible({ timeout: 10000 });
-      console.log('Request item 버튼이 정상적으로 표시됩니다');
+      const isRequestItemVisible = await albumbuddy.ensureRequestItemButtonVisible();
+      if (isRequestItemVisible) {
+        await expect(albumbuddy.requestItemButton).toBeVisible({ timeout: 10000 });
+        console.log('Request item 버튼이 정상적으로 표시됩니다');
+      } else {
+        const hasRequestItemDom = await albumbuddy.hasRequestItemEntryInDom();
+        expect(hasRequestItemDom, '모바일에서는 Request item CTA가 숨김이어도 DOM에는 존재해야 합니다').toBe(true);
+        console.log('Request item CTA가 모바일 숨김 상태로 존재합니다');
+      }
     });
 
     test('AB-ACTION-03: Request item 버튼 클릭 동작', async ({ page }) => {
       albumbuddy = new AlbumBuddyPage(page);
       await albumbuddy.gotoHome();
 
-      await expect(albumbuddy.requestItemButton).toBeVisible({ timeout: 10000 });
+      const isRequestItemVisible = await albumbuddy.ensureRequestItemButtonVisible();
+      if (isRequestItemVisible) {
+        await expect(albumbuddy.requestItemButton).toBeVisible({ timeout: 10000 });
+      } else {
+        const hasRequestItemDom = await albumbuddy.hasRequestItemEntryInDom();
+        expect(hasRequestItemDom, 'Request item CTA를 찾을 수 없습니다').toBe(true);
+      }
 
-      const { modalVisible, urlChanged } = await albumbuddy.clickRequestItemAndVerify();
-      console.log(`Request item 결과: 모달=${modalVisible}, URL변경=${urlChanged}`);
+      const { modalVisible, urlChanged, triggered } = await albumbuddy.clickRequestItemAndVerify();
+      expect(triggered, 'Request item 액션 트리거에 실패했습니다').toBe(true);
+      console.log(`Request item 결과: 모달=${modalVisible}, URL변경=${urlChanged}, 트리거=${triggered}`);
       expect(modalVisible || urlChanged, 'Request item 버튼 클릭 후 모달이 열리거나 URL이 변경되어야 합니다').toBe(true);
     });
   });
