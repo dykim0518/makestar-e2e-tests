@@ -236,6 +236,7 @@ jobs:
           DASHBOARD_URL: ${{ secrets.DASHBOARD_URL }}
           DASHBOARD_API_SECRET: ${{ secrets.DASHBOARD_API_SECRET }}
           SUITE_INPUT: ${{ github.event.inputs.suite || 'cmr' }}
+          ENVIRONMENT_INPUT: ${{ github.event.inputs.environment || 'prod' }}
 
       - name: Publish run summary
         if: always()
@@ -424,6 +425,7 @@ jobs:
             -H "Content-Type: application/json" \
             -H "X-GitHub-Run-Id: ${{ github.run_id }}" \
             -H "X-GitHub-Suite: ${{ steps.run_playwright.outputs.suite }}" \
+            -H "X-GitHub-Environment: ${{ steps.run_playwright.outputs.environment }}" \
             -H "X-GitHub-Sha: ${{ github.sha }}" \
             -H "X-GitHub-Branch: ${{ github.ref_name }}" \
             -H "X-GitHub-Triggered-By: ${{ github.event_name }}" \
