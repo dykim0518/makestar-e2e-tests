@@ -1583,6 +1583,29 @@ export class MakestarPage extends BasePage {
       console.log("   ✅ 수량 증가 버튼 클릭");
       return true;
     }
+
+    // 장바구니 페이지 fallback: Quantity 텍스트박스의 가장 가까운 컨테이너에서 + 버튼 탐색
+    const quantityInput = this.page.getByRole("textbox", { name: "Quantity" });
+    if (
+      await quantityInput
+        .isVisible({ timeout: this.timeouts.short })
+        .catch(() => false)
+    ) {
+      // 가장 가까운 ancestor 중 비활성이 아닌 button을 포함하는 컨테이너를 찾아 클릭
+      const plusButton = quantityInput.locator(
+        "xpath=ancestor::*[.//button[not(@disabled)]][1]/descendant::button[not(@disabled)][last()]",
+      );
+      if (
+        await plusButton
+          .isVisible({ timeout: this.timeouts.short })
+          .catch(() => false)
+      ) {
+        await plusButton.click();
+        console.log("   ✅ 장바구니 수량 증가 버튼 클릭");
+        return true;
+      }
+    }
+
     return false;
   }
 
@@ -1618,6 +1641,51 @@ export class MakestarPage extends BasePage {
   /** 장바구니 아이템 개수 반환 */
   async getCartItemCount(): Promise<number> {
     return await this.cartItem.count();
+  }
+
+  /** 장바구니 수량 입력값 반환 */
+  async getCartQuantity(): Promise<number> {
+    const input = this.page.getByRole("textbox", { name: "Quantity" });
+    if (
+      await input.isVisible({ timeout: this.timeouts.short }).catch(() => false)
+    ) {
+      const value = await input.inputValue();
+      return parseInt(value, 10) || 0;
+    }
+    return 0;
+  }
+
+  /** 장바구니 Total price 값 반환 (센트 단위 정수) */
+  async getCartTotalPrice(): Promise<number | null> {
+    const totalLabel = this.page.getByText("Total price");
+    if (
+      await totalLabel
+        .isVisible({ timeout: this.timeouts.short })
+        .catch(() => false)
+    ) {
+      // Total price 라벨의 형제 또는 부모에서 가격 텍스트 추출
+      const parent = totalLabel.locator("xpath=..");
+      const parentText = await parent.textContent().catch(() => "");
+      if (parentText) {
+        return this.parseDollarToCents(parentText);
+      }
+    }
+    return null;
+  }
+
+  /** 달러 문자열을 센트 정수로 변환 (예: "$203.10" → 20310) */
+  private parseDollarToCents(text: string): number | null {
+    const match = text.match(/\$([\d,]+\.?\d*)/);
+    if (match) {
+      const dollars = parseFloat(match[1].replace(/,/g, ""));
+      if (!isNaN(dollars)) return Math.round(dollars * 100);
+    }
+    // fallback: 원화 등
+    const wonMatch = text.match(/([\d,]+)\s*원/);
+    if (wonMatch) {
+      return parseInt(wonMatch[1].replace(/,/g, ""), 10);
+    }
+    return null;
   }
 
   /** 장바구니 비우기 */

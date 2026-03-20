@@ -950,6 +950,109 @@ test.describe("Makestar.com E2E 모니터링 테스트", () => {
       console.log("✅ Test 24 완료: 장바구니 기능 검증");
     });
 
+    test("CMR-ACTION-05: 장바구니 수량 증가 시 가격 반영 검증", async ({
+      page,
+    }) => {
+      test.setTimeout(TEST_TIMEOUT * 2);
+
+      // Step 0: 장바구니 초기화
+      await test.step("Step 0: 장바구니 초기화", async () => {
+        await makestar.gotoCart();
+        await makestar.waitForContentStable();
+        await makestar.clearCart();
+      });
+
+      // Step 1: Shop → 상품 선택 → 장바구니 담기
+      await test.step("Step 1: 상품을 장바구니에 담기", async () => {
+        // 장바구니 페이지에는 GNB가 없으므로 홈 경유
+        await makestar.gotoHome();
+        await makestar.navigateToShop();
+        await makestar.waitForPageContent();
+
+        const productCard = makestar.shopProductCard.first();
+        await expect(productCard).toBeVisible({ timeout: 5000 });
+        await productCard.click();
+
+        await makestar.waitForLoadState("domcontentloaded");
+        await makestar.waitForContentStable();
+        await makestar.handleModal();
+
+        // "Add to cart" 버튼 클릭 (데스크톱: 직접 존재, 모바일: Purchase → 바텀시트)
+        let added = await makestar.clickAddToCartButton();
+        if (!added) {
+          // 모바일: Purchase 버튼 클릭 → 바텀시트에서 장바구니 담기
+          const purchaseBtn = page
+            .getByRole("button", { name: "Purchase" })
+            .first();
+          await expect(purchaseBtn).toBeVisible({ timeout: 5000 });
+          await purchaseBtn.click();
+          await makestar.waitForContentStable();
+          await makestar.handleModal();
+          added = await makestar.clickAddToCartButton();
+        }
+        expect(added).toBeTruthy();
+        await makestar.waitForNetworkStable();
+        await makestar.handleModal();
+        console.log("   ✅ 상품 장바구니 담기 완료");
+      });
+
+      // Step 2: 장바구니 이동 및 기준 수량·가격 확인
+      let baseQty = 0;
+      let basePrice = 0;
+      await test.step("Step 2: 장바구니에서 기준 수량·가격 확인", async () => {
+        await makestar.gotoCart();
+        await makestar.waitForContentStable();
+        await makestar.waitForNetworkStable();
+
+        const itemCount = await makestar.getCartItemCount();
+        console.log(`   장바구니 아이템 수: ${itemCount}`);
+        expect(itemCount).toBeGreaterThan(0);
+
+        baseQty = await makestar.getCartQuantity();
+        console.log(`   기준 수량: ${baseQty}`);
+        expect(baseQty).toBeGreaterThan(0);
+
+        const price = await makestar.getCartTotalPrice();
+        expect(price).not.toBeNull();
+        expect(price).toBeGreaterThan(0);
+        basePrice = price!;
+        console.log(`   ✅ 기준 Total price: ${basePrice}`);
+      });
+
+      // Step 3: + 버튼으로 수량 증가 및 수량 변동 확인
+      await test.step("Step 3: 수량 증가 (+버튼 클릭)", async () => {
+        // 클릭 직전 수량 재확인 (병렬 워커 간섭 대비)
+        const qtyBefore = await makestar.getCartQuantity();
+        baseQty = qtyBefore;
+        const priceBefore = await makestar.getCartTotalPrice();
+        if (priceBefore) basePrice = priceBefore;
+
+        const increased = await makestar.increaseQuantity();
+        expect(increased).toBeTruthy();
+
+        // 수량이 증가할 때까지 대기
+        const quantityInput = page.getByRole("textbox", { name: "Quantity" });
+        await expect(quantityInput).not.toHaveValue(String(qtyBefore), {
+          timeout: 10000,
+        });
+        const qtyAfter = await makestar.getCartQuantity();
+        expect(qtyAfter).toBeGreaterThan(qtyBefore);
+        console.log(`   ✅ 수량 증가 완료: ${qtyBefore} → ${qtyAfter}`);
+      });
+
+      // Step 4: 변경된 가격 검증
+      await test.step("Step 4: 가격 변동 검증", async () => {
+        await makestar.waitForNetworkStable();
+
+        const updatedPrice = await makestar.getCartTotalPrice();
+        expect(updatedPrice).not.toBeNull();
+        expect(updatedPrice).toBeGreaterThan(basePrice);
+        console.log(`   ✅ 가격 변동 확인: ${basePrice} → ${updatedPrice}`);
+      });
+
+      console.log("✅ Test 25 완료: 장바구니 수량 증가 시 가격 반영 검증");
+    });
+
     test("CMR-ACTION-04: 비회원 상태에서 홈/이벤트 페이지 정상 접근 확인", async ({
       browser,
     }) => {
