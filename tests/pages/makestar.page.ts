@@ -1539,9 +1539,16 @@ export class MakestarPage extends BasePage {
     // 패턴 1: spinbutton 방식 (Makestar — 각 옵션에 수량 스피너)
     // 구조: [img minus] [spinbutton "0"] [img plus(라벨은 minus)]
     const firstSpinner = this.page.getByRole("spinbutton").first();
+    // SPA 네비게이션 후 React 렌더링 대기 + 모바일 스크롤
+    try {
+      await firstSpinner.waitFor({ state: "attached", timeout: this.timeouts.medium });
+      await firstSpinner.scrollIntoViewIfNeeded().catch(() => {});
+    } catch {
+      // spinbutton이 DOM에 없음 — 패턴 2로 진행
+    }
     if (
       await firstSpinner
-        .isVisible({ timeout: this.timeouts.medium })
+        .isVisible({ timeout: this.timeouts.short })
         .catch(() => false)
     ) {
       const value = await firstSpinner.inputValue().catch(() => "0");
