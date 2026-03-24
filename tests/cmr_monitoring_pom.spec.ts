@@ -917,7 +917,8 @@ test.describe("Makestar.com E2E 모니터링 테스트", () => {
 
       // Step 1: Shop 페이지 이동 및 첫 번째 상품 선택
       await test.step("Step 1: Shop 페이지 이동", async () => {
-        // GNB Shop 버튼 클릭 (유저 시나리오)
+        // Cart 페이지에는 GNB 메인 네비가 없으므로 로고 클릭으로 홈 복귀
+        await makestar.clickLogoToHome();
         await makestar.navigateToShop();
         await makestar.waitForPageContent();
 
@@ -962,38 +963,84 @@ test.describe("Makestar.com E2E 모니터링 테스트", () => {
         await makestar.clearCart();
       });
 
-      // Step 1: Shop → 상품 선택 → 장바구니 담기
+      // Step 1: Shop → 구매 가능 상품 찾기 → 장바구니 담기
       await test.step("Step 1: 상품을 장바구니에 담기", async () => {
-        // 장바구니 페이지에는 GNB가 없으므로 홈 경유
-        await makestar.gotoHome();
+        // Cart 페이지에는 GNB 메인 네비가 없으므로 로고 클릭으로 홈 복귀
+        await makestar.clickLogoToHome();
         await makestar.navigateToShop();
         await makestar.waitForPageContent();
 
-        const productCard = makestar.shopProductCard.first();
-        await expect(productCard).toBeVisible({ timeout: 5000 });
-        await productCard.click();
+        // Shop 상품 중 구매 가능한 상품을 찾아 장바구니에 담기 (최대 8개 시도)
+        const productCount = await makestar.shopProductCard.count();
+        let confirmed = false;
 
-        await makestar.waitForLoadState("domcontentloaded");
-        await makestar.waitForContentStable();
-        await makestar.handleModal();
+        for (let i = 0; i < Math.min(8, productCount); i++) {
+          // 품절 상품 건너뛰기
+          const card = makestar.shopProductCard.nth(i);
+          const cardText = await card.locator("xpath=ancestor::a[1]").textContent().catch(() => "");
+          if (cardText && /sold out|품절/i.test(cardText)) {
+            console.log(`   ⚠️ 상품 ${i + 1}: 품절 - 건너뜀`);
+            continue;
+          }
 
-        // "Add to cart" 버튼 클릭 (데스크톱: 직접 존재, 모바일: Purchase → 바텀시트)
-        let added = await makestar.clickAddToCartButton();
-        if (!added) {
-          // 모바일: Purchase 버튼 클릭 → 바텀시트에서 장바구니 담기
-          const purchaseBtn = page
-            .getByRole("button", { name: "Purchase" })
-            .first();
-          await expect(purchaseBtn).toBeVisible({ timeout: 5000 });
-          await purchaseBtn.click();
+          console.log(`   🔍 상품 ${i + 1}: 클릭 시도`);
+          await card.click();
+          await makestar.waitForLoadState("domcontentloaded");
           await makestar.waitForContentStable();
           await makestar.handleModal();
-          added = await makestar.clickAddToCartButton();
+
+          // 상품 상세 페이지 도달 확인
+          const currentUrl = makestar.currentUrl;
+          if (!/\/product\/\d+/i.test(currentUrl)) {
+            console.log(`   ⚠️ 상품 ${i + 1}: 상세 페이지 아님 (${currentUrl})`);
+            await makestar.clickLogoToHome();
+            await makestar.navigateToShop();
+            await makestar.waitForPageContent();
+            continue;
+          }
+
+          // 옵션 선택 (spinbutton 패턴: 수량 0→1 / 드롭다운 패턴: 첫 번째 옵션)
+          const optionSelected = await makestar.selectFirstOption();
+          console.log(`   옵션 선택 결과: ${optionSelected ? "성공" : "실패 (옵션 없는 상품)"}`);
+
+          // 드롭다운 패턴일 경우에만 별도 수량 설정
+          if (!optionSelected) {
+            await makestar.setQuantity(1);
+          }
+
+          // Add to Cart 버튼 활성화 대기 후 클릭
+          await makestar.waitForContentStable();
+          const clicked = await makestar.clickAddToCartButton();
+          if (clicked) {
+            await makestar.waitForNetworkStable();
+
+            // 로그인 리다이렉트 체크
+            if (makestar.currentUrl.includes("auth") || makestar.currentUrl.includes("login")) {
+              console.log(`   ⚠️ 로그인 리다이렉트 감지 — 인증 세션 갱신 필요`);
+              break;
+            }
+
+            await makestar.handleModal();
+
+            // 장바구니에 실제 담겼는지 확인
+            await makestar.gotoCart();
+            await makestar.waitForContentStable();
+            const itemCount = await makestar.getCartItemCount();
+            if (itemCount > 0) {
+              confirmed = true;
+              console.log(`   ✅ 상품 ${i + 1}번째 장바구니 담기 확인 (${itemCount}개)`);
+              break;
+            }
+          }
+
+          // 실패 → Shop으로 돌아가서 다음 상품 시도
+          console.log(`   ⚠️ 상품 ${i + 1}번째 장바구니 담기 실패, 다음 상품 시도`);
+          await makestar.clickLogoToHome();
+          await makestar.navigateToShop();
+          await makestar.waitForPageContent();
         }
-        expect(added).toBeTruthy();
-        await makestar.waitForNetworkStable();
-        await makestar.handleModal();
-        console.log("   ✅ 상품 장바구니 담기 완료");
+
+        expect(confirmed).toBeTruthy();
       });
 
       // Step 2: 장바구니 이동 및 기준 수량·가격 확인

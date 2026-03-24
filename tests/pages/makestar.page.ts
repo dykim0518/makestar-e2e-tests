@@ -1536,6 +1536,41 @@ export class MakestarPage extends BasePage {
 
   /** 옵션 선택 */
   async selectFirstOption(): Promise<boolean> {
+    // 패턴 1: spinbutton 방식 (Makestar — 각 옵션에 수량 스피너)
+    // 구조: [img minus] [spinbutton "0"] [img plus(라벨은 minus)]
+    const firstSpinner = this.page.getByRole("spinbutton").first();
+    if (
+      await firstSpinner
+        .isVisible({ timeout: this.timeouts.medium })
+        .catch(() => false)
+    ) {
+      const value = await firstSpinner.inputValue().catch(() => "0");
+      if (parseInt(value, 10) === 0) {
+        // spinbutton의 부모 컨테이너에서 마지막 img 클릭 (plus 버튼)
+        const container = firstSpinner.locator("xpath=..");
+        const plusBtn = container.locator("img").last();
+        if (
+          await plusBtn
+            .isVisible({ timeout: this.timeouts.short })
+            .catch(() => false)
+        ) {
+          await plusBtn.click();
+          // 값 변경 확인
+          const newValue = await firstSpinner.inputValue().catch(() => "0");
+          if (parseInt(newValue, 10) > 0) {
+            console.log(`   ✅ 첫 번째 옵션 수량 ${newValue}로 설정 (spinbutton)`);
+            return true;
+          }
+        }
+        // fallback: spinbutton에 직접 값 입력 후 change 이벤트 발생
+        await firstSpinner.fill("1");
+        await firstSpinner.dispatchEvent("change");
+        console.log("   ✅ 첫 번째 옵션 수량 1로 설정 (fill)");
+        return true;
+      }
+    }
+
+    // 패턴 2: 드롭다운 방식 (일반 셀렉트/커스텀 드롭다운)
     const optionDropdown = await this.findVisibleElement(
       this.optionDropdownSelectors,
       this.timeouts.medium,
@@ -1545,7 +1580,8 @@ export class MakestarPage extends BasePage {
     await optionDropdown.element.click();
     await this.wait(this.timeouts.short);
 
-    const firstOption = this.page
+    // 옵션 컨테이너 내부에서 검색 (페이지 전역 li 검색 시 GNB 링크를 클릭하는 버그 방지)
+    const firstOption = optionDropdown.element
       .locator('option, [role="option"], li')
       .first();
     if (
@@ -1554,7 +1590,7 @@ export class MakestarPage extends BasePage {
         .catch(() => false)
     ) {
       await firstOption.click().catch(() => {});
-      console.log("   ✅ 첫 번째 옵션 선택");
+      console.log("   ✅ 첫 번째 옵션 선택 (dropdown)");
       return true;
     }
     return false;
@@ -1619,17 +1655,22 @@ export class MakestarPage extends BasePage {
 
   /** 장바구니 담기 버튼 클릭 */
   async clickAddToCartButton(): Promise<boolean> {
-    const btn = this.page
-      .locator(
-        'button:has-text("장바구니"):not([disabled]), button:has-text("cart"):not([disabled])',
-      )
-      .first();
-    if (
-      await btn.isVisible({ timeout: this.timeouts.short }).catch(() => false)
-    ) {
-      await btn.click();
-      console.log("✅ 장바구니 담기 버튼 클릭");
-      return true;
+    const selectors = [
+      'button:has-text("Add to Cart"):not([disabled])',
+      'button:has-text("장바구니"):not([disabled])',
+      'button:has-text("Cart"):not([disabled])',
+      'button:has-text("cart"):not([disabled])',
+    ];
+
+    for (const sel of selectors) {
+      const btn = this.page.locator(sel).first();
+      if (
+        await btn.isVisible({ timeout: this.timeouts.short }).catch(() => false)
+      ) {
+        await btn.click();
+        console.log("✅ 장바구니 담기 버튼 클릭");
+        return true;
+      }
     }
     return false;
   }
