@@ -4,6 +4,53 @@ import * as path from 'path';
 
 const AUTH_FILE = path.join(__dirname, '..', 'auth.json');
 
+/**
+ * 기존 auth.json의 쿠키와 새 컨텍스트 쿠키를 병합하여 저장.
+ * 같은 (name + domain) 쌍은 새 값으로 덮어쓰고, 나머지는 유지.
+ */
+async function mergeAndSaveStorageState(
+  context: import('@playwright/test').BrowserContext,
+  filePath: string,
+): Promise<number> {
+  const newState = await context.storageState();
+
+  // 기존 파일이 있으면 쿠키 병합
+  if (fs.existsSync(filePath)) {
+    try {
+      const existing = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+      if (existing.cookies && existing.cookies.length > 0) {
+        // 새 쿠키를 맵으로
+        const newMap = new Map<string, (typeof newState.cookies)[number]>();
+        for (const c of newState.cookies) {
+          newMap.set(`${c.name}@@${c.domain}`, c);
+        }
+        // 기존 쿠키 중 새 쿠키에 없는 것만 추가
+        for (const c of existing.cookies) {
+          const key = `${c.name}@@${c.domain}`;
+          if (!newMap.has(key)) {
+            newMap.set(key, c);
+          }
+        }
+        newState.cookies = [...newMap.values()];
+      }
+      // origins(localStorage)도 병합
+      if (existing.origins && existing.origins.length > 0) {
+        const originSet = new Set(newState.origins.map((o: { origin: string }) => o.origin));
+        for (const o of existing.origins) {
+          if (!originSet.has(o.origin)) {
+            newState.origins.push(o);
+          }
+        }
+      }
+    } catch {
+      // 파싱 실패 시 새 상태로 덮어쓰기
+    }
+  }
+
+  fs.writeFileSync(filePath, JSON.stringify(newState, null, 2));
+  return newState.cookies.length;
+}
+
 test('로그인 세션 저장 (수동 로그인)', async ({ page, context }) => {
   test.setTimeout(300000); // 5분 timeout
   
@@ -71,9 +118,9 @@ test('로그인 세션 저장 (수동 로그인)', async ({ page, context }) => 
   console.log('');
   
   if (loginSuccess) {
-    // 세션 저장
-    await context.storageState({ path: AUTH_FILE });
-    
+    // 세션 저장 (기존 쿠키와 병합)
+    const totalCookies = await mergeAndSaveStorageState(context, AUTH_FILE);
+
     console.log('');
     console.log('='.repeat(70));
     console.log('🎉 로그인 세션 저장 완료!');
@@ -85,13 +132,12 @@ test('로그인 세션 저장 (수동 로그인)', async ({ page, context }) => 
     console.log('   이제 테스트를 실행하면 로그인된 상태로 시작합니다:');
     console.log('   npx playwright test tests/makestar_reg2.spec.ts --headed');
     console.log('');
-    
+
     // 저장된 세션 확인
     expect(fs.existsSync(AUTH_FILE)).toBeTruthy();
-    const authData = JSON.parse(fs.readFileSync(AUTH_FILE, 'utf-8'));
-    console.log(`🍪 저장된 쿠키 수: ${authData.cookies?.length || 0}개`);
+    console.log(`🍪 저장된 쿠키 수: ${totalCookies}개`);
     console.log('');
-    
+
   } else {
     console.log('');
     console.log('❌ 로그인 시간 초과');
@@ -152,9 +198,9 @@ test('Admin 로그인 세션 저장 (stage-new-admin)', async ({ page, context }
   console.log('');
   
   if (loginSuccess) {
-    // 세션 저장
-    await context.storageState({ path: AUTH_FILE });
-    
+    // 세션 저장 (기존 쿠키와 병합)
+    const totalCookies = await mergeAndSaveStorageState(context, AUTH_FILE);
+
     console.log('');
     console.log('='.repeat(70));
     console.log('🎉 Admin 로그인 세션 저장 완료!');
@@ -166,11 +212,10 @@ test('Admin 로그인 세션 저장 (stage-new-admin)', async ({ page, context }
     console.log('   이제 Admin 테스트를 실행할 수 있습니다:');
     console.log('   npx playwright test tests/admin_test_pom.spec.ts');
     console.log('');
-    
-    const authData = JSON.parse(fs.readFileSync(AUTH_FILE, 'utf-8'));
-    console.log(`🍪 저장된 쿠키 수: ${authData.cookies?.length || 0}개`);
+
+    console.log(`🍪 저장된 쿠키 수: ${totalCookies}개`);
     console.log('');
-    
+
     expect(loginSuccess).toBe(true);
   } else {
     console.log('');

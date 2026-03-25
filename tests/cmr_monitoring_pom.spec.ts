@@ -1021,7 +1021,7 @@ test.describe("Makestar.com E2E 모니터링 테스트", () => {
 
             // 로그인 리다이렉트 체크
             if (makestar.currentUrl.includes("auth") || makestar.currentUrl.includes("login")) {
-              console.log(`   ⚠️ 로그인 리다이렉트 감지 — 인증 세션 갱신 필요`);
+              console.log(`   ⚠️ 로그인 리다이렉트 감지 (${makestar.currentUrl}) — 인증 세션 갱신 필요`);
               break;
             }
 
