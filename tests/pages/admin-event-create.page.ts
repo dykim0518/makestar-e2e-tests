@@ -206,8 +206,6 @@ export class EventCreatePage extends AdminBasePage {
         // 오버레이가 없거나 이미 사라졌으면 무시
       }
     }
-
-    await this.wait(300);
   }
 
   // --------------------------------------------------------------------------
@@ -223,7 +221,6 @@ export class EventCreatePage extends AdminBasePage {
 
     // multiselect 클릭하여 드롭다운 열기
     await this.majorCategoryMultiselect.click();
-    await this.wait(500);
 
     // 로딩 완료 대기 - "조회 중" 텍스트가 사라질 때까지
     await this.page
@@ -380,96 +377,73 @@ export class EventCreatePage extends AdminBasePage {
 
     // 이전 드롭다운이 열려있으면 닫기
     await this.page.keyboard.press("Escape");
-    await this.wait(300);
 
-    // "상품 카테고리" 텍스트 기준으로 드롭다운 찾기
-    const productCatContainer = this.page
-      .locator('div:has(> div:text-is("상품 카테고리"))')
-      .first();
+    // "상품 카테고리" 레이블 옆 드롭다운 찾기 (Vue Multiselect 또는 커스텀 셀렉트)
+    const catLabel = this.page.getByText("상품 카테고리", { exact: true });
+    const catContainer = catLabel.locator("..");
 
-    // 컨테이너 내의 multiselect 찾기
-    const multiselect = productCatContainer.locator("div.multiselect").first();
+    // 1) Vue Multiselect (.multiselect 클래스)
+    const multiselect = catContainer.locator(".multiselect").first();
+    if (await multiselect.isVisible().catch(() => false)) {
+      await multiselect.scrollIntoViewIfNeeded({ timeout: 5000 });
+      await multiselect.click({ force: true });
 
-    if (await multiselect.isVisible({ timeout: 3000 }).catch(() => false)) {
-      // 스크롤 후 Playwright click 사용 (force로 viewport 문제 회피)
-      await multiselect.evaluate((el) => {
-        el.scrollIntoView({ behavior: "instant", block: "center" });
-      });
-      await this.wait(300);
-
-      // focus 후 클릭 - 이벤트 시뮬레이션
-      await multiselect.focus();
-      await this.wait(100);
-
-      // dispatchEvent로 mousedown, mouseup, click 시퀀스 실행
-      await multiselect.evaluate((el) => {
-        el.dispatchEvent(
-          new MouseEvent("mousedown", { bubbles: true, cancelable: true }),
-        );
-        el.dispatchEvent(
-          new MouseEvent("mouseup", { bubbles: true, cancelable: true }),
-        );
-        el.dispatchEvent(
-          new MouseEvent("click", { bubbles: true, cancelable: true }),
-        );
-      });
-
-      await this.wait(500);
-
-      // 드롭다운이 열렸는지 확인
-      const isOpen = await multiselect.getAttribute("aria-expanded");
-      if (isOpen !== "true") {
-        // 열리지 않았으면 input에 직접 focus
-        const input = multiselect.locator("input.multiselect__input");
-        if (await input.isVisible({ timeout: 1000 }).catch(() => false)) {
-          await input.click({ force: true });
-          await this.wait(500);
-        }
-      }
-    } else {
-      console.log("⚠️ 상품 카테고리 multiselect를 찾을 수 없음");
-      return;
-    }
-
-    // 로딩 완료 대기
-    await this.page
-      .locator(".multiselect__option:visible")
-      .filter({ hasText: "조회 중" })
-      .waitFor({ state: "hidden", timeout: 5000 })
-      .catch(() => {});
-
-    // 검색어를 포함하는 옵션 선택
-    const targetOption = this.page
-      .locator(".multiselect__option:visible")
-      .filter({ hasText: categoryName })
-      .filter({ hasNotText: /검색결과가 없습니다|List is empty/i })
-      .first();
-
-    if (await targetOption.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await targetOption.click({ force: true });
-      console.log(`ℹ️ 상품 카테고리 선택: ${categoryName}`);
-    } else {
-      // 대체: 첫 번째 유효한 옵션 선택
-      console.log(
-        `⚠️ 상품 카테고리 "${categoryName}"을 찾을 수 없음 - 첫 번째 옵션 선택 시도`,
-      );
-      const fallbackOption = this.page
+      // 로딩 완료 대기
+      await this.page
         .locator(".multiselect__option:visible")
-        .filter({ hasNotText: /검색결과가 없습니다|조회 중|List is empty/i })
+        .filter({ hasText: "조회 중" })
+        .waitFor({ state: "hidden", timeout: 5000 })
+        .catch(() => {});
+
+      // 옵션 선택
+      const targetOption = this.page
+        .locator(".multiselect__option:visible")
+        .filter({ hasText: categoryName })
+        .filter({ hasNotText: /검색결과가 없습니다|List is empty/i })
         .first();
 
-      if (
-        await fallbackOption.isVisible({ timeout: 2000 }).catch(() => false)
-      ) {
-        const optionText = await fallbackOption.textContent();
-        await fallbackOption.click({ force: true });
-        console.log(`ℹ️ 대체 상품 카테고리 선택: ${optionText?.trim()}`);
-      } else {
-        console.log(`⚠️ 선택 가능한 상품 카테고리 없음`);
+      if (await targetOption.isVisible({ timeout: 3000 }).catch(() => false)) {
+        await targetOption.click({ force: true });
+        console.log(`ℹ️ 상품 카테고리 선택 (multiselect): ${categoryName}`);
+        return;
       }
     }
 
-    await this.wait(300);
+    // 2) 커스텀 셀렉트 드롭다운 ("카테고리를 선택해주세요" 텍스트)
+    const customDropdown = catContainer
+      .getByText("카테고리를 선택해주세요")
+      .first();
+    if (await customDropdown.isVisible().catch(() => false)) {
+      await customDropdown.scrollIntoViewIfNeeded({ timeout: 5000 });
+      await customDropdown.click({ force: true });
+
+      // 드롭다운 옵션 대기 및 선택
+      const option = this.page
+        .locator('[class*="option"]:visible, li:visible')
+        .filter({ hasText: categoryName })
+        .first();
+
+      if (await option.isVisible({ timeout: 3000 }).catch(() => false)) {
+        await option.click({ force: true });
+        console.log(`ℹ️ 상품 카테고리 선택 (custom): ${categoryName}`);
+        return;
+      }
+
+      // 첫 번째 유효 옵션 선택 시도
+      const firstOption = this.page
+        .locator('[class*="option"]:visible, li[class*="item"]:visible')
+        .first();
+      if (await firstOption.isVisible({ timeout: 2000 }).catch(() => false)) {
+        const optionText = await firstOption.textContent();
+        await firstOption.click({ force: true });
+        console.log(
+          `ℹ️ 상품 카테고리 대체 선택: ${optionText?.trim()}`,
+        );
+        return;
+      }
+    }
+
+    console.log("⚠️ 상품 카테고리 드롭다운을 찾을 수 없음");
   }
 
   /**
@@ -481,34 +455,50 @@ export class EventCreatePage extends AdminBasePage {
 
     // 이전 드롭다운이 열려있으면 닫기
     await this.page.keyboard.press("Escape");
-    await this.wait(300);
 
-    // "노출 카테고리" 섹션으로 스크롤
-    const categorySection = this.page.locator("text=노출 카테고리").first();
-    if (await categorySection.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await categorySection.scrollIntoViewIfNeeded();
-      await this.wait(500);
+    // "B2B 카테고리" 레이블 옆 드롭다운 찾기
+    const catLabel = this.page.getByText("B2B 카테고리", { exact: true });
+    const catContainer = catLabel.locator("..");
+
+    // 1) Vue Multiselect (.multiselect 클래스)
+    const multiselect = catContainer.locator(".multiselect").first();
+    if (await multiselect.isVisible().catch(() => false)) {
+      await multiselect.scrollIntoViewIfNeeded({ timeout: 5000 });
+      await multiselect.click({ force: true });
+
+      const targetOption = this.page
+        .locator(".multiselect__option:visible")
+        .filter({ hasText: categoryName })
+        .first();
+
+      if (await targetOption.isVisible({ timeout: 3000 }).catch(() => false)) {
+        await targetOption.click({ force: true });
+        console.log(`ℹ️ B2B 카테고리 선택 (multiselect): ${categoryName}`);
+        return;
+      }
     }
 
-    // B2B 카테고리 multiselect로 스크롤 후 force 클릭
-    await this.b2bCategoryMultiselect.scrollIntoViewIfNeeded();
-    await this.wait(300);
-    await this.b2bCategoryMultiselect.click({ force: true });
-    await this.wait(500);
-
-    const targetOption = this.page
-      .locator(".multiselect__option:visible")
-      .filter({ hasText: categoryName })
+    // 2) 커스텀 셀렉트 드롭다운
+    const customDropdown = catContainer
+      .getByText("카테고리를 선택해주세요")
       .first();
+    if (await customDropdown.isVisible().catch(() => false)) {
+      await customDropdown.scrollIntoViewIfNeeded({ timeout: 5000 });
+      await customDropdown.click({ force: true });
 
-    if (await targetOption.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await targetOption.click({ force: true });
-      console.log(`ℹ️ B2B 카테고리 선택: ${categoryName}`);
-    } else {
-      console.log(`⚠️ B2B 카테고리 "${categoryName}"을 찾을 수 없음`);
+      const option = this.page
+        .locator('[class*="option"]:visible, li:visible')
+        .filter({ hasText: categoryName })
+        .first();
+
+      if (await option.isVisible({ timeout: 3000 }).catch(() => false)) {
+        await option.click({ force: true });
+        console.log(`ℹ️ B2B 카테고리 선택 (custom): ${categoryName}`);
+        return;
+      }
     }
 
-    await this.wait(300);
+    console.log("ℹ️ B2B 카테고리 드롭다운을 찾을 수 없음 — 스킵");
   }
 
   // --------------------------------------------------------------------------
@@ -521,11 +511,13 @@ export class EventCreatePage extends AdminBasePage {
   async selectTodayAsSalePeriod(): Promise<void> {
     await this.waitForOverlayToDisappear();
 
+    // 이전 드롭다운이 열려있으면 닫기
+    await this.page.keyboard.press("Escape");
+
     // '판매기간' 텍스트 바로 다음에 오는 날짜 입력 필드를 찾음
     // 페이지 구조상 '판매기간' p 태그 다음 형제 요소에 날짜 입력 필드가 있음
     const salePeriodLabel = this.page.locator('p:text-is("판매기간")');
-    await salePeriodLabel.scrollIntoViewIfNeeded();
-    await this.wait(300);
+    await salePeriodLabel.scrollIntoViewIfNeeded({ timeout: 10000 });
 
     // 판매기간 레이블 상위 컨테이너에서 날짜 입력 필드 찾기
     const dateInputs = this.page.locator('input[placeholder="날짜 입력"]');
@@ -538,7 +530,6 @@ export class EventCreatePage extends AdminBasePage {
 
     // 입력 필드 클릭하여 달력 열기
     await dateInput.click({ force: true });
-    await this.wait(500);
 
     // 오늘 날짜 가져오기
     const today = new Date();
@@ -565,13 +556,23 @@ export class EventCreatePage extends AdminBasePage {
         `ℹ️ 판매기간 시작일: ${todayDate}일 선택 완료 (달력 자동 닫힘)`,
       );
     } else {
-      // 달력이 안 열리면 날짜를 직접 입력
+      // 달력이 안 열리면 JavaScript로 값 설정 (readonly input 대응)
       const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-      await dateInput.fill(dateStr);
-      console.log(`ℹ️ 판매기간 시작일 직접 입력: ${dateStr}`);
+      const isReadonly = await dateInput.getAttribute("readonly");
+      if (isReadonly !== null) {
+        // readonly input — JS로 값 설정 후 input 이벤트 트리거
+        await dateInput.evaluate((el: HTMLInputElement, val: string) => {
+          el.removeAttribute("readonly");
+          el.value = val;
+          el.dispatchEvent(new Event("input", { bubbles: true }));
+          el.dispatchEvent(new Event("change", { bubbles: true }));
+        }, dateStr);
+        console.log(`ℹ️ 판매기간 시작일 JS 설정: ${dateStr}`);
+      } else {
+        await dateInput.fill(dateStr);
+        console.log(`ℹ️ 판매기간 시작일 직접 입력: ${dateStr}`);
+      }
     }
-
-    await this.wait(500);
   }
 
   // --------------------------------------------------------------------------
@@ -586,11 +587,10 @@ export class EventCreatePage extends AdminBasePage {
     await this.waitForOverlayToDisappear();
 
     await this.addOptionButton.scrollIntoViewIfNeeded();
-    await this.wait(300);
 
     // force 클릭 사용
     await this.addOptionButton.click({ force: true });
-    await this.wait(1000);
+    await this.page.waitForLoadState("domcontentloaded");
     console.log("ℹ️ 옵션(리워드) 추가됨");
   }
 

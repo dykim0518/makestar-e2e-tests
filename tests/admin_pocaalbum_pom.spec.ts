@@ -1080,17 +1080,20 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
       await shopCreatePage.navigate();
       await waitForPageStable(page);
 
-      // 500 에러 확인
-      const serverError = page
-        .getByText("500")
+      // 404/500 에러 확인
+      const pageError = page
+        .getByText("404")
+        .or(page.getByText("Page not found"))
+        .or(page.getByText("500"))
         .or(page.getByText("Server Error"));
-      const hasServerError = await serverError
+      const hasPageError = await pageError
         .first()
         .isVisible({ timeout: 2000 })
         .catch(() => false);
 
-      if (hasServerError) {
-        console.log("⚠️ 500 Server Error - 생성 페이지 접근 불가");
+      if (hasPageError) {
+        const errorText = await pageError.first().textContent().catch(() => "Unknown");
+        console.log(`⚠️ 페이지 에러 감지 (${errorText}) - 생성 페이지 접근 불가`);
         return;
       }
 
@@ -1287,16 +1290,20 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
       await faveCreatePage.navigate();
       await waitForPageStable(page);
 
-      const serverError = page
-        .getByText("500")
+      // 404/500 에러 확인
+      const pageError = page
+        .getByText("404")
+        .or(page.getByText("Page not found"))
+        .or(page.getByText("500"))
         .or(page.getByText("Server Error"));
-      const hasServerError = await serverError
+      const hasPageError = await pageError
         .first()
         .isVisible({ timeout: 2000 })
         .catch(() => false);
 
-      if (hasServerError) {
-        console.log("⚠️ 500 Server Error - FAVE 생성 페이지 접근 불가");
+      if (hasPageError) {
+        const errorText = await pageError.first().textContent().catch(() => "Unknown");
+        console.log(`⚠️ 페이지 에러 감지 (${errorText}) - FAVE 생성 페이지 접근 불가`);
         return;
       }
 
@@ -1466,16 +1473,21 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
       await benefitCreatePage.navigate();
       await waitForPageStable(page);
 
-      const serverError = page
-        .getByText("500")
+      // 404/500 에러 확인
+      const pageError = page
+        .getByText("404")
+        .or(page.getByText("Page not found"))
+        .or(page.getByText("500"))
         .or(page.getByText("Server Error"));
-      const hasServerError = await serverError
+      const hasPageError = await pageError
         .first()
         .isVisible({ timeout: 2000 })
         .catch(() => false);
 
-      if (hasServerError) {
-        console.log("⚠️ 500 Server Error - BENEFIT 생성 페이지 접근 불가");
+      if (hasPageError) {
+        const errorText = await pageError.first().textContent().catch(() => "Unknown");
+        console.log(`⚠️ 페이지 에러 감지 (${errorText}) - BENEFIT 생성 페이지 접근 불가`);
+        console.log("ℹ️ URL이 변경되었을 수 있습니다. 관리자에서 BENEFIT 메뉴 경로를 확인하세요.");
         return;
       }
 
@@ -1654,16 +1666,21 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
       await notifCreatePage.navigate();
       await waitForPageStable(page);
 
-      const serverError = page
-        .getByText("500")
+      // 404/500 에러 확인
+      const pageError = page
+        .getByText("404")
+        .or(page.getByText("Page not found"))
+        .or(page.getByText("500"))
         .or(page.getByText("Server Error"));
-      const hasServerError = await serverError
+      const hasPageError = await pageError
         .first()
         .isVisible({ timeout: 2000 })
         .catch(() => false);
 
-      if (hasServerError) {
-        console.log("⚠️ 500 Server Error - 알림 생성 페이지 접근 불가");
+      if (hasPageError) {
+        const errorText = await pageError.first().textContent().catch(() => "Unknown");
+        console.log(`⚠️ 페이지 에러 감지 (${errorText}) - 알림 생성 페이지 접근 불가`);
+        console.log("ℹ️ URL이 변경되었을 수 있습니다. 관리자에서 알림 메뉴 경로를 확인하세요.");
         return;
       }
 

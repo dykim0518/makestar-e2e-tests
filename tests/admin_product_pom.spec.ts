@@ -1046,6 +1046,8 @@ test.describe("상품 목록", () => {
 // ##############################################################################
 test.describe.serial("상품 등록", () => {
   test("PRD-CREATE-01: 상품 신규 등록 및 검증", async ({ page }, testInfo) => {
+    // 다단계 테스트 (대분류 확인/생성 → 상품등록 → 폼입력 → 저장) — 타임아웃 확장
+    test.setTimeout(300_000);
     const eventListPage = new EventListPage(page);
     const eventCreatePage = new EventCreatePage(page);
 
@@ -1271,24 +1273,63 @@ test.describe.serial("상품 등록", () => {
       console.log("  3-2: 이미지 업로드");
       await eventCreatePage.uploadImage("fixtures/ta_sample.png");
 
-      // 3-3: 노출 카테고리 선택 (필수) - POM 메서드 사용
+      // 3-3: 노출 카테고리 선택 (필수)
+      // 커스텀 셀렉트 드롭다운 — 클릭하면 팝업 옵션 목록 노출
       console.log("  3-3: 노출 카테고리 선택");
-      // 복사 등록 모드가 아니면 카테고리 선택 필요
-      // POM 메서드가 이미 선택 여부를 체크하지 않으므로 시도해봄
-      try {
-        await eventCreatePage.selectProductCategory("앨범");
-        console.log('ℹ️ 상품 카테고리 "앨범" 선택 완료');
-      } catch (e) {
-        console.log("ℹ️ 상품 카테고리 선택 스킵 (이미 선택됨 또는 오류)");
-      }
+      for (const catName of ["상품 카테고리", "B2B 카테고리"]) {
+        const label = page.getByText(catName, { exact: true });
+        const placeholder = label.locator("..").getByText("카테고리를 선택해주세요").first();
 
-      // 3-3-1: B2B 카테고리 선택 (필수)
-      console.log("  3-3-1: B2B 카테고리 선택");
-      try {
-        await eventCreatePage.selectB2BCategory("앨범");
-        console.log('ℹ️ B2B 카테고리 "앨범" 선택 완료');
-      } catch (e) {
-        console.log("ℹ️ B2B 카테고리 선택 스킵 (이미 선택됨 또는 오류)");
+        if (!(await placeholder.isVisible().catch(() => false))) {
+          console.log(`ℹ️ ${catName}: 이미 선택됨 또는 없음 — 스킵`);
+          continue;
+        }
+
+        // 오버레이 제거 (이전 드롭다운 잔여)
+        await page.keyboard.press("Escape");
+        await page.locator('div.fixed.inset-0').first()
+          .waitFor({ state: "hidden", timeout: 2000 })
+          .catch(() => {});
+
+        await placeholder.scrollIntoViewIfNeeded({ timeout: 5000 });
+        await placeholder.click({ force: true });
+        await page.waitForTimeout(500);
+
+        // 드롭다운 옵션 패널에서 "앨범" 선택
+        // 옵션은 placeholder와 같은 컨테이너가 아닌, 포탈/팝업으로 렌더링될 수 있음
+        // "카테고리를 선택해주세요" 가 사라지고 옵션 목록이 나타남
+        const option = page.locator('[class*="select-option"], [class*="dropdown-item"], li[class*="option"]')
+          .filter({ hasText: "앨범" })
+          .first();
+
+        if (await option.isVisible({ timeout: 3000 }).catch(() => false)) {
+          await option.click({ force: true });
+          console.log(`ℹ️ ${catName} "앨범" 선택 완료 (option element)`);
+        } else {
+          // 대안: 페이지 전체에서 새로 나타난 "앨범" 텍스트 (배지가 아닌 것)
+          // 배지는 badge__area 클래스를 가짐 — 이를 제외
+          const albumOptions = page.locator(':not([class*="badge"]) >> text="앨범"');
+          const count = await albumOptions.count();
+          let clicked = false;
+          for (let i = 0; i < count; i++) {
+            const el = albumOptions.nth(i);
+            const className = await el.evaluate(e => e.className).catch(() => "");
+            // 배지/태그가 아닌 옵션 요소만
+            if (!className.includes("badge")) {
+              await el.click({ force: true });
+              console.log(`ℹ️ ${catName} "앨범" 선택 완료 (text match #${i})`);
+              clicked = true;
+              break;
+            }
+          }
+          if (!clicked) {
+            console.log(`⚠️ ${catName}: "앨범" 옵션을 찾을 수 없음`);
+          }
+        }
+
+        // 드롭다운 닫기
+        await page.keyboard.press("Escape");
+        await page.waitForTimeout(300);
       }
 
       // 3-4: 판매기간 설정 (필수)

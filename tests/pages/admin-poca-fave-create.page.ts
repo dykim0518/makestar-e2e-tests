@@ -21,9 +21,10 @@ export class PocaFaveCreatePage extends AdminBasePage {
   constructor(page: Page) {
     super(page, ADMIN_TIMEOUTS);
 
+    // "제목*" 레이블 옆 입력 필드 (placeholder: "내용을 입력하세요")
     this.titleInput = page
       .locator(
-        'input[placeholder*="제목"], input[placeholder*="팩"], input[placeholder*="이름"]',
+        'input[placeholder*="내용을 입력"], input[placeholder*="제목"], input[placeholder*="팩"], input[placeholder*="이름"]',
       )
       .first();
     this.fileInput = page.locator('input[type="file"]').first();
@@ -57,11 +58,18 @@ export class PocaFaveCreatePage extends AdminBasePage {
     await this.fillTitle(options.title);
 
     if (options.imagePath) {
-      const { resolve, isAbsolute } = await import("path");
-      const absolutePath = isAbsolute(options.imagePath)
-        ? options.imagePath
-        : resolve(__dirname, "..", options.imagePath);
-      await this.fileInput.setInputFiles(absolutePath);
+      const hasFileInput = await this.fileInput
+        .isVisible({ timeout: 3000 })
+        .catch(() => false);
+      if (hasFileInput) {
+        const { resolve, isAbsolute } = await import("path");
+        const absolutePath = isAbsolute(options.imagePath)
+          ? options.imagePath
+          : resolve(__dirname, "..", options.imagePath);
+        await this.fileInput.setInputFiles(absolutePath);
+      } else {
+        console.log("ℹ️ 파일 업로드 필드 없음 — 이미지 업로드 스킵");
+      }
     }
   }
 

@@ -25,9 +25,10 @@ export class PocaShopCreatePage extends AdminBasePage {
   constructor(page: Page) {
     super(page, ADMIN_TIMEOUTS);
 
+    // Shop 생성 폼의 첫 번째 텍스트 입력 필드 (number 타입 제외)
     this.titleInput = page
       .locator(
-        'input[placeholder*="상품"], input[placeholder*="제목"], input[placeholder*="이름"]',
+        'input[type="text"][placeholder*="입력"], input[placeholder*="상품"], input[placeholder*="제목"], input[placeholder*="이름"]',
       )
       .first();
     this.priceInput = page
