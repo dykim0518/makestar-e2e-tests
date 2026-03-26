@@ -1541,7 +1541,10 @@ export class MakestarPage extends BasePage {
     const firstSpinner = this.page.getByRole("spinbutton").first();
     // SPA 네비게이션 후 React 렌더링 대기 + 모바일 스크롤
     try {
-      await firstSpinner.waitFor({ state: "attached", timeout: this.timeouts.medium });
+      await firstSpinner.waitFor({
+        state: "attached",
+        timeout: this.timeouts.medium,
+      });
       await firstSpinner.scrollIntoViewIfNeeded().catch(() => {});
     } catch {
       // spinbutton이 DOM에 없음 — 패턴 2로 진행
@@ -1565,7 +1568,9 @@ export class MakestarPage extends BasePage {
           // 값 변경 확인
           const newValue = await firstSpinner.inputValue().catch(() => "0");
           if (parseInt(newValue, 10) > 0) {
-            console.log(`   ✅ 첫 번째 옵션 수량 ${newValue}로 설정 (spinbutton)`);
+            console.log(
+              `   ✅ 첫 번째 옵션 수량 ${newValue}로 설정 (spinbutton)`,
+            );
             return true;
           }
         }
@@ -1765,13 +1770,13 @@ export class MakestarPage extends BasePage {
           .catch(() => false)
       ) {
         await this.cartDeleteButton.first().click();
-        await this.waitForNetworkStable(3000);
+        await this.waitForNetworkStable(3000).catch(() => {});
 
         // 모달 내 Delete 버튼 클릭
         const allDeleteBtns = this.cartDeleteButton;
         if ((await allDeleteBtns.count()) >= 2) {
           await allDeleteBtns.last().click();
-          await this.waitForNetworkStable(2000);
+          await this.waitForNetworkStable(2000).catch(() => {});
           await this.reload();
           await this.waitForContentStable(500);
         }

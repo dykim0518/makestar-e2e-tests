@@ -956,7 +956,9 @@ test.describe("Makestar.com E2E 모니터링 테스트", () => {
     }, testInfo) => {
       // 모바일 UA: 옵션 선택 spinbutton/장바구니 버튼이 없고 구매하기 바텀시트 방식
       if (testInfo.project.name === "mobile-chrome") {
-        console.log("   ℹ️ 모바일에서는 장바구니 UI가 데스크톱과 다름 — 데스크톱 전용 테스트");
+        console.log(
+          "   ℹ️ 모바일에서는 장바구니 UI가 데스크톱과 다름 — 데스크톱 전용 테스트",
+        );
         expect(true).toBeTruthy();
         return;
       }
@@ -983,7 +985,10 @@ test.describe("Makestar.com E2E 모니터링 테스트", () => {
         for (let i = 0; i < Math.min(8, productCount); i++) {
           // 품절 상품 건너뛰기
           const card = makestar.shopProductCard.nth(i);
-          const cardText = await card.locator("xpath=ancestor::a[1]").textContent().catch(() => "");
+          const cardText = await card
+            .locator("xpath=ancestor::a[1]")
+            .textContent()
+            .catch(() => "");
           if (cardText && /sold out|품절/i.test(cardText)) {
             console.log(`   ⚠️ 상품 ${i + 1}: 품절 - 건너뜀`);
             continue;
@@ -998,7 +1003,9 @@ test.describe("Makestar.com E2E 모니터링 테스트", () => {
           // 상품 상세 페이지 도달 확인
           const currentUrl = makestar.currentUrl;
           if (!/\/product\/\d+/i.test(currentUrl)) {
-            console.log(`   ⚠️ 상품 ${i + 1}: 상세 페이지 아님 (${currentUrl})`);
+            console.log(
+              `   ⚠️ 상품 ${i + 1}: 상세 페이지 아님 (${currentUrl})`,
+            );
             await makestar.clickLogoToHome();
             await makestar.navigateToShop();
             await makestar.waitForPageContent();
@@ -1007,7 +1014,9 @@ test.describe("Makestar.com E2E 모니터링 테스트", () => {
 
           // 옵션 선택 (spinbutton 패턴: 수량 0→1 / 드롭다운 패턴: 첫 번째 옵션)
           const optionSelected = await makestar.selectFirstOption();
-          console.log(`   옵션 선택 결과: ${optionSelected ? "성공" : "실패 (옵션 없는 상품)"}`);
+          console.log(
+            `   옵션 선택 결과: ${optionSelected ? "성공" : "실패 (옵션 없는 상품)"}`,
+          );
 
           // 드롭다운 패턴일 경우에만 별도 수량 설정
           if (!optionSelected) {
@@ -1019,10 +1028,30 @@ test.describe("Makestar.com E2E 모니터링 테스트", () => {
           if (clicked) {
             await makestar.waitForNetworkStable();
 
-            // 로그인 리다이렉트 체크
-            if (makestar.currentUrl.includes("auth") || makestar.currentUrl.includes("login")) {
-              console.log(`   ⚠️ 로그인 리다이렉트 감지 (${makestar.currentUrl}) — 인증 세션 갱신 필요`);
-              break;
+            // 로그인 리다이렉트 체크 → 세션 복구 시도 후 재시도
+            if (
+              makestar.currentUrl.includes("auth") ||
+              makestar.currentUrl.includes("login")
+            ) {
+              console.log(`   ⚠️ 로그인 리다이렉트 감지 — 세션 복구 시도`);
+
+              // SPA auth 프라이밍 (gotoMyPage 워밍업 패턴 재활용)
+              const warmupPaths = [
+                "/my-page/change-password",
+                "/my-page/event-entry",
+              ];
+              for (const wp of warmupPaths) {
+                await makestar.goto(`${makestar.baseUrl}${wp}`);
+                await makestar.waitForLoadState("domcontentloaded");
+                await makestar.waitForNetworkStable(3000).catch(() => {});
+              }
+
+              // 복구 후 Shop으로 돌아가서 다음 상품 시도
+              await makestar.clickLogoToHome();
+              await makestar.navigateToShop();
+              await makestar.waitForPageContent();
+              console.log(`   🔄 세션 복구 후 다음 상품으로 재시도`);
+              continue;
             }
 
             await makestar.handleModal();
@@ -1033,13 +1062,17 @@ test.describe("Makestar.com E2E 모니터링 테스트", () => {
             const itemCount = await makestar.getCartItemCount();
             if (itemCount > 0) {
               confirmed = true;
-              console.log(`   ✅ 상품 ${i + 1}번째 장바구니 담기 확인 (${itemCount}개)`);
+              console.log(
+                `   ✅ 상품 ${i + 1}번째 장바구니 담기 확인 (${itemCount}개)`,
+              );
               break;
             }
           }
 
           // 실패 → Shop으로 돌아가서 다음 상품 시도
-          console.log(`   ⚠️ 상품 ${i + 1}번째 장바구니 담기 실패, 다음 상품 시도`);
+          console.log(
+            `   ⚠️ 상품 ${i + 1}번째 장바구니 담기 실패, 다음 상품 시도`,
+          );
           await makestar.clickLogoToHome();
           await makestar.navigateToShop();
           await makestar.waitForPageContent();
