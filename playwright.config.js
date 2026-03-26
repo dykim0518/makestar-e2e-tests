@@ -152,6 +152,7 @@ export default defineConfig({
         "**/admin_order_pom.spec.ts",
         "**/admin_pocaalbum_pom.spec.ts",
         "**/admin_pocaalbum_functional.spec.ts",
+        "**/admin_user_pom.spec.ts",
       ],
       dependencies: ["admin-setup"], // Setup 프로젝트에 의존
       use: {

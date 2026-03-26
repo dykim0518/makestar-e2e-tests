@@ -144,5 +144,12 @@ export { PocaReportListPage } from "./admin-poca-report-list.page";
 // POCAAlbum 고객관리 목록 페이지
 export { PocaCustomerListPage } from "./admin-poca-customer-list.page";
 
+// Admin 회원관리 목록 페이지
+export { UserListPage } from "./admin-user-list.page";
+export type { UserResultMetrics } from "./admin-user-list.page";
+
+// Admin 회원관리 상세 페이지
+export { UserDetailPage } from "./admin-user-detail.page";
+
 // POCAAlbum 시스템관리 목록 페이지
 export { PocaSystemListPage } from "./admin-poca-system-list.page";
