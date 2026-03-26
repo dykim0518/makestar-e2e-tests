@@ -981,6 +981,7 @@ test.describe("Makestar.com E2E 모니터링 테스트", () => {
         // Shop 상품 중 구매 가능한 상품을 찾아 장바구니에 담기 (최대 8개 시도)
         const productCount = await makestar.shopProductCard.count();
         let confirmed = false;
+        let authRedirectCount = 0;
 
         for (let i = 0; i < Math.min(8, productCount); i++) {
           // 품절 상품 건너뛰기
@@ -1028,29 +1029,19 @@ test.describe("Makestar.com E2E 모니터링 테스트", () => {
           if (clicked) {
             await makestar.waitForNetworkStable();
 
-            // 로그인 리다이렉트 체크 → 세션 복구 시도 후 재시도
+            // 로그인 리다이렉트 체크
             if (
               makestar.currentUrl.includes("auth") ||
               makestar.currentUrl.includes("login")
             ) {
-              console.log(`   ⚠️ 로그인 리다이렉트 감지 — 세션 복구 시도`);
+              authRedirectCount++;
+              console.log(
+                `   ⚠️ 로그인 리다이렉트 감지 (${authRedirectCount}회) — 다음 상품 시도`,
+              );
 
-              // SPA auth 프라이밍 (gotoMyPage 워밍업 패턴 재활용)
-              const warmupPaths = [
-                "/my-page/change-password",
-                "/my-page/event-entry",
-              ];
-              for (const wp of warmupPaths) {
-                await makestar.goto(`${makestar.baseUrl}${wp}`);
-                await makestar.waitForLoadState("domcontentloaded");
-                await makestar.waitForNetworkStable(3000).catch(() => {});
-              }
-
-              // 복구 후 Shop으로 돌아가서 다음 상품 시도
-              await makestar.clickLogoToHome();
-              await makestar.navigateToShop();
+              // 로그인 페이지에는 로고가 없으므로 goto()로 직접 Shop 복귀
+              await makestar.goto(`${makestar.baseUrl}/shop`);
               await makestar.waitForPageContent();
-              console.log(`   🔄 세션 복구 후 다음 상품으로 재시도`);
               continue;
             }
 
@@ -1078,6 +1069,11 @@ test.describe("Makestar.com E2E 모니터링 테스트", () => {
           await makestar.waitForPageContent();
         }
 
+        if (!confirmed && authRedirectCount > 0) {
+          throw new Error(
+            `인증 세션 만료: ${authRedirectCount}회 로그인 리다이렉트 — auth.json 갱신 필요`,
+          );
+        }
         expect(confirmed).toBeTruthy();
       });
 
