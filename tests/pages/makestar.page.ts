@@ -173,11 +173,11 @@ export class MakestarPage extends BasePage {
     });
 
     // 프로필/인증 요소 초기화
-    // Profile 버튼: SVG 아이콘(비로그인) 또는 img alt="profile"(로그인)
-    // 모바일에서는 로고 옆 마지막 img 버튼으로 폴백
+    // 비로그인: button > SVG icon-profile-line
+    // 로그인: a[href="/my-page"] > img[alt="profile"] (버튼이 아닌 링크)
     this.profileButton = page
       .locator(
-        'button:has(svg use[href="#icon-profile-line"]), button:has(img[alt="profile"]), button:has(img[alt="Profile"])',
+        'button:has(svg use[href="#icon-profile-line"]), a[href*="my-page"]:has(img[alt="profile"]), a[href*="my-page"]:has(img[alt="Profile"]), button:has(img[alt="profile"]), button:has(img[alt="Profile"])',
       )
       .first();
     this.googleLoginButton = page
@@ -1887,7 +1887,7 @@ export class MakestarPage extends BasePage {
 
   /** 펀딩 프로젝트 카드 개수 반환 */
   async getFundingCardCount(): Promise<number> {
-    const cards = this.page.locator('img[alt="sample_image"]');
+    const cards = this.page.locator('a[href*="/product/"] img');
     return await cards.count();
   }
 
