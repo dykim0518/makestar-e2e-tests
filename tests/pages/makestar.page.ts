@@ -348,15 +348,16 @@ export class MakestarPage extends BasePage {
 
   /**
    * GNB 버튼 클릭 전 모달/오버레이 완전 제거
+   * locator 기반으로 오버레이 감지 (page.evaluate 사용하지 않아 네비게이션 중 context 파괴에 안전)
    * 텍스트 버튼 → Escape 키 → JS 강제 제거 순으로 시도
    */
   private async dismissAllBlockingModals(): Promise<void> {
+    const overlayLocator = this._page.locator('div.fixed[class*="z-[40]"]');
+
     for (let i = 0; i < 3; i++) {
-      // 1) z-[40] 오버레이 존재 확인
-      const hasOverlay = await this._page.evaluate(() => {
-        return !!document.querySelector('div.fixed[class*="z-[40]"]');
-      });
-      if (!hasOverlay) break;
+      // 1) locator 기반 오버레이 존재 확인 (context 파괴에 안전)
+      const overlayCount = await overlayLocator.count().catch(() => 0);
+      if (overlayCount === 0) break;
 
       // 2) 오버레이 내부에서 닫기 텍스트 클릭 시도
       const closeTexts = [
@@ -369,9 +370,7 @@ export class MakestarPage extends BasePage {
       let dismissed = false;
 
       for (const text of closeTexts) {
-        const closeBtn = this._page
-          .locator(`div.fixed[class*="z-[40]"] >> text=${text}`)
-          .first();
+        const closeBtn = overlayLocator.locator(`text=${text}`).first();
         if (await closeBtn.isVisible({ timeout: 500 }).catch(() => false)) {
           await closeBtn.click({ force: true }).catch(() => {});
           await this._page.waitForTimeout(300);
@@ -387,16 +386,16 @@ export class MakestarPage extends BasePage {
       await this._page.keyboard.press("Escape");
       await this._page.waitForTimeout(300);
 
-      // 4) 여전히 있으면 JS로 강제 제거
-      const stillBlocking = await this._page.evaluate(() => {
-        return !!document.querySelector('div.fixed[class*="z-[40]"]');
-      });
-      if (stillBlocking) {
-        await this._page.evaluate(() => {
-          document
-            .querySelectorAll('div.fixed[class*="z-[40]"]')
-            .forEach((el) => el.remove());
-        });
+      // 4) 여전히 있으면 JS로 강제 제거 (try-catch로 context 파괴 방어)
+      const stillCount = await overlayLocator.count().catch(() => 0);
+      if (stillCount > 0) {
+        await this._page
+          .evaluate(() => {
+            document
+              .querySelectorAll('div.fixed[class*="z-[40]"]')
+              .forEach((el) => el.remove());
+          })
+          .catch(() => {});
         console.log("⚠️ 오버레이 JS 강제 제거");
       }
     }
