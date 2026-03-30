@@ -404,7 +404,12 @@ export class MakestarPage extends BasePage {
   /** Event 페이지로 이동 (GNB 링크 클릭) */
   async navigateToEvent(): Promise<void> {
     await this.dismissAllBlockingModals();
-    await this.eventButton.click({ timeout: 5000 });
+    try {
+      await this.eventButton.click({ timeout: 5000 });
+    } catch {
+      await this.dismissAllBlockingModals();
+      await this.eventButton.click({ timeout: 5000 });
+    }
     await this.waitForLoadState("domcontentloaded");
     await this.handleModal();
   }
@@ -412,7 +417,12 @@ export class MakestarPage extends BasePage {
   /** Shop 페이지로 이동 (GNB 링크 클릭) */
   async navigateToShop(): Promise<void> {
     await this.dismissAllBlockingModals();
-    await this.shopButton.click({ timeout: 5000 });
+    try {
+      await this.shopButton.click({ timeout: 5000 });
+    } catch {
+      await this.dismissAllBlockingModals();
+      await this.shopButton.click({ timeout: 5000 });
+    }
     await this.waitForLoadState("domcontentloaded");
     await this.handleModal();
   }
@@ -420,7 +430,12 @@ export class MakestarPage extends BasePage {
   /** Funding 페이지로 이동 (GNB 링크 클릭) */
   async navigateToFunding(): Promise<void> {
     await this.dismissAllBlockingModals();
-    await this.fundingButton.click({ timeout: 5000 });
+    try {
+      await this.fundingButton.click({ timeout: 5000 });
+    } catch {
+      await this.dismissAllBlockingModals();
+      await this.fundingButton.click({ timeout: 5000 });
+    }
     await this.waitForLoadState("domcontentloaded");
     await this.handleModal();
   }
