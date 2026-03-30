@@ -153,3 +153,11 @@ export { UserDetailPage } from "./admin-user-detail.page";
 
 // POCAAlbum 시스템관리 목록 페이지
 export { PocaSystemListPage } from "./admin-poca-system-list.page";
+
+// Admin 아티스트 목록 페이지
+export {
+  ArtistListPage,
+  ARTIST_TABLE_HEADERS,
+  ARTIST_COL,
+} from "./admin-artist-list.page";
+export type { ArtistRowData } from "./admin-artist-list.page";
