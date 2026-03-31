@@ -1112,9 +1112,8 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
       await shopCreatePage.fillCreateForm({
         title: sharedShopTitle,
         price: "100",
+        imagePath: "fixtures/ta_sample.png",
       });
-
-      page.once("dialog", (dialog) => dialog.accept());
 
       const isCreateVisible = await shopCreatePage.createButton
         .isVisible({ timeout: 5000 })
