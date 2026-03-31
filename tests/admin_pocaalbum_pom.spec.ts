@@ -660,20 +660,18 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
           .isVisible({ timeout: 5000 })
           .catch(() => false);
 
-        if (!isVisible) {
-          console.log("⚠️ 등록 버튼을 찾을 수 없음 - 폼 구조 확인 필요");
-          return;
-        }
+        expect(
+          isVisible,
+          "❌ 등록 버튼을 찾을 수 없음 — 앨범 생성 페이지 구조 확인 필요",
+        ).toBe(true);
 
         const isEnabled = await createBtn.isEnabled();
         console.log(`  등록 버튼 상태: ${isEnabled ? "활성화" : "비활성화"}`);
 
-        if (!isEnabled) {
-          console.log(
-            "⚠️ 등록 버튼 비활성화 - 필수 필드 누락 가능성 (폼 필드 로그 참조)",
-          );
-          return;
-        }
+        expect(
+          isEnabled,
+          "❌ 등록 버튼 비활성화 — 필수 필드 누락. discoverFormFields 로그를 확인하세요.",
+        ).toBe(true);
 
         await albumCreatePage.submitAndWaitForList();
         sharedAlbumCreated = true;
@@ -842,16 +840,13 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
           .isVisible({ timeout: 5000 })
           .catch(() => false);
 
-        if (!isVisible) {
-          console.log("⚠️ 등록 버튼을 찾을 수 없음");
-          return;
-        }
+        expect(
+          isVisible,
+          "❌ 등록 버튼을 찾을 수 없음 — 유튜브 앨범 생성 페이지 확인 필요",
+        ).toBe(true);
 
         const isEnabled = await createBtn.isEnabled();
-        if (!isEnabled) {
-          console.log("⚠️ 등록 버튼 비활성화 - 필수 필드 누락 가능성");
-          return;
-        }
+        expect(isEnabled, "❌ 등록 버튼 비활성화 — 필수 필드 누락").toBe(true);
 
         await albumCreatePage.submitAndWaitForList();
         console.log("✅ 유튜브 앨범 생성 완료");
@@ -1125,16 +1120,16 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
         .isVisible({ timeout: 5000 })
         .catch(() => false);
 
-      if (!isCreateVisible) {
-        console.log("⚠️ 등록 버튼을 찾을 수 없음");
-        return;
-      }
+      expect(
+        isCreateVisible,
+        "❌ 등록 버튼을 찾을 수 없음 — Shop 생성 페이지 구조 확인 필요",
+      ).toBe(true);
 
       const isEnabled = await shopCreatePage.createButton.isEnabled();
-      if (!isEnabled) {
-        console.log("⚠️ 등록 버튼 비활성화 - 필수 필드 누락 가능성");
-        return;
-      }
+      expect(
+        isEnabled,
+        "❌ 등록 버튼 비활성화 — 필수 필드 누락. discoverFormFields 로그를 확인하세요.",
+      ).toBe(true);
 
       await shopCreatePage.submitAndWaitForList();
       sharedShopCreated = true;
@@ -1343,16 +1338,13 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
         .isVisible({ timeout: 5000 })
         .catch(() => false);
 
-      if (!isCreateVisible) {
-        console.log("⚠️ 등록 버튼을 찾을 수 없음");
-        return;
-      }
+      expect(
+        isCreateVisible,
+        "❌ 등록 버튼을 찾을 수 없음 — FAVE 생성 페이지 확인 필요",
+      ).toBe(true);
 
       const isEnabled = await faveCreatePage.createButton.isEnabled();
-      if (!isEnabled) {
-        console.log("⚠️ 등록 버튼 비활성화");
-        return;
-      }
+      expect(isEnabled, "❌ 등록 버튼 비활성화 — 필수 필드 누락").toBe(true);
 
       await faveCreatePage.submitAndWaitForList();
       sharedFaveCreated = true;
@@ -1533,16 +1525,13 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
         .isVisible({ timeout: 5000 })
         .catch(() => false);
 
-      if (!isCreateVisible) {
-        console.log("⚠️ 등록 버튼을 찾을 수 없음");
-        return;
-      }
+      expect(
+        isCreateVisible,
+        "❌ 등록 버튼을 찾을 수 없음 — BENEFIT 생성 페이지 확인 필요",
+      ).toBe(true);
 
       const isEnabled = await benefitCreatePage.createButton.isEnabled();
-      if (!isEnabled) {
-        console.log("⚠️ 등록 버튼 비활성화");
-        return;
-      }
+      expect(isEnabled, "❌ 등록 버튼 비활성화 — 필수 필드 누락").toBe(true);
 
       await benefitCreatePage.submitAndWaitForList();
       sharedBenefitCreated = true;
@@ -1734,16 +1723,13 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
         .isVisible({ timeout: 5000 })
         .catch(() => false);
 
-      if (!isCreateVisible) {
-        console.log("⚠️ 등록 버튼을 찾을 수 없음");
-        return;
-      }
+      expect(
+        isCreateVisible,
+        "❌ 등록 버튼을 찾을 수 없음 — 알림 생성 페이지 확인 필요",
+      ).toBe(true);
 
       const isEnabled = await notifCreatePage.createButton.isEnabled();
-      if (!isEnabled) {
-        console.log("⚠️ 등록 버튼 비활성화");
-        return;
-      }
+      expect(isEnabled, "❌ 등록 버튼 비활성화 — 필수 필드 누락").toBe(true);
 
       await notifCreatePage.submitAndWaitForList();
       sharedNotifCreated = true;
