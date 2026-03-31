@@ -186,9 +186,10 @@ test.describe("POCAAlbum Admin 대시보드", () => {
         // /pocaalbum/test 페이지에서 사이드바 메뉴가 렌더링되지 않는 앱 이슈
         // 사이드바 컨테이너와 기본 요소(타이틀, 이메일)만 검증
         const email = await pocaPage.getUserEmail();
-        expect(email, "사이드바에 사용자 이메일이 표시되어야 합니다").toContain(
-          "@",
-        );
+        expect(
+          email,
+          "❌ 사이드바에 사용자 이메일이 표시되어야 합니다",
+        ).toContain("@");
         console.log(
           "⚠️ 사이드바 메뉴 미렌더링 - /pocaalbum/test 페이지에서 메뉴 데이터 없음 (앱 이슈)",
         );
@@ -470,9 +471,10 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
 
       // 행 > 0 확인
       const rowCount = await albumListPage.getRowCount();
-      expect(rowCount, "앨범 목록 테이블에 데이터가 없습니다").toBeGreaterThan(
-        0,
-      );
+      expect(
+        rowCount,
+        "❌ 앨범 목록 테이블에 데이터가 없습니다",
+      ).toBeGreaterThan(0);
 
       // 핵심 헤더만 검증 (UI 변경에 유연하게 대응)
       for (const header of ["제목", "아티스트"]) {
@@ -492,7 +494,7 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
       const isSearchVisible = await albumListPage.searchInput
         .isVisible({ timeout: 5000 })
         .catch(() => false);
-      expect(isSearchVisible, "검색 입력 필드가 없습니다").toBeTruthy();
+      expect(isSearchVisible, "❌ 검색 입력 필드가 없습니다").toBeTruthy();
 
       await albumListPage.searchByKeyword("BTS");
 
@@ -535,7 +537,7 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
 
     test("PA-PAGIN-02: 페이지네이션 동작 검증", async () => {
       const rowCount = await albumListPage.getRowCount();
-      expect(rowCount, "테이블에 데이터가 없습니다").toBeGreaterThan(0);
+      expect(rowCount, "❌ 테이블에 데이터가 없습니다").toBeGreaterThan(0);
 
       const isNextVisible = await albumListPage.nextPageButton
         .isVisible()
@@ -564,12 +566,12 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
 
     test("PA-ACTION-01: 수정 버튼으로 상세 이동", async () => {
       const rowCount = await albumListPage.getRowCount();
-      expect(rowCount, "테이블에 데이터가 없습니다").toBeGreaterThan(0);
+      expect(rowCount, "❌ 테이블에 데이터가 없습니다").toBeGreaterThan(0);
 
       await albumListPage.clickEdit(0);
 
       const currentUrl = albumListPage.page.url();
-      expect(currentUrl, "URL이 앨범 상세로 변경되지 않았습니다").toMatch(
+      expect(currentUrl, "❌ URL이 앨범 상세로 변경되지 않았습니다").toMatch(
         /\/pocaalbum\/album\//,
       );
       console.log(`  상세 URL: ${currentUrl}`);
@@ -626,9 +628,10 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
           .first()
           .isVisible({ timeout: 2000 })
           .catch(() => false);
-        expect(hasServerError, "500 Server Error 발생 - 백엔드 확인 필요").toBe(
-          false,
-        );
+        expect(
+          hasServerError,
+          "❌ 500 Server Error 발생 - 백엔드 확인 필요",
+        ).toBe(false);
       });
 
       // Step 3: 폼 필드 탐색 (디버깅용)
@@ -681,7 +684,7 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
     test("PA-CREATE-02: 생성된 앨범 목록에서 검증", async ({ page }) => {
       expect(
         sharedAlbumCreated || sharedAlbumTitle,
-        "PA-CREATE-01에서 앨범이 생성되지 않음",
+        "❌ PA-CREATE-01에서 앨범이 생성되지 않음",
       ).toBeTruthy();
 
       const albumListPage = new PocaAlbumListPage(page);
@@ -705,9 +708,10 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
     });
 
     test("PA-DETAIL-01: 생성된 앨범 상세 진입 확인", async ({ page }) => {
-      expect(sharedAlbumCreated, "PA-CREATE-01에서 앨범이 생성되지 않음").toBe(
-        true,
-      );
+      expect(
+        sharedAlbumCreated,
+        "❌ PA-CREATE-01에서 앨범이 생성되지 않음",
+      ).toBe(true);
 
       const albumListPage = new PocaAlbumListPage(page);
       await albumListPage.navigate();
@@ -747,7 +751,7 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
           .first()
           .isVisible({ timeout: 2000 })
           .catch(() => false);
-        expect(hasServerError, "500 Server Error 발생").toBe(false);
+        expect(hasServerError, "❌ 500 Server Error 발생").toBe(false);
       });
 
       // 유튜브 앨범 타입 선택 시도
@@ -855,9 +859,10 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
     });
 
     test("PA-UPDATE-01: 앨범 상세 진입 후 제목 수정", async ({ page }) => {
-      expect(sharedAlbumCreated, "PA-CREATE-01에서 앨범이 생성되지 않음").toBe(
-        true,
-      );
+      expect(
+        sharedAlbumCreated,
+        "❌ PA-CREATE-01에서 앨범이 생성되지 않음",
+      ).toBe(true);
 
       const albumListPage = new PocaAlbumListPage(page);
       await albumListPage.navigate();
@@ -937,9 +942,10 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
     });
 
     test("PA-ACTION-02: 테스트 앨범 삭제", async ({ page }) => {
-      expect(sharedAlbumCreated, "PA-CREATE-01에서 앨범이 생성되지 않음").toBe(
-        true,
-      );
+      expect(
+        sharedAlbumCreated,
+        "❌ PA-CREATE-01에서 앨범이 생성되지 않음",
+      ).toBe(true);
 
       const albumListPage = new PocaAlbumListPage(page);
       await albumListPage.navigate();
@@ -1014,7 +1020,7 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
       });
 
       const rowCount = await shopListPage.getRowCount();
-      expect(rowCount, "Shop 상품 데이터가 없습니다").toBeGreaterThan(0);
+      expect(rowCount, "❌ Shop 상품 데이터가 없습니다").toBeGreaterThan(0);
       console.log(`  Shop 상품 목록: ${rowCount}행`);
     });
 
@@ -1053,7 +1059,7 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
       });
 
       const rowCount = await shopListPage.getRowCount();
-      expect(rowCount, "Shop 상품 데이터가 없습니다").toBeGreaterThan(0);
+      expect(rowCount, "❌ Shop 상품 데이터가 없습니다").toBeGreaterThan(0);
 
       const toggles = shopListPage.getToggleSwitches();
       const toggleCount = await toggles.count();
@@ -1092,8 +1098,13 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
         .catch(() => false);
 
       if (hasPageError) {
-        const errorText = await pageError.first().textContent().catch(() => "Unknown");
-        console.log(`⚠️ 페이지 에러 감지 (${errorText}) - 생성 페이지 접근 불가`);
+        const errorText = await pageError
+          .first()
+          .textContent()
+          .catch(() => "Unknown");
+        console.log(
+          `⚠️ 페이지 에러 감지 (${errorText}) - 생성 페이지 접근 불가`,
+        );
         return;
       }
 
@@ -1131,9 +1142,10 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
     });
 
     test("PS-CREATE-02: 생성된 상품 목록에서 검증", async ({ page }) => {
-      expect(sharedShopCreated, "PS-CREATE-01에서 상품이 생성되지 않음").toBe(
-        true,
-      );
+      expect(
+        sharedShopCreated,
+        "❌ PS-CREATE-01에서 상품이 생성되지 않음",
+      ).toBe(true);
 
       const shopListPage = new PocaShopListPage(page);
       await shopListPage.navigate();
@@ -1152,9 +1164,10 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
     });
 
     test("PS-ACTION-01: 테스트 상품 삭제", async ({ page }) => {
-      expect(sharedShopCreated, "PS-CREATE-01에서 상품이 생성되지 않음").toBe(
-        true,
-      );
+      expect(
+        sharedShopCreated,
+        "❌ PS-CREATE-01에서 상품이 생성되지 않음",
+      ).toBe(true);
 
       const shopListPage = new PocaShopListPage(page);
       await shopListPage.navigate();
@@ -1220,7 +1233,9 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
       });
 
       const rowCount = await faveListPage.getRowCount();
-      expect(rowCount, "FAVE 팩 목록에 데이터가 없습니다").toBeGreaterThan(0);
+      expect(rowCount, "❌ FAVE 팩 목록에 데이터가 없습니다").toBeGreaterThan(
+        0,
+      );
       console.log(`  FAVE 팩 목록: ${rowCount}행`);
     });
 
@@ -1302,8 +1317,13 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
         .catch(() => false);
 
       if (hasPageError) {
-        const errorText = await pageError.first().textContent().catch(() => "Unknown");
-        console.log(`⚠️ 페이지 에러 감지 (${errorText}) - FAVE 생성 페이지 접근 불가`);
+        const errorText = await pageError
+          .first()
+          .textContent()
+          .catch(() => "Unknown");
+        console.log(
+          `⚠️ 페이지 에러 감지 (${errorText}) - FAVE 생성 페이지 접근 불가`,
+        );
         return;
       }
 
@@ -1340,7 +1360,7 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
     });
 
     test("PF-CREATE-02: 생성된 팩 목록에서 검증", async ({ page }) => {
-      expect(sharedFaveCreated, "PF-CREATE-01에서 팩이 생성되지 않음").toBe(
+      expect(sharedFaveCreated, "❌ PF-CREATE-01에서 팩이 생성되지 않음").toBe(
         true,
       );
 
@@ -1365,7 +1385,7 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
     });
 
     test("PF-ACTION-01: 테스트 팩 삭제", async ({ page }) => {
-      expect(sharedFaveCreated, "PF-CREATE-01에서 팩이 생성되지 않음").toBe(
+      expect(sharedFaveCreated, "❌ PF-CREATE-01에서 팩이 생성되지 않음").toBe(
         true,
       );
 
@@ -1485,9 +1505,16 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
         .catch(() => false);
 
       if (hasPageError) {
-        const errorText = await pageError.first().textContent().catch(() => "Unknown");
-        console.log(`⚠️ 페이지 에러 감지 (${errorText}) - BENEFIT 생성 페이지 접근 불가`);
-        console.log("ℹ️ URL이 변경되었을 수 있습니다. 관리자에서 BENEFIT 메뉴 경로를 확인하세요.");
+        const errorText = await pageError
+          .first()
+          .textContent()
+          .catch(() => "Unknown");
+        console.log(
+          `⚠️ 페이지 에러 감지 (${errorText}) - BENEFIT 생성 페이지 접근 불가`,
+        );
+        console.log(
+          "ℹ️ URL이 변경되었을 수 있습니다. 관리자에서 BENEFIT 메뉴 경로를 확인하세요.",
+        );
         return;
       }
 
@@ -1678,9 +1705,16 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
         .catch(() => false);
 
       if (hasPageError) {
-        const errorText = await pageError.first().textContent().catch(() => "Unknown");
-        console.log(`⚠️ 페이지 에러 감지 (${errorText}) - 알림 생성 페이지 접근 불가`);
-        console.log("ℹ️ URL이 변경되었을 수 있습니다. 관리자에서 알림 메뉴 경로를 확인하세요.");
+        const errorText = await pageError
+          .first()
+          .textContent()
+          .catch(() => "Unknown");
+        console.log(
+          `⚠️ 페이지 에러 감지 (${errorText}) - 알림 생성 페이지 접근 불가`,
+        );
+        console.log(
+          "ℹ️ URL이 변경되었을 수 있습니다. 관리자에서 알림 메뉴 경로를 확인하세요.",
+        );
         return;
       }
 
@@ -1717,9 +1751,10 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
     });
 
     test("PN-CREATE-02: 생성된 알림 목록에서 검증", async ({ page }) => {
-      expect(sharedNotifCreated, "PN-CREATE-01에서 알림이 생성되지 않음").toBe(
-        true,
-      );
+      expect(
+        sharedNotifCreated,
+        "❌ PN-CREATE-01에서 알림이 생성되지 않음",
+      ).toBe(true);
 
       const notifListPage = new PocaNotificationListPage(page);
       await notifListPage.navigate();
@@ -1742,9 +1777,10 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
     });
 
     test("PN-ACTION-01: 테스트 알림 삭제", async ({ page }) => {
-      expect(sharedNotifCreated, "PN-CREATE-01에서 알림이 생성되지 않음").toBe(
-        true,
-      );
+      expect(
+        sharedNotifCreated,
+        "❌ PN-CREATE-01에서 알림이 생성되지 않음",
+      ).toBe(true);
 
       const notifListPage = new PocaNotificationListPage(page);
       await notifListPage.navigate();

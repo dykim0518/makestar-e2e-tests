@@ -41,6 +41,7 @@ export type {
   SearchCriteria,
   TableRowData,
   PaginationInfo,
+  ResultMetrics,
 } from "./admin-base.page";
 
 // Admin SKU 목록 페이지

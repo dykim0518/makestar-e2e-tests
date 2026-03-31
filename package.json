@@ -7,7 +7,11 @@
     "test": "EXCLUDE_AUTH_TESTS=true npx playwright test",
     "test:cmr": "npx playwright test tests/cmr_monitoring_pom.spec.ts --project=chromium",
     "test:admin": "npx playwright test --project=admin-setup --project=admin-pc",
-    "test:poca-admin": "npx playwright test tests/admin_pocaalbum_pom.spec.ts --project=admin-setup --project=admin-pc",
+    "test:admin:product": "npx playwright test tests/admin_product_pom.spec.ts --project=admin-setup --project=admin-pc",
+    "test:admin:order": "npx playwright test tests/admin_order_pom.spec.ts --project=admin-setup --project=admin-pc",
+    "test:admin:poca": "npx playwright test tests/admin_pocaalbum_pom.spec.ts --project=admin-setup --project=admin-pc",
+    "test:admin:artist": "npx playwright test tests/admin_artist_pom.spec.ts --project=admin-setup --project=admin-pc",
+    "test:admin:user": "npx playwright test tests/admin_user_pom.spec.ts --project=admin-setup --project=admin-pc",
     "test:ci": "npx playwright test --config=playwright.ci.config.js"
   },
   "keywords": [],

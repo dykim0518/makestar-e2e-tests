@@ -155,7 +155,7 @@ test.describe("대분류 목록", () => {
         timeout: ELEMENT_TIMEOUT,
       });
       const rowCount = await categoryPage.getRowCount();
-      expect(rowCount, "테이블에 데이터가 없습니다.").toBeGreaterThan(0);
+      expect(rowCount, "❌ 테이블에 데이터가 없습니다.").toBeGreaterThan(0);
     });
 
     test("CAT-PAGE-05: 검색 영역 표시 검증", async () => {
@@ -230,7 +230,7 @@ test.describe("대분류 목록", () => {
 
     test("CAT-PAGIN-01: 다음 페이지 이동", async () => {
       const rowCount = await categoryPage.getRowCount();
-      expect(rowCount, "테이블에 데이터가 없습니다").toBeGreaterThan(0);
+      expect(rowCount, "❌ 테이블에 데이터가 없습니다").toBeGreaterThan(0);
 
       const isNextVisible = await categoryPage.nextPageButton
         .isVisible()
@@ -415,7 +415,7 @@ test.describe.serial("대분류 생성", () => {
         console.log(`ℹ️ 전체 목록 행 수: ${allRows}`);
 
         // 최소한 데이터가 존재하는지 확인
-        expect(allRows, "목록에 데이터가 없습니다.").toBeGreaterThan(0);
+        expect(allRows, "❌ 목록에 데이터가 없습니다.").toBeGreaterThan(0);
         console.log(
           `ℹ️ 대분류 생성 요청 완료 (목록 확인 필요): ${categoryNameKr}`,
         );
@@ -539,9 +539,10 @@ test.describe.serial("SKU 목록", () => {
     test("SKU-SEARCH-04: 빈 검색어로 조회", async () => {
       await skuPage.clickSearchAndWait();
       const rowCount = await skuPage.waitForTableData();
-      expect(rowCount, "빈 검색어 조회 시 데이터가 없습니다.").toBeGreaterThan(
-        0,
-      );
+      expect(
+        rowCount,
+        "❌ 빈 검색어 조회 시 데이터가 없습니다.",
+      ).toBeGreaterThan(0);
     });
 
     test("SKU-SEARCH-05: 존재하지 않는 항목 검색", async () => {
@@ -563,7 +564,7 @@ test.describe.serial("SKU 목록", () => {
 
     test("SKU-PAGIN-01: 다음 페이지 이동", async () => {
       const rowCount = await skuPage.getRowCount();
-      expect(rowCount, "테이블에 데이터가 없습니다").toBeGreaterThan(0);
+      expect(rowCount, "❌ 테이블에 데이터가 없습니다").toBeGreaterThan(0);
 
       const isNextVisible = await skuPage.nextPageButton
         .isVisible()
@@ -596,7 +597,7 @@ test.describe.serial("SKU 목록", () => {
       ).toBeTruthy();
 
       const rowCount = await skuPage.getRowCount();
-      expect(rowCount, "페이지 2에 데이터가 없습니다.").toBeGreaterThan(0);
+      expect(rowCount, "❌ 페이지 2에 데이터가 없습니다.").toBeGreaterThan(0);
     });
 
     test("SKU-PAGIN-03: 첫 페이지 버튼 활성화 검증", async () => {
@@ -877,7 +878,7 @@ test.describe.serial("SKU 생성", () => {
 
       // 생성 자체는 상세 페이지 진입으로 확인되었으므로 테스트 통과
       // (createdSkuCode가 존재하면 상세 페이지로 리다이렉트된 것)
-      expect(createdSkuCode, "SKU 코드가 생성되지 않음").toBeTruthy();
+      expect(createdSkuCode, "❌ SKU 코드가 생성되지 않음").toBeTruthy();
     });
   });
 });
@@ -920,7 +921,7 @@ test.describe("상품 목록", () => {
     test("PRD-PAGE-04: 테이블 데이터 로드 검증", async () => {
       await expect(eventPage.table).toBeVisible({ timeout: ELEMENT_TIMEOUT });
       const rowCount = await eventPage.getRowCount();
-      expect(rowCount, "테이블에 데이터가 없습니다.").toBeGreaterThan(0);
+      expect(rowCount, "❌ 테이블에 데이터가 없습니다.").toBeGreaterThan(0);
     });
 
     test("PRD-PAGE-05: 검색 영역 표시 검증", async () => {
@@ -1278,7 +1279,10 @@ test.describe.serial("상품 등록", () => {
       console.log("  3-3: 노출 카테고리 선택");
       for (const catName of ["상품 카테고리", "B2B 카테고리"]) {
         const label = page.getByText(catName, { exact: true });
-        const placeholder = label.locator("..").getByText("카테고리를 선택해주세요").first();
+        const placeholder = label
+          .locator("..")
+          .getByText("카테고리를 선택해주세요")
+          .first();
 
         if (!(await placeholder.isVisible().catch(() => false))) {
           console.log(`ℹ️ ${catName}: 이미 선택됨 또는 없음 — 스킵`);
@@ -1287,7 +1291,9 @@ test.describe.serial("상품 등록", () => {
 
         // 오버레이 제거 (이전 드롭다운 잔여)
         await page.keyboard.press("Escape");
-        await page.locator('div.fixed.inset-0').first()
+        await page
+          .locator("div.fixed.inset-0")
+          .first()
           .waitFor({ state: "hidden", timeout: 2000 })
           .catch(() => {});
 
@@ -1298,7 +1304,10 @@ test.describe.serial("상품 등록", () => {
         // 드롭다운 옵션 패널에서 "앨범" 선택
         // 옵션은 placeholder와 같은 컨테이너가 아닌, 포탈/팝업으로 렌더링될 수 있음
         // "카테고리를 선택해주세요" 가 사라지고 옵션 목록이 나타남
-        const option = page.locator('[class*="select-option"], [class*="dropdown-item"], li[class*="option"]')
+        const option = page
+          .locator(
+            '[class*="select-option"], [class*="dropdown-item"], li[class*="option"]',
+          )
           .filter({ hasText: "앨범" })
           .first();
 
@@ -1308,12 +1317,16 @@ test.describe.serial("상품 등록", () => {
         } else {
           // 대안: 페이지 전체에서 새로 나타난 "앨범" 텍스트 (배지가 아닌 것)
           // 배지는 badge__area 클래스를 가짐 — 이를 제외
-          const albumOptions = page.locator(':not([class*="badge"]) >> text="앨범"');
+          const albumOptions = page.locator(
+            ':not([class*="badge"]) >> text="앨범"',
+          );
           const count = await albumOptions.count();
           let clicked = false;
           for (let i = 0; i < count; i++) {
             const el = albumOptions.nth(i);
-            const className = await el.evaluate(e => e.className).catch(() => "");
+            const className = await el
+              .evaluate((e) => e.className)
+              .catch(() => "");
             // 배지/태그가 아닌 옵션 요소만
             if (!className.includes("badge")) {
               await el.click({ force: true });

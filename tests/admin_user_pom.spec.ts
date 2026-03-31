@@ -116,13 +116,18 @@ test.describe.serial("회원관리 목록", () => {
   test("USR-PAGE-01: 페이지 기본 요소 노출 검증", async () => {
     await userPage.assertPageTitle();
     await userPage.assertHeading();
-    await expect(userPage.breadcrumb).toBeVisible({ timeout: ELEMENT_TIMEOUT });
+    await expect(
+      userPage.breadcrumb,
+      "❌ 브레드크럼이 보이지 않습니다.",
+    ).toBeVisible({ timeout: ELEMENT_TIMEOUT });
     await userPage.assertSearchAreaVisible();
     await userPage.assertActionButtonsVisible();
+    console.log("  ✅ 페이지 기본 요소 검증 완료");
   });
 
   test("USR-PAGE-02: 테이블 헤더 컬럼 검증", async () => {
     await userPage.assertUserTableHeaders();
+    console.log("  ✅ 테이블 헤더 검증 완료");
   });
 
   test("USR-PAGE-03: 테이블 데이터 로드 검증", async () => {
@@ -131,18 +136,61 @@ test.describe.serial("회원관리 목록", () => {
     if (metrics.noResultState) {
       expect(
         metrics.hasNoResultMessage,
-        "결과 없음 상태인데 메시지가 없습니다.",
+        "❌ 결과 없음 상태인데 메시지가 없습니다.",
       ).toBeTruthy();
       return;
     }
 
     expect(
       metrics.rowCount,
-      "테이블 데이터가 로드되지 않았습니다.",
+      "❌ 테이블 데이터가 로드되지 않았습니다.",
     ).toBeGreaterThan(0);
 
     const pageLimit = await userPage.getPerPageLimit(10);
-    expect(metrics.rowCount).toBeLessThanOrEqual(pageLimit);
+    expect(
+      metrics.rowCount,
+      `❌ 행 수(${metrics.rowCount})가 페이지 제한(${pageLimit})을 초과합니다.`,
+    ).toBeLessThanOrEqual(pageLimit);
+    console.log(
+      `  ✅ 데이터 로드 검증: ${metrics.rowCount}행 (제한: ${pageLimit})`,
+    );
+  });
+
+  test("USR-DATA-01: 필수 컬럼 빈 값 검증 (이메일, 닉네임, 유저코드)", async () => {
+    const metrics = await userPage.getResultMetrics();
+    if (metrics.noResultState) return;
+
+    const rows = Math.min(metrics.rowCount, 10);
+    for (let i = 0; i < rows; i++) {
+      // 이메일 (5번째 열, 0-indexed: 4)
+      const email = (await userPage.getCellText(i, 4)).trim();
+      expect(
+        userPage.isMeaningfulValue(email),
+        `❌ 행 ${i}: 이메일 컬럼이 비어있음`,
+      ).toBe(true);
+
+      // 유저코드 (4번째 열, 0-indexed: 3)
+      const userCode = (await userPage.getCellText(i, 3)).trim();
+      expect(
+        userPage.isMeaningfulValue(userCode),
+        `❌ 행 ${i}: 유저코드 컬럼이 비어있음`,
+      ).toBe(true);
+    }
+    console.log(`  ✅ ${rows}개 행 필수 컬럼 검증 완료`);
+  });
+
+  test("USR-DATA-02: 목록 건수와 테이블 행 수 일관성 검증", async () => {
+    const metrics = await userPage.getResultMetrics();
+    if (metrics.noResultState) return;
+
+    const pageLimit = await userPage.getPerPageLimit(10);
+
+    expect(metrics.rowCount, "❌ 행 수가 0입니다.").toBeGreaterThan(0);
+    expect(
+      metrics.rowCount,
+      `❌ 행 수(${metrics.rowCount})가 페이지 제한(${pageLimit})을 초과합니다.`,
+    ).toBeLessThanOrEqual(pageLimit);
+    console.log(`  ✅ 건수 일관성: ${metrics.rowCount}행 (제한: ${pageLimit})`);
   });
 });
 
@@ -159,10 +207,7 @@ test.describe.serial("탭 기능", () => {
   test("USR-TAB-01: B2C/B2B 회원관리 탭 전환 검증", async () => {
     const hasTabs = await userPage.hasTabNavigation();
     if (!hasTabs) {
-      test.info().annotations.push({
-        type: "skip-reason",
-        description: "B2C/B2B 탭이 페이지에 존재하지 않음",
-      });
+      console.log("  ℹ️ 건너뜀: B2C/B2B 탭이 페이지에 존재하지 않음");
       return;
     }
 
@@ -194,9 +239,10 @@ test.describe.serial("탭 기능", () => {
     if (!initialMetrics.noResultState && !returnedMetrics.noResultState) {
       expect(
         returnedFingerprint,
-        "B2C 탭 복귀 후 원래 데이터와 다릅니다.",
+        "❌ B2C 탭 복귀 후 원래 데이터와 다릅니다.",
       ).toBe(initialFingerprint);
     }
+    console.log("  ✅ B2C/B2B 탭 전환 및 복귀 검증 완료");
   });
 });
 
@@ -213,15 +259,16 @@ test.describe.serial("검색 기능", () => {
   test("USR-SEARCH-01: 키워드 검색 정합성 검증", async () => {
     // 현재 목록에서 유저코드 또는 이메일을 가져와 검색
     const metrics = await userPage.getResultMetrics();
-    expect(metrics.rowCount, "검색 전 목록이 비어 있습니다.").toBeGreaterThan(
-      0,
-    );
+    expect(
+      metrics.rowCount,
+      "❌ 검색 전 목록이 비어 있습니다.",
+    ).toBeGreaterThan(0);
 
     // 첫 행의 유저코드(3번째 열, 0-indexed)를 검색어로 사용
     const userCode = await userPage.getCellText(0, 3);
     expect(
       userCode.trim().length,
-      "유저코드를 추출할 수 없습니다.",
+      "❌ 유저코드를 추출할 수 없습니다.",
     ).toBeGreaterThan(0);
 
     await userPage.searchByKeyword(userCode.trim());
@@ -232,16 +279,19 @@ test.describe.serial("검색 기능", () => {
       // 검색어가 매칭되지 않을 수 있음 → 유효한 결과
       expect(
         searchMetrics.hasNoResultMessage,
-        "검색 결과 없음 표기가 없습니다.",
+        "❌ 검색 결과 없음 표기가 없습니다.",
       ).toBeTruthy();
     } else {
       expect(
         searchMetrics.rowCount,
-        "검색 결과가 비어 있습니다.",
+        "❌ 검색 결과가 비어 있습니다.",
       ).toBeGreaterThan(0);
     }
 
     await userPage.resetFiltersAndWait();
+    console.log(
+      `  ✅ 키워드 검색 정합성 검증 완료 (검색어: ${userCode.trim()})`,
+    );
   });
 
   test("USR-SEARCH-02: 검색 초기화 동작 검증", async () => {
@@ -249,7 +299,7 @@ test.describe.serial("검색 기능", () => {
     const initialMetrics = await userPage.getResultMetrics();
     expect(
       initialMetrics.rowCount,
-      "초기 목록이 비어 있습니다.",
+      "❌ 초기 목록이 비어 있습니다.",
     ).toBeGreaterThan(0);
 
     // 2. 검색 수행
@@ -257,7 +307,7 @@ test.describe.serial("검색 기능", () => {
     const firstSearchMetrics = await userPage.getResultMetrics();
     expect(
       firstSearchMetrics.rowCount,
-      "첫 조회 결과가 비어 있습니다.",
+      "❌ 첫 조회 결과가 비어 있습니다.",
     ).toBeGreaterThan(0);
 
     // 3. 검색 초기화
@@ -265,7 +315,7 @@ test.describe.serial("검색 기능", () => {
     const resetMetrics = await userPage.getResultMetrics();
     expect(
       resetMetrics.rowCount,
-      "검색 초기화 후 목록이 비어 있습니다.",
+      "❌ 검색 초기화 후 목록이 비어 있습니다.",
     ).toBeGreaterThan(0);
 
     // 4. 재조회
@@ -273,8 +323,11 @@ test.describe.serial("검색 기능", () => {
     const rerunMetrics = await userPage.getResultMetrics();
     expect(
       rerunMetrics.rowCount,
-      "검색 초기화 후 재조회 결과가 비어 있습니다.",
+      "❌ 검색 초기화 후 재조회 결과가 비어 있습니다.",
     ).toBeGreaterThan(0);
+    console.log(
+      `  ✅ 검색 초기화 검증 완료 (초기화 후: ${resetMetrics.rowCount}행, 재조회: ${rerunMetrics.rowCount}행)`,
+    );
   });
 
   test("USR-SEARCH-03: 무효 키워드 검색 시 결과 없음 검증", async ({
@@ -292,7 +345,7 @@ test.describe.serial("검색 기능", () => {
       // 기대 시나리오: 결과 없음 상태
       expect(
         metrics.hasNoResultMessage || metrics.rowCount === 0,
-        "검색 결과 없음 표기가 없습니다.",
+        "❌ 검색 결과 없음 표기가 없습니다.",
       ).toBeTruthy();
     } else {
       // 검색 결과가 있다면, 이전 검색어가 반영되었는지 확인
@@ -300,7 +353,7 @@ test.describe.serial("검색 기능", () => {
       const currentKeyword = await userPage.getCurrentKeywordValue();
       expect(
         currentKeyword,
-        "검색 키워드가 입력 필드에 반영되지 않았습니다.",
+        "❌ 검색 키워드가 입력 필드에 반영되지 않았습니다.",
       ).toContain("AUTO-USR-NOT-FOUND");
     }
 
@@ -321,20 +374,14 @@ test.describe.serial("필터 기능", () => {
   test("USR-FLT-01: 회원상태 필터 적용 검증", async () => {
     const initialMetrics = await userPage.getResultMetrics();
     if (initialMetrics.noResultState) {
-      test.info().annotations.push({
-        type: "skip-reason",
-        description: "목록 데이터 없음 (noResultState)",
-      });
+      console.log("  ℹ️ 건너뜀: 목록 데이터 없음 (noResultState)");
       return;
     }
 
     // 확장 검색 모드로 전환 (필터 사용을 위해)
     const expanded = await userPage.expandSearchMode();
     if (!expanded) {
-      test.info().annotations.push({
-        type: "skip-reason",
-        description: "확장 검색 모드 전환 불가",
-      });
+      console.log("  ℹ️ 건너뜀: 확장 검색 모드 전환 불가");
       return;
     }
 
@@ -342,7 +389,7 @@ test.describe.serial("필터 기능", () => {
     const selectedOption = await userPage.selectFirstStatusOption();
     expect(
       selectedOption.length,
-      "상태 필터 옵션을 선택할 수 없습니다.",
+      "❌ 상태 필터 옵션을 선택할 수 없습니다.",
     ).toBeGreaterThan(0);
 
     // 조회 버튼이 보이는지 확인 후 클릭
@@ -367,7 +414,7 @@ test.describe.serial("필터 기능", () => {
     const resetMetrics = await userPage.getResultMetrics();
     expect(
       resetMetrics.rowCount,
-      "필터 초기화 후 목록이 비어 있습니다.",
+      "❌ 필터 초기화 후 목록이 비어 있습니다.",
     ).toBeGreaterThan(0);
   });
 
@@ -375,28 +422,19 @@ test.describe.serial("필터 기능", () => {
     // 확장 검색 모드로 전환 (서비스 필터 버튼은 확장 모드에서만 표시)
     const expanded = await userPage.expandSearchMode();
     if (!expanded) {
-      test.info().annotations.push({
-        type: "skip-reason",
-        description: "확장 검색 모드 전환 불가",
-      });
+      console.log("  ℹ️ 건너뜀: 확장 검색 모드 전환 불가");
       return;
     }
 
     const hasServiceButtons = await userPage.hasServiceFilterButtons();
     if (!hasServiceButtons) {
-      test.info().annotations.push({
-        type: "skip-reason",
-        description: "가입서비스 필터 버튼 미존재",
-      });
+      console.log("  ℹ️ 건너뜀: 가입서비스 필터 버튼 미존재");
       return;
     }
 
     const initialMetrics = await userPage.getResultMetrics();
     if (initialMetrics.noResultState) {
-      test.info().annotations.push({
-        type: "skip-reason",
-        description: "목록 데이터 없음 (noResultState)",
-      });
+      console.log("  ℹ️ 건너뜀: 목록 데이터 없음 (noResultState)");
       return;
     }
 
@@ -460,20 +498,14 @@ test.describe.serial("페이지네이션", () => {
     const firstMetrics = await userPage.getResultMetrics();
 
     if (firstMetrics.noResultState) {
-      test.info().annotations.push({
-        type: "skip-reason",
-        description: "목록 데이터 없음",
-      });
+      console.log("  ℹ️ 건너뜀: 목록 데이터 없음");
       expect(firstMetrics.hasNoResultMessage).toBeTruthy();
       return;
     }
 
     const canGoNext = await userPage.canGoToNextPage();
     if (!canGoNext) {
-      test.info().annotations.push({
-        type: "skip-reason",
-        description: "단일 페이지 — 페이지네이션 불필요",
-      });
+      console.log("  ℹ️ 건너뜀: 단일 페이지 — 페이지네이션 불필요");
       return;
     }
 
@@ -481,7 +513,7 @@ test.describe.serial("페이지네이션", () => {
     const beforeFirstRow = await userPage.getFirstRowFingerprint();
 
     const moved = await userPage.goToNextPageSafely();
-    expect(moved, "다음 페이지 이동에 실패했습니다.").toBeTruthy();
+    expect(moved, "❌ 다음 페이지 이동에 실패했습니다.").toBeTruthy();
 
     // 데이터 로드 안정화 대기
     await page.waitForLoadState("networkidle").catch(() => {});
@@ -507,22 +539,19 @@ test.describe.serial("페이지네이션", () => {
   test("USR-PAGIN-02: 이전 페이지 복귀 검증", async () => {
     const canGoNext = await userPage.canGoToNextPage();
     if (!canGoNext) {
-      test.info().annotations.push({
-        type: "skip-reason",
-        description: "단일 페이지 — 페이지네이션 불필요",
-      });
+      console.log("  ℹ️ 건너뜀: 단일 페이지 — 페이지네이션 불필요");
       return;
     }
 
     // 2페이지로 이동
     const moved = await userPage.goToNextPageSafely();
-    expect(moved, "다음 페이지 이동에 실패했습니다.").toBeTruthy();
+    expect(moved, "❌ 다음 페이지 이동에 실패했습니다.").toBeTruthy();
 
     const secondPageFingerprint = await userPage.getFirstRowFingerprint();
 
     // 1페이지로 복귀
     const returned = await userPage.goToPreviousPageSafely();
-    expect(returned, "이전 페이지 복귀에 실패했습니다.").toBeTruthy();
+    expect(returned, "❌ 이전 페이지 복귀에 실패했습니다.").toBeTruthy();
 
     const firstPageFingerprint = await userPage.getFirstRowFingerprint();
 
@@ -565,7 +594,7 @@ test.describe.serial("액션", () => {
       const filename = download.suggestedFilename();
       expect(
         filename.length,
-        "다운로드 파일명이 비어 있습니다.",
+        "❌ 다운로드 파일명이 비어 있습니다.",
       ).toBeGreaterThan(0);
     }
     // 다운로드 이벤트 없이도 버튼 클릭 성공 = 동작 검증 완료
@@ -574,10 +603,7 @@ test.describe.serial("액션", () => {
   test("USR-ACTION-02: 전체 선택/해제 체크박스 검증", async () => {
     const metrics = await userPage.getResultMetrics();
     if (metrics.noResultState) {
-      test.info().annotations.push({
-        type: "skip-reason",
-        description: "목록 데이터 없음",
-      });
+      console.log("  ℹ️ 건너뜀: 목록 데이터 없음");
       return;
     }
 
@@ -593,10 +619,7 @@ test.describe.serial("액션", () => {
   test("USR-ACTION-03: 개별 행 체크박스 선택/해제 검증", async () => {
     const metrics = await userPage.getResultMetrics();
     if (metrics.noResultState || metrics.rowCount < 2) {
-      test.info().annotations.push({
-        type: "skip-reason",
-        description: `행 수 부족 (rowCount: ${metrics.rowCount})`,
-      });
+      console.log(`  ℹ️ 건너뜀: 행 수 부족 (rowCount: ${metrics.rowCount})`);
       return;
     }
 
@@ -615,6 +638,7 @@ test.describe.serial("액션", () => {
     // 개별 해제
     await firstCheckbox.uncheck();
     await expect(firstCheckbox).not.toBeChecked();
+    console.log("  ✅ 개별 행 체크박스 동작 검증 완료");
   });
 });
 
@@ -631,10 +655,7 @@ test.describe.serial("상세 페이지", () => {
   test("USR-DETAIL-01: 상세 페이지 진입 및 기본정보 확인", async ({ page }) => {
     const metrics = await userPage.getResultMetrics();
     if (metrics.noResultState) {
-      test.info().annotations.push({
-        type: "skip-reason",
-        description: "목록 데이터 없음",
-      });
+      console.log("  ℹ️ 건너뜀: 목록 데이터 없음");
       return;
     }
 
@@ -663,10 +684,7 @@ test.describe.serial("상세 페이지", () => {
   }) => {
     const metrics = await userPage.getResultMetrics();
     if (metrics.noResultState) {
-      test.info().annotations.push({
-        type: "skip-reason",
-        description: "목록 데이터 없음",
-      });
+      console.log("  ℹ️ 건너뜀: 목록 데이터 없음");
       return;
     }
 
@@ -674,7 +692,7 @@ test.describe.serial("상세 페이지", () => {
     const listData = await userPage.getFirstRowData();
     expect(
       listData.email.length,
-      "목록의 이메일이 비어 있습니다.",
+      "❌ 목록의 이메일이 비어 있습니다.",
     ).toBeGreaterThan(0);
 
     // 상세 페이지 이동
@@ -723,10 +741,7 @@ test.describe.serial("상세 페이지", () => {
   test("USR-DETAIL-03: 상세 페이지에서 목록 복귀 검증", async ({ page }) => {
     const metrics = await userPage.getResultMetrics();
     if (metrics.noResultState) {
-      test.info().annotations.push({
-        type: "skip-reason",
-        description: "목록 데이터 없음",
-      });
+      console.log("  ℹ️ 건너뜀: 목록 데이터 없음");
       return;
     }
 
@@ -741,7 +756,7 @@ test.describe.serial("상세 페이지", () => {
 
     // 목록 페이지로 복귀 확인
     const returnedUrl = page.url();
-    expect(returnedUrl, "목록 페이지로 복귀하지 못했습니다.").toMatch(
+    expect(returnedUrl, "❌ 목록 페이지로 복귀하지 못했습니다.").toMatch(
       /\/user\/list|\/user$/,
     );
 
@@ -750,7 +765,7 @@ test.describe.serial("상세 페이지", () => {
     if (!returnedMetrics.noResultState) {
       expect(
         returnedMetrics.rowCount,
-        "목록 복귀 후 데이터가 로드되지 않았습니다.",
+        "❌ 목록 복귀 후 데이터가 로드되지 않았습니다.",
       ).toBeGreaterThan(0);
     }
   });

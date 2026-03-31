@@ -1,11 +1,11 @@
 /**
  * AdminPage - Admin 관리자 페이지 기본 클래스
- * 
+ *
  * 이 클래스는 Admin 사이트의 공통 기능을 제공합니다.
  */
 
-import { Page, Locator, expect } from '@playwright/test';
-import { BasePage, DEFAULT_TIMEOUTS, TimeoutConfig } from './base.page';
+import { Page, Locator, expect } from "@playwright/test";
+import { BasePage, DEFAULT_TIMEOUTS, TimeoutConfig } from "./base.page";
 
 // ============================================================================
 // 타입 정의
@@ -30,6 +30,13 @@ export interface PaginationInfo {
   hasPrevious: boolean;
 }
 
+/** 결과 메트릭스 (주문 spec 표준 패턴) */
+export interface ResultMetrics {
+  rowCount: number;
+  hasNoResultMessage: boolean;
+  noResultState: boolean;
+}
+
 // ============================================================================
 // Admin 타임아웃 설정
 // ============================================================================
@@ -48,16 +55,17 @@ export const ADMIN_TIMEOUTS: TimeoutConfig = {
 // ============================================================================
 
 export const ADMIN_SELECTORS = {
-  table: 'table',
-  tableRows: 'table tbody tr',
-  tableHeaders: 'table thead th',
+  table: "table",
+  tableRows: "table tbody tr",
+  tableHeaders: "table thead th",
   noResultMessage: ':text("검색결과가 없습니다")',
   pagination: {
     nav: 'nav[aria-label="Pagination"]',
     // Next/Previous 버튼은 Pagination nav 바깥에 위치함
     previousButton: 'button:has-text("Previous")',
     nextButton: 'button:has-text("Next")',
-    pageButton: (num: number) => `nav[aria-label="Pagination"] button:has-text("${num}")`,
+    pageButton: (num: number) =>
+      `nav[aria-label="Pagination"] button:has-text("${num}")`,
     perPageSelect: ':text("10 / page")',
   },
   breadcrumb: 'nav[aria-label="Breadcrumb"]',
@@ -72,12 +80,12 @@ export const ADMIN_SELECTORS = {
 // ============================================================================
 
 export abstract class AdminBasePage extends BasePage {
-  readonly baseUrl = 'https://stage-new-admin.makeuni2026.com';
-  
+  readonly baseUrl = "https://stage-new-admin.makeuni2026.com";
+
   // --------------------------------------------------------------------------
   // 공통 로케이터
   // --------------------------------------------------------------------------
-  
+
   readonly table: Locator;
   readonly tableRows: Locator;
   readonly tableHeaders: Locator;
@@ -91,24 +99,26 @@ export abstract class AdminBasePage extends BasePage {
 
   constructor(page: Page, timeouts: TimeoutConfig = ADMIN_TIMEOUTS) {
     super(page, timeouts);
-    
+
     // 테이블 관련 로케이터
     this.table = page.locator(ADMIN_SELECTORS.table);
     this.tableRows = page.locator(ADMIN_SELECTORS.tableRows);
     this.tableHeaders = page.locator(ADMIN_SELECTORS.tableHeaders);
     this.noResultMessage = page.locator(ADMIN_SELECTORS.noResultMessage);
-    
+
     // 검색 관련 로케이터
     this.searchButton = page.locator(ADMIN_SELECTORS.searchButton);
     this.resetButton = page.locator(ADMIN_SELECTORS.resetButton);
-    
+
     // 네비게이션 로케이터
     this.breadcrumb = page.locator(ADMIN_SELECTORS.breadcrumb);
-    
+
     // 페이지네이션 로케이터
     this.paginationNav = page.locator(ADMIN_SELECTORS.pagination.nav);
     this.nextPageButton = page.locator(ADMIN_SELECTORS.pagination.nextButton);
-    this.previousPageButton = page.locator(ADMIN_SELECTORS.pagination.previousButton);
+    this.previousPageButton = page.locator(
+      ADMIN_SELECTORS.pagination.previousButton,
+    );
   }
 
   // --------------------------------------------------------------------------
@@ -127,58 +137,64 @@ export abstract class AdminBasePage extends BasePage {
 
   /**
    * 페이지로 이동 (인증 상태 확인 포함)
-   * 
+   *
    * 로그인 페이지로 리다이렉트되면 대시보드를 통해 토큰 갱신을 시도합니다.
    */
   async navigate(retryCount: number = 3): Promise<void> {
     const url = this.getPageUrl();
-    
+
     for (let attempt = 0; attempt <= retryCount; attempt++) {
       try {
         await this.goto(url);
       } catch (e: any) {
         if (attempt < retryCount) {
-          console.warn(`⚠️ 페이지 로드 실패 (시도 ${attempt + 1}/${retryCount + 1}) - 재시도`);
+          console.warn(
+            `⚠️ 페이지 로드 실패 (시도 ${attempt + 1}/${retryCount + 1}) - 재시도`,
+          );
           continue;
         }
         throw e;
       }
 
-      await this.page.waitForLoadState('networkidle').catch(() => {});
+      await this.page.waitForLoadState("networkidle").catch(() => {});
       const currentUrl = this.currentUrl;
 
       // 로그인 페이지로 리다이렉트되었는지 확인
-      if (currentUrl.includes('/login') || currentUrl.includes('/auth')) {
+      if (currentUrl.includes("/login") || currentUrl.includes("/auth")) {
         if (attempt < retryCount) {
-          console.warn(`⚠️ 로그인 페이지로 리다이렉트됨 (시도 ${attempt + 1}/${retryCount + 1})`);
-          
+          console.warn(
+            `⚠️ 로그인 페이지로 리다이렉트됨 (시도 ${attempt + 1}/${retryCount + 1})`,
+          );
+
           // 첫 번째 시도 실패 시 대시보드로 이동하여 토큰 갱신 시도
           if (attempt === 0) {
             try {
-              console.log('   → 대시보드를 통한 토큰 갱신 시도...');
-              await this.page.goto(`${this.baseUrl}/dashboard`, { 
-                waitUntil: 'domcontentloaded', 
-                timeout: 15000 
+              console.log("   → 대시보드를 통한 토큰 갱신 시도...");
+              await this.page.goto(`${this.baseUrl}/dashboard`, {
+                waitUntil: "domcontentloaded",
+                timeout: 15000,
               });
-              await this.page.waitForLoadState('networkidle').catch(() => {});
-              
+              await this.page.waitForLoadState("networkidle").catch(() => {});
+
               // 대시보드에서 토큰이 갱신되었는지 확인 (localStorage)
               const lsTokens = await this.page.evaluate(() => ({
-                accessToken: window.localStorage?.getItem('access_token'),
-                refreshToken: window.localStorage?.getItem('refresh_token'),
+                accessToken: window.localStorage?.getItem("access_token"),
+                refreshToken: window.localStorage?.getItem("refresh_token"),
               }));
-              
+
               if (lsTokens.accessToken && lsTokens.refreshToken) {
-                console.log('   → 토큰 갱신 성공, 대상 페이지로 재이동');
+                console.log("   → 토큰 갱신 성공, 대상 페이지로 재이동");
               }
             } catch (e) {
-              console.warn('   → 대시보드 접근 실패:', e);
+              console.warn("   → 대시보드 접근 실패:", e);
             }
           }
-          
+
           continue;
         } else {
-          throw new Error(`인증 실패: 페이지가 로그인 페이지로 리다이렉트되었습니다. (${currentUrl})`);
+          throw new Error(
+            `인증 실패: 페이지가 로그인 페이지로 리다이렉트되었습니다. (${currentUrl})`,
+          );
         }
       } else {
         return;
@@ -193,7 +209,9 @@ export abstract class AdminBasePage extends BasePage {
   /**
    * 테이블 데이터 로드 대기
    */
-  async waitForTableData(timeout: number = this.timeouts.navigation): Promise<number> {
+  async waitForTableData(
+    timeout: number = this.timeouts.navigation,
+  ): Promise<number> {
     await this.page.waitForSelector(ADMIN_SELECTORS.tableRows, { timeout });
     return await this.tableRows.count();
   }
@@ -210,7 +228,9 @@ export abstract class AdminBasePage extends BasePage {
    */
   async hasTableData(): Promise<boolean> {
     const rowCount = await this.tableRows.count();
-    const hasNoResult = await this.noResultMessage.isVisible().catch(() => false);
+    const hasNoResult = await this.noResultMessage
+      .isVisible()
+      .catch(() => false);
     return rowCount > 0 && !hasNoResult;
   }
 
@@ -226,8 +246,8 @@ export abstract class AdminBasePage extends BasePage {
    */
   async getCellText(rowIndex: number, columnIndex: number): Promise<string> {
     const row = this.tableRows.nth(rowIndex);
-    const cell = row.locator('td').nth(columnIndex);
-    return await cell.textContent() || '';
+    const cell = row.locator("td").nth(columnIndex);
+    return (await cell.textContent()) || "";
   }
 
   /**
@@ -235,9 +255,9 @@ export abstract class AdminBasePage extends BasePage {
    */
   async clickFirstRow(columnIndex: number = 1): Promise<void> {
     const firstRow = this.getFirstRow();
-    const cell = firstRow.locator('td').nth(columnIndex);
+    const cell = firstRow.locator("td").nth(columnIndex);
     await cell.click();
-    await this.waitForLoadState('domcontentloaded');
+    await this.waitForLoadState("domcontentloaded");
   }
 
   // --------------------------------------------------------------------------
@@ -252,11 +272,19 @@ export abstract class AdminBasePage extends BasePage {
 
     // 검색 결과가 나타날 때까지 대기
     await Promise.race([
-      this.page.waitForSelector(ADMIN_SELECTORS.tableRows, { timeout: this.timeouts.navigation }).catch(() => null),
-      this.page.waitForSelector(ADMIN_SELECTORS.noResultMessage, { timeout: this.timeouts.navigation }).catch(() => null),
+      this.page
+        .waitForSelector(ADMIN_SELECTORS.tableRows, {
+          timeout: this.timeouts.navigation,
+        })
+        .catch(() => null),
+      this.page
+        .waitForSelector(ADMIN_SELECTORS.noResultMessage, {
+          timeout: this.timeouts.navigation,
+        })
+        .catch(() => null),
     ]);
 
-    await this.waitForLoadState('domcontentloaded');
+    await this.waitForLoadState("domcontentloaded");
   }
 
   /**
@@ -265,7 +293,7 @@ export abstract class AdminBasePage extends BasePage {
   async clickResetButton(): Promise<void> {
     if (await this.resetButton.isEnabled()) {
       await this.resetButton.click();
-      await this.waitForLoadState('domcontentloaded');
+      await this.waitForLoadState("domcontentloaded");
     }
   }
 
@@ -280,36 +308,38 @@ export abstract class AdminBasePage extends BasePage {
   async goToNextPage(): Promise<boolean> {
     const isVisible = await this.nextPageButton.isVisible().catch(() => false);
     if (!isVisible) {
-      console.log('ℹ️ Next 버튼이 보이지 않습니다.');
+      console.log("ℹ️ Next 버튼이 보이지 않습니다.");
       return false;
     }
-    
+
     const isEnabled = await this.nextPageButton.isEnabled().catch(() => false);
     if (!isEnabled) {
-      console.log('ℹ️ Next 버튼이 비활성화되어 있습니다.');
+      console.log("ℹ️ Next 버튼이 비활성화되어 있습니다.");
       return false;
     }
 
     // 현재 첫 번째 행의 텍스트 저장
-    const firstRowBefore = await this.getFirstRow().textContent().catch(() => '');
-    
+    const firstRowBefore = await this.getFirstRow()
+      .textContent()
+      .catch(() => "");
+
     await this.nextPageButton.click();
-    
+
     // 테이블 데이터가 변경될 때까지 대기 (최대 10초)
     try {
       await this.page.waitForFunction(
         (prevText) => {
-          const row = document.querySelector('table tbody tr');
+          const row = document.querySelector("table tbody tr");
           return row && row.textContent !== prevText;
         },
         firstRowBefore,
-        { timeout: 10000 }
+        { timeout: 10000 },
       );
     } catch {
       // 타임아웃 시 추가 대기
-      await this.page.waitForLoadState('networkidle').catch(() => {});
+      await this.page.waitForLoadState("networkidle").catch(() => {});
     }
-    
+
     return true;
   }
 
@@ -317,14 +347,16 @@ export abstract class AdminBasePage extends BasePage {
    * 이전 페이지로 이동
    */
   async goToPreviousPage(): Promise<boolean> {
-    const isEnabled = await this.previousPageButton.isEnabled().catch(() => false);
+    const isEnabled = await this.previousPageButton
+      .isEnabled()
+      .catch(() => false);
     if (!isEnabled) {
-      console.log('ℹ️ Previous 버튼이 비활성화되어 있습니다.');
+      console.log("ℹ️ Previous 버튼이 비활성화되어 있습니다.");
       return false;
     }
 
     await this.previousPageButton.click();
-    await this.waitForLoadState('domcontentloaded');
+    await this.waitForLoadState("domcontentloaded");
     return true;
   }
 
@@ -332,7 +364,10 @@ export abstract class AdminBasePage extends BasePage {
    * 특정 페이지 번호로 이동
    */
   async goToPage(pageNum: number): Promise<boolean> {
-    const pageButton = this.paginationNav.getByRole('button', { name: String(pageNum), exact: true });
+    const pageButton = this.paginationNav.getByRole("button", {
+      name: String(pageNum),
+      exact: true,
+    });
     const isVisible = await pageButton.isVisible().catch(() => false);
 
     if (!isVisible) {
@@ -342,7 +377,7 @@ export abstract class AdminBasePage extends BasePage {
 
     await this.paginationNav.scrollIntoViewIfNeeded();
     await pageButton.click({ force: true });
-    await this.waitForLoadState('domcontentloaded');
+    await this.waitForLoadState("domcontentloaded");
     return true;
   }
 
@@ -354,7 +389,9 @@ export abstract class AdminBasePage extends BasePage {
    * 모든 체크박스 선택
    */
   async checkAllRows(): Promise<void> {
-    const headerCheckbox = this.tableHeaders.locator(ADMIN_SELECTORS.checkbox).first();
+    const headerCheckbox = this.tableHeaders
+      .locator(ADMIN_SELECTORS.checkbox)
+      .first();
     if (await headerCheckbox.isVisible()) {
       await headerCheckbox.check();
     }
@@ -364,7 +401,9 @@ export abstract class AdminBasePage extends BasePage {
    * 모든 체크박스 해제
    */
   async uncheckAllRows(): Promise<void> {
-    const headerCheckbox = this.tableHeaders.locator(ADMIN_SELECTORS.checkbox).first();
+    const headerCheckbox = this.tableHeaders
+      .locator(ADMIN_SELECTORS.checkbox)
+      .first();
     if (await headerCheckbox.isVisible()) {
       await headerCheckbox.uncheck();
     }
@@ -396,7 +435,11 @@ export abstract class AdminBasePage extends BasePage {
   async assertHeading(): Promise<void> {
     const headingText = this.getHeadingText();
     // h1, h2, p 태그 중 하나에서 헤딩 텍스트 찾기
-    const heading = this.page.locator(`h1:has-text("${headingText}"), h2:has-text("${headingText}"), p:text("${headingText}")`).first();
+    const heading = this.page
+      .locator(
+        `h1:has-text("${headingText}"), h2:has-text("${headingText}"), p:text("${headingText}")`,
+      )
+      .first();
     await expect(heading).toBeVisible({ timeout: 10000 });
     await expect(heading).toContainText(headingText);
   }
@@ -449,5 +492,105 @@ export abstract class AdminBasePage extends BasePage {
         await expect(rowCheckboxes.nth(i)).not.toBeChecked();
       }
     }
+  }
+
+  // --------------------------------------------------------------------------
+  // 표준 검증 패턴 (주문 spec 기준)
+  // 서브클래스에서 오버라이드 가능
+  // --------------------------------------------------------------------------
+
+  /**
+   * 테이블 또는 검색결과 없음 메시지 대기
+   * 서브클래스에서 추가 조건(resultSummary 등)이 필요하면 오버라이드
+   */
+  async waitForTableOrNoResult(
+    timeout: number = this.timeouts.navigation,
+  ): Promise<void> {
+    await Promise.race([
+      this.page
+        .waitForSelector(ADMIN_SELECTORS.tableRows, { timeout })
+        .catch(() => null),
+      this.noResultMessage
+        .waitFor({ state: "visible", timeout })
+        .catch(() => null),
+    ]);
+    await this.page.waitForLoadState("domcontentloaded");
+  }
+
+  /**
+   * 결과 메트릭스 수집 (주문 spec 표준 패턴)
+   *
+   * 서브클래스에서 summaryCount 등 추가 필드가 필요하면 오버라이드하여 확장
+   */
+  async getResultMetrics(): Promise<ResultMetrics> {
+    const rowCount = await this.getRowCount();
+    const hasNoResultMessage = await this.noResultMessage
+      .isVisible()
+      .catch(() => false);
+    const noResultState = hasNoResultMessage || rowCount === 0;
+
+    return { rowCount, hasNoResultMessage, noResultState };
+  }
+
+  /**
+   * 첫 번째 행의 텍스트 핑거프린트 (페이지 변경 감지용)
+   */
+  async getFirstRowFingerprint(): Promise<string> {
+    const firstRow = this.getFirstRow();
+    return (await firstRow.textContent().catch(() => "")) || "";
+  }
+
+  /**
+   * 다음 페이지 이동 가능 여부 확인
+   */
+  async canGoToNextPage(): Promise<boolean> {
+    const isVisible = await this.nextPageButton.isVisible().catch(() => false);
+    if (!isVisible) return false;
+    return await this.nextPageButton.isEnabled().catch(() => false);
+  }
+
+  /**
+   * 안전한 다음 페이지 이동 (가능 여부 확인 + 데이터 변경 대기)
+   */
+  async goToNextPageSafely(): Promise<boolean> {
+    if (!(await this.canGoToNextPage())) return false;
+    return await this.goToNextPage();
+  }
+
+  /**
+   * 안전한 이전 페이지 이동
+   */
+  async goToPreviousPageSafely(): Promise<boolean> {
+    const isEnabled = await this.previousPageButton
+      .isEnabled()
+      .catch(() => false);
+    if (!isEnabled) return false;
+    return await this.goToPreviousPage();
+  }
+
+  /**
+   * 현재 활성 페이지 번호 반환
+   */
+  async getCurrentPageNumber(): Promise<number> {
+    const activeButton = this.paginationNav.locator(
+      'button[aria-current="page"]',
+    );
+    const isVisible = await activeButton.isVisible().catch(() => false);
+    if (!isVisible) return 1;
+    const text = await activeButton.textContent();
+    return parseInt(text || "1", 10);
+  }
+
+  /**
+   * 값이 의미 있는지 확인 (빈 값, 대시, N/A 제외)
+   */
+  isMeaningfulValue(value: string): boolean {
+    const trimmed = value.trim();
+    return (
+      trimmed.length > 0 &&
+      trimmed !== "-" &&
+      trimmed !== "—" &&
+      trimmed !== "N/A"
+    );
   }
 }

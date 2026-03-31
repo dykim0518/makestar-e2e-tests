@@ -84,20 +84,7 @@ export class ArtistListPage extends AdminBasePage {
   // 향후 data-testid 추가 시 searchByKeyword/clearSearch 구현 예정.
   // --------------------------------------------------------------------------
 
-  /**
-   * 테이블 또는 검색결과 없음 메시지 대기
-   */
-  async waitForTableOrNoResult(
-    timeout: number = this.timeouts.navigation,
-  ): Promise<void> {
-    await Promise.race([
-      this.table.waitFor({ state: "visible", timeout }).catch(() => null),
-      this.noResultMessage
-        .waitFor({ state: "visible", timeout })
-        .catch(() => null),
-    ]);
-    await this.page.waitForLoadState("domcontentloaded");
-  }
+  // waitForTableOrNoResult()는 AdminBasePage에서 상속
 
   // --------------------------------------------------------------------------
   // 목록 정보
@@ -179,22 +166,7 @@ export class ArtistListPage extends AdminBasePage {
     return [...types];
   }
 
-  // --------------------------------------------------------------------------
-  // 값 유효성 검증 헬퍼
-  // --------------------------------------------------------------------------
-
-  /**
-   * 의미 있는 값인지 확인 (비어있지 않고 placeholder가 아닌)
-   */
-  isMeaningfulValue(value: string): boolean {
-    const trimmed = value.trim();
-    return (
-      trimmed.length > 0 &&
-      trimmed !== "-" &&
-      trimmed !== "—" &&
-      trimmed !== "N/A"
-    );
-  }
+  // isMeaningfulValue()는 AdminBasePage에서 상속
 
   /**
    * 멤버수 형식 검증 (예: "0명", "5명")
