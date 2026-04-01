@@ -43,6 +43,10 @@ test-results*.json
 # Claude settings
 .claude/
 
+# bkit auto-generated metadata
+docs/.bkit-memory.json
+docs/.pdca-status.json
+
 # VS Code (optional - 팀 공유 시 제거)
 # .vscode/
 
