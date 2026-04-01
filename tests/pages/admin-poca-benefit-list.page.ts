@@ -16,7 +16,7 @@ export class PocaBenefitListPage extends AdminBasePage {
   }
 
   getPageUrl(): string {
-    return `${this.baseUrl}/pocaalbum/benefit/list`;
+    return `${this.baseUrl}/pocaalbum/benefit/event/list`;
   }
 
   getHeadingText(): string {

@@ -1,10 +1,18 @@
 /**
- * POCAAlbum 알림 생성 페이지 객체
+ * POCAAlbum 공지사항 생성 페이지 객체
  *
- * URL: /pocaalbum/notification/notice/create (예상 - 탐색 후 확정)
+ * URL: /pocaalbum/notice/create
+ *
+ * 폼 구조:
+ * 1. 공지사항 정보
+ *    - 제목 (textbox, placeholder "제목을 입력하세요")
+ * 2. 공지사항 내용
+ *    - 언어 탭 (한국어, 영어, 중국어 등)
+ *    - 내용 (textarea)
+ * 3. 등록하기 버튼
  */
 
-import { Page, Locator } from "@playwright/test";
+import { Page, Locator, expect } from "@playwright/test";
 import { AdminBasePage, ADMIN_TIMEOUTS } from "./admin-base.page";
 
 export type NotificationCreateOptions = {
@@ -23,34 +31,29 @@ export class PocaNotificationCreatePage extends AdminBasePage {
   constructor(page: Page) {
     super(page, ADMIN_TIMEOUTS);
 
-    this.titleInput = page
-      .locator('input[placeholder*="제목"], input[placeholder*="알림"]')
-      .first();
+    this.titleInput = page.getByPlaceholder("제목을 입력하세요").first();
     this.contentInput = page
       .locator('textarea:visible, [contenteditable="true"]')
       .first();
     this.fileInput = page.locator('input[type="file"]').first();
     this.createButton = page
-      .locator(
-        'button:has-text("등록"), button:has-text("저장"), button:has-text("생성")',
-      )
+      .getByRole("button", { name: /등록하기|저장|생성/ })
       .first();
-    this.cancelButton = page.locator('button:has-text("취소")').first();
+    this.cancelButton = page.getByRole("button", { name: "취소하기" });
   }
 
   getPageUrl(): string {
-    return `${this.baseUrl}/pocaalbum/notification/notice/create`;
+    return `${this.baseUrl}/pocaalbum/notice/create`;
   }
 
   getHeadingText(): string {
-    return "알림";
+    return "공지사항";
   }
 
   /** 제목 입력 */
   async fillTitle(title: string): Promise<void> {
-    await this.titleInput.waitFor({
-      state: "visible",
-      timeout: this.timeouts.medium,
+    await expect(this.titleInput, "제목 입력 필드 미발견").toBeVisible({
+      timeout: 5000,
     });
     await this.titleInput.fill(title);
   }
@@ -73,36 +76,29 @@ export class PocaNotificationCreatePage extends AdminBasePage {
     }
 
     if (options.imagePath) {
-      const { resolve, isAbsolute } = await import("path");
-      const absolutePath = isAbsolute(options.imagePath)
-        ? options.imagePath
-        : resolve(__dirname, "..", options.imagePath);
-      await this.fileInput.setInputFiles(absolutePath);
+      const hasFileInput = await this.fileInput
+        .isVisible({ timeout: 3000 })
+        .catch(() => false);
+      if (hasFileInput) {
+        const { resolve, isAbsolute } = await import("path");
+        const absolutePath = isAbsolute(options.imagePath)
+          ? options.imagePath
+          : resolve(__dirname, "..", options.imagePath);
+        await this.fileInput.setInputFiles(absolutePath);
+      }
     }
   }
 
   /** 등록 후 목록 이동 대기 */
   async submitAndWaitForList(): Promise<void> {
+    this.page.once("dialog", (dialog) => dialog.accept());
+
     await this.createButton.scrollIntoViewIfNeeded();
+    await this.createButton.click({ force: true });
 
-    await Promise.all([
-      this.page
-        .waitForNavigation({
-          waitUntil: "domcontentloaded",
-          timeout: 15000,
-        })
-        .catch(() => null),
-      this.createButton.click({ force: true }),
-    ]);
-
-    const currentUrl = this.page.url();
-    if (!currentUrl.includes("/pocaalbum/notification")) {
-      this.page.once("dialog", (dialog) => dialog.accept());
-      await this.page
-        .waitForURL(/\/pocaalbum\/notification/, { timeout: 10000 })
-        .catch(() => {});
-    }
-
+    await this.page
+      .waitForURL(/\/pocaalbum\/notice/, { timeout: 15000 })
+      .catch(() => {});
     await this.waitForLoadState("domcontentloaded");
   }
 
@@ -115,9 +111,7 @@ export class PocaNotificationCreatePage extends AdminBasePage {
       const input = inputs.nth(i);
       const type = (await input.getAttribute("type")) || "text";
       const placeholder = (await input.getAttribute("placeholder")) || "";
-      const name = (await input.getAttribute("name")) || "";
-      fields[`input[${i}]`] =
-        `type=${type}, placeholder="${placeholder}", name="${name}"`;
+      fields[`input[${i}]`] = `type=${type}, placeholder="${placeholder}"`;
     }
     return fields;
   }

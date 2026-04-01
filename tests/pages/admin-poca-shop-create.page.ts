@@ -3,9 +3,13 @@
  *
  * URL: /pocaalbum/shop/product/create
  *
+ * 드롭다운 구조 (Vue 커스텀 컴포넌트):
+ *   트리거: .single-selection-container > .selection-wrapper > .custom-trigger > .selection > .is-placeholder
+ *   옵션 패널: body > .selection-dropdown-container > .menu-item > .menu-item__label (포탈)
+ *
  * 필수 필드 (*):
- * - 상품종류* (드롭다운)
- * - 포인트 소모방식* (드롭다운)
+ * - 상품종류* (드롭다운: 앨범초기화, FAVE초기화, 스티커, 포카앨범)
+ * - 포인트 소모방식* (드롭다운: 무료포인트, 무료/유료포인트, 유료포인트, 포인트소모없음)
  * - 순번* (spinbutton, 기본값 100)
  * - 상품명* (textbox "입력해주세요")
  * - 포인트* (spinbutton)
@@ -13,7 +17,7 @@
  * - 메인이미지* (파일 업로드)
  */
 
-import { Page, Locator } from "@playwright/test";
+import { Page, Locator, expect } from "@playwright/test";
 import { AdminBasePage, ADMIN_TIMEOUTS } from "./admin-base.page";
 
 export type ShopProductCreateOptions = {
@@ -34,15 +38,15 @@ export class PocaShopCreatePage extends AdminBasePage {
   constructor(page: Page) {
     super(page, ADMIN_TIMEOUTS);
 
-    // "상품명*" 필드 — placeholder "입력해주세요" 중 "상품명" 라벨 아래에 위치
     this.titleInput = page.getByRole("textbox", { name: "상품명" });
-    // "포인트*" 필드
     this.priceInput = page.getByRole("spinbutton", { name: "포인트" });
     this.descriptionInput = page
       .locator('textarea:visible, [contenteditable="true"]')
       .first();
     this.fileInput = page.locator('input[type="file"]').first();
-    this.createButton = page.getByRole("button", { name: /등록|저장/ }).first();
+    this.createButton = page
+      .getByRole("button", { name: /생성하기|등록|저장/ })
+      .first();
     this.cancelButton = page.getByRole("button", { name: "취소하기" });
   }
 
@@ -59,168 +63,163 @@ export class PocaShopCreatePage extends AdminBasePage {
   // --------------------------------------------------------------------------
 
   /**
-   * 커스텀 드롭다운에서 옵션 선택
-   * POCA Admin의 드롭다운은 "선택해주세요" 텍스트를 클릭하면 옵션 목록이 나타남
+   * POCA Admin 커스텀 드롭다운에서 옵션 선택
+   *
+   * 동작 방식:
+   * 1. 라벨 텍스트로 드롭다운 영역 특정
+   * 2. 해당 영역의 .selection-input (트리거) 클릭
+   * 3. body에 포탈로 렌더되는 .selection-dropdown-container 대기
+   * 4. .menu-item__label 중 일치하는 옵션 클릭
    */
-  private async selectDropdownOption(
+  async selectDropdownOption(
     labelText: string,
     optionText: string,
-  ): Promise<boolean> {
-    // 라벨 근처의 드롭다운 트리거 찾기
+  ): Promise<void> {
+    // 라벨 찾기
     const label = this.page.getByText(labelText, { exact: false }).first();
-    const isLabelVisible = await label
-      .isVisible({ timeout: 3000 })
-      .catch(() => false);
-    if (!isLabelVisible) {
-      console.log(`  ⚠️ 라벨 "${labelText}" 미발견`);
-      return false;
-    }
+    await expect(label, `라벨 "${labelText}" 미발견`).toBeVisible({
+      timeout: 5000,
+    });
 
-    // "선택해주세요" 드롭다운 트리거 클릭
-    const trigger = label.locator("..").locator('[cursor="pointer"]').first();
-    const isTriggerVisible = await trigger
+    // 라벨의 부모 컨테이너에서 드롭다운 트리거 찾기
+    const container = label.locator("xpath=ancestor::div[1]");
+    const trigger = container.locator(".selection-input").first();
+    const isTriggerInContainer = await trigger
       .isVisible({ timeout: 3000 })
       .catch(() => false);
 
-    if (isTriggerVisible) {
+    if (isTriggerInContainer) {
       await trigger.click();
     } else {
-      // fallback: 라벨 부모의 부모에서 찾기
-      const trigger2 = label
-        .locator("xpath=ancestor::*[2]")
-        .locator('[cursor="pointer"]')
+      // 형제 div에서 트리거 찾기 (라벨과 드롭다운이 같은 레벨)
+      const siblingTrigger = label
+        .locator("xpath=following::div[contains(@class,'selection-input')]")
         .first();
-      await trigger2.click().catch(async () => {
-        // 최후 수단: page.evaluate로 직접 클릭
-        await this.page.evaluate((lt) => {
-          const labels = Array.from(document.querySelectorAll("*"));
-          const found = labels.find(
-            (el) => el.textContent?.includes(lt) && el.textContent!.length < 30,
-          );
-          if (found) {
-            const parent = found.closest("[class]")?.parentElement;
-            const clickable = parent?.querySelector(
-              '[style*="cursor"]',
-            ) as HTMLElement;
-            clickable?.click();
-          }
-        }, labelText);
-      });
+      await siblingTrigger.click();
     }
 
-    // 옵션 선택
-    await this.page.waitForTimeout(500); // 드롭다운 애니메이션 대기
-    const option = this.page.getByText(optionText, { exact: true }).first();
-    const optionVisible = await option
-      .isVisible({ timeout: 3000 })
+    // 포탈로 렌더된 드롭다운 패널 대기 (height:0으로 렌더되어 isVisible이 false)
+    const dropdown = this.page.locator(".selection-dropdown-container");
+    await dropdown.waitFor({ state: "attached", timeout: 5000 });
+
+    // 옵션 클릭 (force: true — 패널 height:0 대응)
+    const option = dropdown
+      .locator(".menu-item__label")
+      .filter({ hasText: optionText });
+    const optionCount = await option.count();
+
+    if (optionCount > 0) {
+      await option.first().click({ force: true });
+    } else {
+      const firstItem = dropdown.locator(".menu-item__label").first();
+      const firstText = await firstItem.textContent();
+      console.log(
+        `  ⚠️ "${optionText}" 미발견, 첫 번째 옵션 "${firstText}" 선택`,
+      );
+      await firstItem.click({ force: true });
+    }
+
+    // 커버 오버레이 닫기
+    const cover = this.page.locator(".selection-dropdown-cover-container");
+    const coverVisible = await cover
+      .isVisible({ timeout: 1000 })
       .catch(() => false);
-    if (optionVisible) {
-      await option.click();
-      return true;
+    if (coverVisible) {
+      await this.page.keyboard.press("Escape");
+      await cover.waitFor({ state: "hidden", timeout: 3000 }).catch(() => {});
     }
-
-    // fallback: 첫 번째 옵션 선택
-    const firstOption = this.page
-      .locator('[role="option"], [class*="option"]')
-      .first();
-    const hasOption = await firstOption
-      .isVisible({ timeout: 2000 })
-      .catch(() => false);
-    if (hasOption) {
-      await firstOption.click();
-      return true;
-    }
-
-    await this.page.keyboard.press("Escape");
-    console.log(
-      `  ⚠️ 드롭다운 "${labelText}"에서 옵션 "${optionText}" 선택 실패`,
-    );
-    return false;
   }
 
   // --------------------------------------------------------------------------
   // 폼 입력
   // --------------------------------------------------------------------------
 
-  /** 상품명 입력 */
+  /** 상품명 입력 — "상품명*" 라벨 아래의 textbox */
   async fillTitle(title: string): Promise<void> {
-    // 1순위: role 기반
-    const roleVisible = await this.titleInput
-      .isVisible({ timeout: 3000 })
-      .catch(() => false);
-    if (roleVisible) {
-      await this.titleInput.fill(title);
-      return;
-    }
-
-    // 2순위: "상품명" 라벨 근처의 textbox
     const label = this.page.getByText("상품명", { exact: false }).first();
     const input = label
-      .locator("..")
-      .locator("..")
+      .locator("xpath=ancestor::div[1]")
       .getByRole("textbox")
       .first();
-    const inputVisible = await input
-      .isVisible({ timeout: 3000 })
+    const isVisible = await input
+      .isVisible({ timeout: 5000 })
       .catch(() => false);
-    if (inputVisible) {
+
+    if (isVisible) {
       await input.fill(title);
       return;
     }
 
-    // 3순위: placeholder "입력해주세요" 중 두 번째 (첫 번째는 다른 필드일 수 있음)
-    const placeholders = this.page.getByPlaceholder("입력해주세요");
-    const count = await placeholders.count();
-    if (count > 0) {
-      await placeholders.first().fill(title);
-    }
+    // fallback: 라벨 다음 형제에서 찾기
+    const siblingInput = label
+      .locator("xpath=following::input[@type='text']")
+      .first();
+    await expect(siblingInput, "상품명 입력 필드 미발견").toBeVisible({
+      timeout: 5000,
+    });
+    await siblingInput.fill(title);
   }
 
-  /** 포인트 입력 */
+  /** 포인트 입력 — "포인트*" 라벨 다음의 number input */
   async fillPrice(price: string): Promise<void> {
-    const isVisible = await this.priceInput
-      .isVisible({ timeout: 3000 })
+    const input = this.page
+      .getByText("포인트*")
+      .first()
+      .locator("xpath=following::input[@type='number']")
+      .first();
+    const isVisible = await input
+      .isVisible({ timeout: 5000 })
       .catch(() => false);
     if (isVisible) {
-      await this.priceInput.fill(price);
-      return;
-    }
-
-    // fallback: spinbutton 중 빈 값인 것
-    const spinbuttons = this.page.getByRole("spinbutton");
-    const count = await spinbuttons.count();
-    for (let i = 0; i < count; i++) {
-      const value = await spinbuttons.nth(i).inputValue();
-      if (!value || value === "0") {
-        await spinbuttons.nth(i).fill(price);
-        return;
-      }
+      await input.fill(price);
     }
   }
 
   /** 전체 폼 입력 */
   async fillCreateForm(options: ShopProductCreateOptions): Promise<void> {
     // 1. 상품종류 선택 (필수)
-    await this.selectDropdownOption("상품종류", "PACK");
+    await this.selectDropdownOption("상품종류", "포카앨범");
 
     // 2. 포인트 소모방식 선택 (필수)
-    await this.selectDropdownOption("소모방식", "소모");
+    await this.selectDropdownOption("소모방식", "무료포인트");
 
-    // 3. 상품명 입력 (필수)
+    // 3. FAVE PACK 선택 (필수 — 첫 번째 항목 자동 선택)
+    const favePack = this.page.locator(".is-placeholder");
+    const favePackCount = await favePack.count();
+    if (favePackCount > 0) {
+      await this.selectDropdownOption("FAVE PACK", "");
+    }
+
+    // 4. 순번 확인/입력 (필수 — 드롭다운 선택 후 리셋될 수 있음)
+    const orderInput = this.page
+      .getByText("순번")
+      .first()
+      .locator("xpath=following::input[@type='number']")
+      .first();
+    const orderVisible = await orderInput
+      .isVisible({ timeout: 3000 })
+      .catch(() => false);
+    if (orderVisible) {
+      const orderVal = await orderInput.inputValue();
+      if (!orderVal) {
+        await orderInput.fill("100");
+      }
+    }
+
+    // 5. 상품명 입력 (필수)
     await this.fillTitle(options.title);
 
-    // 4. 포인트 입력
+    // 6. 포인트 입력
     if (options.price) {
       await this.fillPrice(options.price);
     }
 
-    // 5. 이미지 업로드 (로고이미지 필수)
+    // 6. 이미지 업로드 (로고이미지 + 메인이미지 필수)
     if (options.imagePath) {
       const { resolve, isAbsolute } = await import("path");
       const absolutePath = isAbsolute(options.imagePath)
         ? options.imagePath
         : resolve(__dirname, "..", options.imagePath);
-      // 첫 번째 file input에 업로드
       const fileInputs = this.page.locator('input[type="file"]');
       const fileCount = await fileInputs.count();
       for (let i = 0; i < Math.min(fileCount, 2); i++) {
@@ -231,11 +230,11 @@ export class PocaShopCreatePage extends AdminBasePage {
 
   /** 등록 후 목록 이동 대기 */
   async submitAndWaitForList(): Promise<void> {
+    // 다이얼로그 자동 확인 (클릭 전 등록)
+    this.page.once("dialog", (dialog) => dialog.accept());
+
     await this.createButton.scrollIntoViewIfNeeded();
     await this.createButton.click({ force: true });
-
-    // 다이얼로그 자동 확인
-    this.page.once("dialog", (dialog) => dialog.accept());
 
     await this.page
       .waitForURL(/\/pocaalbum\/shop/, { timeout: 15000 })
@@ -247,7 +246,6 @@ export class PocaShopCreatePage extends AdminBasePage {
   async discoverFormFields(): Promise<Record<string, string>> {
     const fields: Record<string, string> = {};
 
-    // textbox
     const textboxes = this.page.getByRole("textbox");
     const tbCount = await textboxes.count();
     for (let i = 0; i < tbCount; i++) {
@@ -259,7 +257,6 @@ export class PocaShopCreatePage extends AdminBasePage {
       fields[`textbox[${i}]`] = `placeholder="${ph}", value="${val}"`;
     }
 
-    // spinbutton
     const spins = this.page.getByRole("spinbutton");
     const spCount = await spins.count();
     for (let i = 0; i < spCount; i++) {
@@ -270,8 +267,7 @@ export class PocaShopCreatePage extends AdminBasePage {
       fields[`spinbutton[${i}]`] = `value="${val}"`;
     }
 
-    // 드롭다운 (선택해주세요)
-    const dropdowns = this.page.getByText("선택해주세요");
+    const dropdowns = this.page.locator(".is-placeholder");
     const ddCount = await dropdowns.count();
     fields["dropdowns"] = `${ddCount}개 미선택 드롭다운`;
 
