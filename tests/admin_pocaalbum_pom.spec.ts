@@ -1092,16 +1092,10 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
         .isVisible({ timeout: 2000 })
         .catch(() => false);
 
-      if (hasPageError) {
-        const errorText = await pageError
-          .first()
-          .textContent()
-          .catch(() => "Unknown");
-        console.log(
-          `⚠️ 페이지 에러 감지 (${errorText}) - 생성 페이지 접근 불가`,
-        );
-        return;
-      }
+      expect(
+        hasPageError,
+        "❌ 페이지 에러 감지 — Shop 생성 페이지 접근 불가",
+      ).toBe(false);
 
       // 폼 필드 탐색
       const fields = await shopCreatePage.discoverFormFields();
@@ -1124,11 +1118,10 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
         "❌ 등록 버튼을 찾을 수 없음 — Shop 생성 페이지 구조 확인 필요",
       ).toBe(true);
 
-      const isEnabled = await shopCreatePage.createButton.isEnabled();
-      expect(
-        isEnabled,
+      await expect(
+        shopCreatePage.createButton,
         "❌ 등록 버튼 비활성화 — 필수 필드 누락. discoverFormFields 로그를 확인하세요.",
-      ).toBe(true);
+      ).toBeEnabled({ timeout: 10000 });
 
       await shopCreatePage.submitAndWaitForList();
       sharedShopCreated = true;
@@ -1310,16 +1303,10 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
         .isVisible({ timeout: 2000 })
         .catch(() => false);
 
-      if (hasPageError) {
-        const errorText = await pageError
-          .first()
-          .textContent()
-          .catch(() => "Unknown");
-        console.log(
-          `⚠️ 페이지 에러 감지 (${errorText}) - FAVE 생성 페이지 접근 불가`,
-        );
-        return;
-      }
+      expect(
+        hasPageError,
+        "❌ 페이지 에러 감지 — FAVE 생성 페이지 접근 불가",
+      ).toBe(false);
 
       const fields = await faveCreatePage.discoverFormFields();
       console.log(`  발견된 필드 수: ${Object.keys(fields).length}`);
@@ -1342,8 +1329,10 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
         "❌ 등록 버튼을 찾을 수 없음 — FAVE 생성 페이지 확인 필요",
       ).toBe(true);
 
-      const isEnabled = await faveCreatePage.createButton.isEnabled();
-      expect(isEnabled, "❌ 등록 버튼 비활성화 — 필수 필드 누락").toBe(true);
+      await expect(
+        faveCreatePage.createButton,
+        "❌ 등록 버튼 비활성화 — 필수 필드 누락",
+      ).toBeEnabled({ timeout: 10000 });
 
       await faveCreatePage.submitAndWaitForList();
       sharedFaveCreated = true;
@@ -1480,6 +1469,7 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
     let sharedBenefitCreated = false;
 
     test("PB-CREATE-01: BENEFIT 생성 폼 입력 및 등록", async ({ page }) => {
+      test.setTimeout(180000); // BENEFIT 이벤트 폼은 복잡하여 3분 필요
       const benefitCreatePage = new PocaBenefitCreatePage(page);
       await benefitCreatePage.navigate();
       await waitForPageStable(page);
@@ -1495,19 +1485,10 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
         .isVisible({ timeout: 2000 })
         .catch(() => false);
 
-      if (hasPageError) {
-        const errorText = await pageError
-          .first()
-          .textContent()
-          .catch(() => "Unknown");
-        console.log(
-          `⚠️ 페이지 에러 감지 (${errorText}) - BENEFIT 생성 페이지 접근 불가`,
-        );
-        console.log(
-          "ℹ️ URL이 변경되었을 수 있습니다. 관리자에서 BENEFIT 메뉴 경로를 확인하세요.",
-        );
-        return;
-      }
+      expect(
+        hasPageError,
+        "❌ 페이지 에러 감지 — BENEFIT 생성 페이지 접근 불가 (URL 확인 필요)",
+      ).toBe(false);
 
       const fields = await benefitCreatePage.discoverFormFields();
       console.log(`  발견된 필드 수: ${Object.keys(fields).length}`);
@@ -1516,9 +1497,8 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
 
       await benefitCreatePage.fillCreateForm({
         title: sharedBenefitTitle,
+        imagePath: "fixtures/ta_sample.png",
       });
-
-      page.once("dialog", (dialog) => dialog.accept());
 
       const isCreateVisible = await benefitCreatePage.createButton
         .isVisible({ timeout: 5000 })
@@ -1529,8 +1509,10 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
         "❌ 등록 버튼을 찾을 수 없음 — BENEFIT 생성 페이지 확인 필요",
       ).toBe(true);
 
-      const isEnabled = await benefitCreatePage.createButton.isEnabled();
-      expect(isEnabled, "❌ 등록 버튼 비활성화 — 필수 필드 누락").toBe(true);
+      await expect(
+        benefitCreatePage.createButton,
+        "❌ 등록 버튼 비활성화 — 필수 필드 누락",
+      ).toBeEnabled({ timeout: 10000 });
 
       await benefitCreatePage.submitAndWaitForList();
       sharedBenefitCreated = true;
@@ -1692,19 +1674,10 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
         .isVisible({ timeout: 2000 })
         .catch(() => false);
 
-      if (hasPageError) {
-        const errorText = await pageError
-          .first()
-          .textContent()
-          .catch(() => "Unknown");
-        console.log(
-          `⚠️ 페이지 에러 감지 (${errorText}) - 알림 생성 페이지 접근 불가`,
-        );
-        console.log(
-          "ℹ️ URL이 변경되었을 수 있습니다. 관리자에서 알림 메뉴 경로를 확인하세요.",
-        );
-        return;
-      }
+      expect(
+        hasPageError,
+        "❌ 페이지 에러 감지 — 알림 생성 페이지 접근 불가 (URL 확인 필요)",
+      ).toBe(false);
 
       const fields = await notifCreatePage.discoverFormFields();
       console.log(`  발견된 필드 수: ${Object.keys(fields).length}`);
@@ -1727,8 +1700,10 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
         "❌ 등록 버튼을 찾을 수 없음 — 알림 생성 페이지 확인 필요",
       ).toBe(true);
 
-      const isEnabled = await notifCreatePage.createButton.isEnabled();
-      expect(isEnabled, "❌ 등록 버튼 비활성화 — 필수 필드 누락").toBe(true);
+      await expect(
+        notifCreatePage.createButton,
+        "❌ 등록 버튼 비활성화 — 필수 필드 누락",
+      ).toBeEnabled({ timeout: 10000 });
 
       await notifCreatePage.submitAndWaitForList();
       sharedNotifCreated = true;

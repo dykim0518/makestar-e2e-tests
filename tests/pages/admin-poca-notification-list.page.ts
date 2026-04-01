@@ -16,7 +16,7 @@ export class PocaNotificationListPage extends AdminBasePage {
   }
 
   getPageUrl(): string {
-    return `${this.baseUrl}/pocaalbum/notification/notice/list`;
+    return `${this.baseUrl}/pocaalbum/notice/list`;
   }
 
   getHeadingText(): string {
