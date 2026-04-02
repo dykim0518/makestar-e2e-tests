@@ -345,6 +345,38 @@ export class MakestarPage extends BasePage {
     }
   }
 
+  /** 팔로우 관리 페이지로 이동 (리다이렉트 대응 포함) */
+  async gotoFollow(): Promise<void> {
+    await this.goto(`${this.baseUrl}/my-page/follow`);
+    await this.waitForLoadState("domcontentloaded");
+    await this.waitForNetworkStable(5000).catch(() => {});
+    await this.handleModal();
+
+    if (!this.currentUrl.includes("my-page")) {
+      console.log("⚠️ 팔로우 관리 페이지 리다이렉트됨, 재시도...");
+      await this.goto(`${this.baseUrl}/my-page/follow`);
+      await this.waitForLoadState("domcontentloaded");
+      await this.waitForNetworkStable(5000).catch(() => {});
+      await this.handleModal();
+    }
+  }
+
+  /** 알림 설정 페이지로 이동 (리다이렉트 대응 포함) */
+  async gotoNotification(): Promise<void> {
+    await this.goto(`${this.baseUrl}/my-page/notification`);
+    await this.waitForLoadState("domcontentloaded");
+    await this.waitForNetworkStable(5000).catch(() => {});
+    await this.handleModal();
+
+    if (!this.currentUrl.includes("my-page")) {
+      console.log("⚠️ 알림 설정 페이지 리다이렉트됨, 재시도...");
+      await this.goto(`${this.baseUrl}/my-page/notification`);
+      await this.waitForLoadState("domcontentloaded");
+      await this.waitForNetworkStable(5000).catch(() => {});
+      await this.handleModal();
+    }
+  }
+
   // --------------------------------------------------------------------------
   // GNB 버튼 클릭 네비게이션 (사용자 시나리오 기반, URL 직접 이동 없음)
   // --------------------------------------------------------------------------
@@ -1813,7 +1845,7 @@ export class MakestarPage extends BasePage {
         "이벤트 응모정보 관리",
         "이벤트 응모",
         "Event Entry",
-        "event submissions",
+        "Manage Event Submissions",
       ],
     },
     {
@@ -1821,12 +1853,20 @@ export class MakestarPage extends BasePage {
       texts: ["비밀번호 변경", "비밀번호", "Password", "Change Password"],
     },
     {
+      name: "팔로우 관리",
+      texts: ["팔로우 관리", "팔로우", "Follow", "Manage Follows"],
+    },
+    {
       name: "주문내역",
-      texts: ["주문내역", "주문 내역", "Order", "order history"],
+      texts: ["주문내역", "주문 내역", "Order", "Order History"],
     },
     {
       name: "배송지 관리",
-      texts: ["배송지 관리", "배송지", "Address", "Shipping"],
+      texts: ["배송지 관리", "배송지", "Address", "Manage Delivery Address"],
+    },
+    {
+      name: "알림 설정",
+      texts: ["알림 설정", "알림", "Notification", "Notification Settings"],
     },
     { name: "로그아웃", texts: ["로그아웃", "Logout", "Log out", "Sign out"] },
   ] as const;
@@ -2468,6 +2508,24 @@ export class MakestarPage extends BasePage {
       .locator(
         "text=/응모|참여|entry|submission|내역|없습니다|empty|No entries|Register/i",
       )
+      .first()
+      .isVisible({ timeout })
+      .catch(() => false);
+  }
+
+  /** 팔로우 관리 페이지 콘텐츠 존재 확인 */
+  async hasFollowContent(timeout = 5000): Promise<boolean> {
+    return await this.page
+      .getByText(/팔로우|Follow|Following|팔로잉|없습니다|empty|No follows/i)
+      .first()
+      .isVisible({ timeout })
+      .catch(() => false);
+  }
+
+  /** 알림 설정 페이지 콘텐츠 존재 확인 */
+  async hasNotificationContent(timeout = 5000): Promise<boolean> {
+    return await this.page
+      .getByText(/알림|Notification|푸시|Push|이메일|Email|설정|Settings/i)
       .first()
       .isVisible({ timeout })
       .catch(() => false);

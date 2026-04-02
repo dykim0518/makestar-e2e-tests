@@ -7,7 +7,7 @@
  * @see tests/pages/makestar.page.ts
  *
  * ============================================================================
- * 테스트 그룹 구조 (총 34개 테스트)
+ * 테스트 그룹 구조 (총 36개 테스트)
  * ============================================================================
  *
  * A. 기본 페이지 (CMR-HOME-01~02, CMR-PAGE-01~05)
@@ -22,7 +22,7 @@
  * D. 네비게이션 검증 (CMR-NAV-05~08)
  *    - GNB 버튼 클릭 네비게이션 (serial)
  *
- * E. 마이페이지/회원 기능 (CMR-AUTH-01~06)
+ * E. 마이페이지/회원 기능 (CMR-AUTH-01~06, CMR-AUTH-04-1~04-2)
  *    - 마이페이지, 주문내역, 배송지, 비밀번호, 응모정보
  *
  * F. 상품/장바구니 기능 (CMR-ACTION-01~05)
@@ -632,6 +632,44 @@ test.describe.serial("마이페이지/회원 기능", () => {
     const hasContent = await makestar.hasAddressContent();
     expect(hasContent, "배송지 관리 콘텐츠가 표시되어야 합니다").toBe(true);
     console.log(`✅ 배송지 관리 페이지 확인됨: ${currentUrl}`);
+  });
+
+  test("CMR-AUTH-04-1: 팔로우 관리 페이지 이동 및 확인", async ({ page }) => {
+    test.setTimeout(TEST_TIMEOUT);
+
+    await makestar.gotoFollow();
+    await makestar.waitForContentStable();
+
+    const currentUrl = makestar.currentUrl;
+    console.log(`📍 현재 URL: ${currentUrl}`);
+
+    expect(
+      currentUrl.includes("/follow"),
+      `팔로우 관리 URL이어야 합니다 (현재: ${currentUrl})`,
+    ).toBe(true);
+
+    const hasContent = await makestar.hasFollowContent();
+    expect(hasContent, "팔로우 관리 콘텐츠가 표시되어야 합니다").toBe(true);
+    console.log(`✅ 팔로우 관리 페이지 확인됨: ${currentUrl}`);
+  });
+
+  test("CMR-AUTH-04-2: 알림 설정 페이지 이동 및 확인", async ({ page }) => {
+    test.setTimeout(TEST_TIMEOUT);
+
+    await makestar.gotoNotification();
+    await makestar.waitForContentStable();
+
+    const currentUrl = makestar.currentUrl;
+    console.log(`📍 현재 URL: ${currentUrl}`);
+
+    expect(
+      currentUrl.includes("/notification"),
+      `알림 설정 URL이어야 합니다 (현재: ${currentUrl})`,
+    ).toBe(true);
+
+    const hasContent = await makestar.hasNotificationContent();
+    expect(hasContent, "알림 설정 콘텐츠가 표시되어야 합니다").toBe(true);
+    console.log(`✅ 알림 설정 페이지 확인됨: ${currentUrl}`);
   });
 
   test("CMR-AUTH-05: 비밀번호 변경 페이지 접근 및 요소 검증", async ({
