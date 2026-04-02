@@ -344,9 +344,10 @@ export class UserListPage extends AdminBasePage {
   }
 
   /**
-   * 첫 행의 주요 데이터(이메일, 유저코드, 닉네임, 이름) 반환
+   * 특정 행의 주요 데이터(이메일, 유저코드, 닉네임, 이름) 반환
    */
-  async getFirstRowData(): Promise<{
+  async getRowData(rowIndex = 0): Promise<{
+    rowIndex: number;
     status: string;
     email: string;
     userCode: string;
@@ -354,12 +355,47 @@ export class UserListPage extends AdminBasePage {
     name: string;
   }> {
     return {
-      status: (await this.getCellText(0, 1)).trim(),
-      email: (await this.getCellText(0, 2)).trim(),
-      userCode: (await this.getCellText(0, 3)).trim(),
-      nickname: (await this.getCellText(0, 4)).trim(),
-      name: (await this.getCellText(0, 5)).trim(),
+      rowIndex,
+      status: (await this.getCellText(rowIndex, 1)).trim(),
+      email: (await this.getCellText(rowIndex, 2)).trim(),
+      userCode: (await this.getCellText(rowIndex, 3)).trim(),
+      nickname: (await this.getCellText(rowIndex, 4)).trim(),
+      name: (await this.getCellText(rowIndex, 5)).trim(),
     };
+  }
+
+  /**
+   * 첫 행의 주요 데이터 반환 (하위호환)
+   */
+  async getFirstRowData() {
+    return this.getRowData(0);
+  }
+
+  /**
+   * 프로필이 완성된 회원(닉네임+이름 모두 존재)을 목록에서 찾아 반환.
+   * 없으면 첫 행 반환 + hasCompleteProfile: false
+   */
+  async findRowWithCompleteProfile(maxScan = 10): Promise<
+    Awaited<ReturnType<typeof this.getRowData>> & {
+      hasCompleteProfile: boolean;
+    }
+  > {
+    const metrics = await this.getResultMetrics();
+    const rows = Math.min(metrics.rowCount, maxScan);
+
+    for (let i = 0; i < rows; i++) {
+      const data = await this.getRowData(i);
+      if (
+        this.isMeaningfulValue(data.nickname) &&
+        this.isMeaningfulValue(data.name)
+      ) {
+        return { ...data, hasCompleteProfile: true };
+      }
+    }
+
+    // 완성 회원 없으면 첫 행 반환
+    const first = await this.getRowData(0);
+    return { ...first, hasCompleteProfile: false };
   }
 
   // --------------------------------------------------------------------------
@@ -598,17 +634,25 @@ export class UserListPage extends AdminBasePage {
   // --------------------------------------------------------------------------
 
   /**
-   * 첫 번째 행 클릭하여 상세 페이지로 이동
+   * 특정 행 클릭하여 상세 페이지로 이동
+   * @param rowIndex 클릭할 행 인덱스 (기본 0 = 첫 행)
    * @returns 상세 페이지 URL
    */
-  async clickFirstRowAndNavigate(): Promise<string> {
-    const firstRow = this.getFirstRow();
+  async clickRowAndNavigate(rowIndex = 0): Promise<string> {
+    const row = this.table.locator("tbody tr").nth(rowIndex);
     // 두 번째 셀 클릭 (첫 번째는 체크박스)
-    const cell = firstRow.locator("td").nth(1);
+    const cell = row.locator("td").nth(1);
     await cell.click();
     await this.waitForLoadState("domcontentloaded");
     await this.page.waitForLoadState("networkidle").catch(() => {});
     return this.page.url();
+  }
+
+  /**
+   * 첫 번째 행 클릭하여 상세 페이지로 이동 (하위호환)
+   */
+  async clickFirstRowAndNavigate(): Promise<string> {
+    return this.clickRowAndNavigate(0);
   }
 
   // --------------------------------------------------------------------------
