@@ -173,9 +173,7 @@ test.describe("기본 페이지", () => {
     console.log("✅ Test 6 완료: Product 페이지 요소 검증");
   });
 
-  test("CMR-PAGE-05: Product 구매하기 클릭 및 결과 검증", async ({
-    page,
-  }) => {
+  test("CMR-PAGE-05: Product 구매하기 클릭 및 결과 검증", async ({ page }) => {
     test.setTimeout(TEST_TIMEOUT);
 
     // GNB Event 버튼 클릭 (유저 시나리오)
@@ -187,7 +185,8 @@ test.describe("기본 페이지", () => {
     expect(purchaseClicked).toBeTruthy();
     console.log("✅ 구매 버튼 클릭 완료");
 
-    await makestar.waitForContentStable("body", { stableTime: 1000 });
+    // 카운트다운 타이머가 DOM을 계속 변경하므로 waitForContentStable 대신 네트워크 안정화 대기
+    await makestar.waitForNetworkStable();
     const afterClickUrl = makestar.currentUrl;
     console.log(`📍 버튼 클릭 후 URL: ${afterClickUrl}`);
 
@@ -509,9 +508,7 @@ test.describe.serial("네비게이션 검증", () => {
     makestar = new MakestarPage(page);
     await makestar.gotoHome();
   });
-  test("CMR-NAV-05: 프로필 버튼 → 마이페이지 네비게이션", async ({
-    page,
-  }) => {
+  test("CMR-NAV-05: 프로필 버튼 → 마이페이지 네비게이션", async ({ page }) => {
     test.setTimeout(TEST_TIMEOUT);
 
     await makestar.gotoHome();
@@ -638,9 +635,7 @@ test.describe.serial("마이페이지/회원 기능", () => {
     makestar = new MakestarPage(page);
     await makestar.gotoHome();
   });
-  test("CMR-AUTH-01: 마이페이지 접속 및 프로필 정보 확인", async ({
-    page,
-  }) => {
+  test("CMR-AUTH-01: 마이페이지 접속 및 프로필 정보 확인", async ({ page }) => {
     test.setTimeout(TEST_TIMEOUT);
 
     await makestar.gotoHome();
@@ -762,8 +757,7 @@ test.describe.serial("마이페이지/회원 기능", () => {
       .isVisible({ timeout: 5000 })
       .catch(() => false);
 
-    const isPasswordPage =
-      currentUrl.includes("password") || hasPasswordInput;
+    const isPasswordPage = currentUrl.includes("password") || hasPasswordInput;
     expect(isPasswordPage).toBeTruthy();
     console.log("✅ 비밀번호 변경 페이지 접근 확인");
 
@@ -1034,9 +1028,7 @@ test.describe("상품/장바구니 기능", () => {
         // 상품 상세 페이지 도달 확인
         const currentUrl = makestar.currentUrl;
         if (!/\/product\/\d+/i.test(currentUrl)) {
-          console.log(
-            `   ⚠️ 상품 ${i + 1}: 상세 페이지 아님 (${currentUrl})`,
-          );
+          console.log(`   ⚠️ 상품 ${i + 1}: 상세 페이지 아님 (${currentUrl})`);
           await makestar.clickLogoToHome();
           await makestar.navigateToShop();
           await makestar.waitForPageContent();
@@ -1068,6 +1060,13 @@ test.describe("상품/장바구니 기능", () => {
             console.log(
               `   ⚠️ 로그인 리다이렉트 감지 (${authRedirectCount}회) — 다음 상품 시도`,
             );
+
+            if (authRedirectCount >= 3) {
+              console.log(
+                `   ❌ 연속 ${authRedirectCount}회 리다이렉트 — 세션 만료 확정, 조기 중단`,
+              );
+              break;
+            }
 
             // 로그인 페이지에는 로고가 없으므로 goto()로 직접 Shop 복귀
             await makestar.goto(`${makestar.baseUrl}/shop`);
@@ -1249,10 +1248,9 @@ test.describe("아티스트/콘텐츠", () => {
 
     // POM 로케이터 사용
     const cardCount = await makestar.getSearchResultCount();
-    expect(
-      cardCount,
-      "Shop 페이지에 상품이 표시되어야 합니다",
-    ).toBeGreaterThan(0);
+    expect(cardCount, "Shop 페이지에 상품이 표시되어야 합니다").toBeGreaterThan(
+      0,
+    );
 
     // 사용자 시나리오: Shop -> 상품 상세 -> 아티스트 프로필
     const artistNavigation = await makestar.openArtistProfileFromShop({
@@ -1277,9 +1275,7 @@ test.describe("아티스트/콘텐츠", () => {
     console.log(
       `   아티스트 이미지: ${artistElements.image ? "표시됨" : "미표시"}`,
     );
-    console.log(
-      `   아티스트명: ${artistElements.name ? "표시됨" : "미표시"}`,
-    );
+    console.log(`   아티스트명: ${artistElements.name ? "표시됨" : "미표시"}`);
     console.log(
       `   상품 목록: ${artistElements.products ? "표시됨" : "미표시"}`,
     );
@@ -1445,8 +1441,7 @@ test.describe("응답성/성능 모니터링", () => {
   }) => {
     test.setTimeout(TEST_TIMEOUT);
 
-    const apiRequests: { url: string; duration: number; status: number }[] =
-      [];
+    const apiRequests: { url: string; duration: number; status: number }[] = [];
     const responseThreshold = 2000; // 2초
 
     page.on("response", async (response) => {
@@ -1504,9 +1499,7 @@ test.describe("응답성/성능 모니터링", () => {
         console.log("");
         console.log("   ⚠️ 느린 API 요청:");
         slowRequests.slice(0, 5).forEach((r) => {
-          console.log(
-            `      - ${r.url.substring(0, 60)}... (${r.duration}ms)`,
-          );
+          console.log(`      - ${r.url.substring(0, 60)}... (${r.duration}ms)`);
         });
       }
 
@@ -1536,17 +1529,13 @@ test.describe("응답성/성능 모니터링", () => {
     console.log("");
     console.log("📈 페이지 성능 메트릭 (Web Vitals):");
     console.log(`   First Byte (TTFB): ${performanceMetrics.ttfb}ms`);
-    console.log(
-      `   First Contentful Paint (FCP): ${performanceMetrics.fcp}ms`,
-    );
+    console.log(`   First Contentful Paint (FCP): ${performanceMetrics.fcp}ms`);
     console.log(
       `   Largest Contentful Paint (LCP): ${performanceMetrics.lcp}ms`,
     );
     console.log(`   DOM Content Loaded: ${performanceMetrics.dcl}ms`);
     console.log(`   Load Complete: ${performanceMetrics.load}ms`);
-    console.log(
-      `   Cumulative Layout Shift (CLS): ${performanceMetrics.cls}`,
-    );
+    console.log(`   Cumulative Layout Shift (CLS): ${performanceMetrics.cls}`);
 
     console.log("✅ Test 29 완료: API 응답 시간 모니터링");
   });
