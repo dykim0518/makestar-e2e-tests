@@ -670,12 +670,12 @@ test.describe.serial("마이페이지/회원 기능", () => {
       "Event Entry",
       "Manage Event Submissions",
     ] as const;
-    const hrefs = ["event-entry"] as const;
+    const hrefs = ["event-submissions"] as const;
     const menuResult = await makestar.clickMyPageMenuStrict(menuTexts, hrefs);
 
     if (!menuResult.success) {
       console.log("⚠️ 메뉴 클릭 불가, URL 직접 이동으로 폴백");
-      await makestar.goto(`${makestar.baseUrl}/my-page/event-entry`);
+      await makestar.goto(`${makestar.baseUrl}/my-page/event-submissions`);
     }
     await makestar.handleModal();
     await makestar
@@ -685,9 +685,9 @@ test.describe.serial("마이페이지/회원 기능", () => {
     const currentUrl = makestar.currentUrl;
     console.log(`📍 현재 URL: ${currentUrl}`);
 
-    // URL에 event-entry가 포함되어야 함 (event만 매칭하면 다른 이벤트 페이지도 통과)
+    // URL에 event-submissions가 포함되어야 함 (event만 매칭하면 다른 이벤트 페이지도 통과)
     expect(
-      currentUrl.includes("event-entry"),
+      currentUrl.includes("event-submissions"),
       `이벤트 응모정보 URL이어야 합니다 (현재: ${currentUrl})`,
     ).toBe(true);
 

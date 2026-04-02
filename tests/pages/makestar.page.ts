@@ -273,7 +273,10 @@ export class MakestarPage extends BasePage {
     // CI 환경: SPA 클라이언트 auth 미초기화로 /my-page 리다이렉트됨
     // 다중 하위 페이지 방문으로 SPA auth 상태 프라이밍
     console.log("⚠️ 마이페이지 리다이렉트됨, 다중 워밍업 시도...");
-    const warmupPaths = ["/my-page/change-password", "/my-page/event-entry"];
+    const warmupPaths = [
+      "/my-page/change-password",
+      "/my-page/event-submissions",
+    ];
     for (const path of warmupPaths) {
       await this.goto(`${this.baseUrl}${path}`);
       await this.waitForLoadState("domcontentloaded");
@@ -925,7 +928,7 @@ export class MakestarPage extends BasePage {
 
     if (!clicked) {
       console.log("⚠️ 메뉴 클릭 실패, URL로 직접 이동");
-      await this.goto(`${this.baseUrl}/my-page/event-entry`);
+      await this.goto(`${this.baseUrl}/my-page/event-submissions`);
       await this.waitForLoadState("domcontentloaded");
       await this.handleModal();
     }
@@ -2443,9 +2446,9 @@ export class MakestarPage extends BasePage {
   /** 이벤트 응모정보 페이지 콘텐츠 존재 확인 */
   async hasEventEntryContent(timeout = 5000): Promise<boolean> {
     const selectors = [
-      "text=/이벤트 응모|Event Entry|응모 정보|응모정보|이벤트 참여/i",
-      "text=/응모 내역|참여 내역|Entry History/i",
-      '[class*="event-entry"]',
+      "text=/이벤트 응모|Event Entry|Event Submissions|Manage Event Submissions|응모 정보|응모정보|이벤트 참여|Submission/i",
+      "text=/응모 내역|참여 내역|Entry History|Register Submission/i",
+      '[class*="event-submissions"]',
       '[class*="entry"]',
     ];
     for (const selector of selectors) {
@@ -2462,7 +2465,9 @@ export class MakestarPage extends BasePage {
   /** 이벤트 응모 내역/빈 상태 메시지 존재 확인 */
   async hasEventEntryListContent(timeout = 5000): Promise<boolean> {
     return await this.page
-      .locator("text=/응모|참여|entry|내역|없습니다|empty|No entries/i")
+      .locator(
+        "text=/응모|참여|entry|submission|내역|없습니다|empty|No entries|Register/i",
+      )
       .first()
       .isVisible({ timeout })
       .catch(() => false);
