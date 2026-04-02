@@ -129,31 +129,41 @@ export class UserDetailPage extends AdminBasePage {
 
   /**
    * 특정 레이블에 해당하는 값 텍스트 반환
-   * 상세 페이지는 div 기반 2열 레이아웃:
-   *   이름 (값) | 닉네임 (값)
-   *   가입계정 구글 | E-Mail shinle@makestar.com
+   *
+   * DOM 구조 (Nuxt Admin 2열 레이아웃):
+   *   div.w-full.py-[18px].flex          ← 행
+   *     div.basis-1/2                    ← 왼쪽 셀
+   *       div.w-[160px]                  ← 레이블 컨테이너
+   *         div > p.title-sb-medium      ← 레이블
+   *       div.grow (nextSibling)         ← 값
+   *     div.basis-1/2                    ← 오른쪽 셀 (동일 구조)
    */
   async getInfoValueByLabel(label: string): Promise<string> {
-    // 페이지에서 레이블-값 쌍을 JavaScript로 추출
     const value = await this.page
       .evaluate((targetLabel: string) => {
-        // 레이블 텍스트를 가진 요소 찾기
-        const allElements = document.querySelectorAll("*");
-        for (const el of allElements) {
-          const text = el.textContent?.trim() || "";
-          // 정확히 레이블 텍스트만 포함하는 요소 (자식이 없거나 최소 요소)
-          if (text === targetLabel && el.children.length === 0) {
-            // 다음 형제 요소에서 값 추출
-            const nextSibling = el.nextElementSibling;
-            if (nextSibling) {
-              return nextSibling.textContent?.trim() || "";
-            }
-            // 부모의 다음 형제
-            const parentNext = el.parentElement?.nextElementSibling;
-            if (parentNext) {
-              return parentNext.textContent?.trim() || "";
+        // 레이블 <p> 요소 찾기
+        const candidates = document.querySelectorAll("p.title-sb-medium");
+        for (const el of candidates) {
+          if (el.textContent?.trim() !== targetLabel) continue;
+
+          // 레이블 컨테이너(w-[160px])의 nextSibling에서 값 추출
+          // p → div(flex) → div(w-[160px]) → nextSibling(div.grow)
+          const labelContainer = el.closest('div[class*="w-[160px]"]');
+          if (labelContainer?.nextElementSibling) {
+            return labelContainer.nextElementSibling.textContent?.trim() || "";
+          }
+
+          // fallback: 조상을 거슬러 올라가며 nextSibling 탐색
+          let ancestor: Element | null = el;
+          for (let i = 0; i < 5; i++) {
+            ancestor = ancestor?.parentElement ?? null;
+            if (ancestor?.nextElementSibling) {
+              const text =
+                ancestor.nextElementSibling.textContent?.trim() || "";
+              if (text.length > 0 && text !== targetLabel) return text;
             }
           }
+          return "";
         }
         return "";
       }, label)
