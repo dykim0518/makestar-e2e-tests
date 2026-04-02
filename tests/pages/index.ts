@@ -18,7 +18,7 @@ export type {
 
 // Makestar 페이지
 export { MakestarPage, MAKESTAR_TEXT_PATTERNS } from "./makestar.page";
-export type { MenuItem, ProductInfo } from "./makestar.page";
+export type { MenuItem, ProductInfo, WebVitalsResult } from "./makestar.page";
 
 // AlbumBuddy 페이지
 export {

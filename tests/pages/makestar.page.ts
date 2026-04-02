@@ -273,7 +273,10 @@ export class MakestarPage extends BasePage {
     // CI 환경: SPA 클라이언트 auth 미초기화로 /my-page 리다이렉트됨
     // 다중 하위 페이지 방문으로 SPA auth 상태 프라이밍
     console.log("⚠️ 마이페이지 리다이렉트됨, 다중 워밍업 시도...");
-    const warmupPaths = ["/my-page/change-password", "/my-page/event-entry"];
+    const warmupPaths = [
+      "/my-page/change-password",
+      "/my-page/event-submissions",
+    ];
     for (const path of warmupPaths) {
       await this.goto(`${this.baseUrl}${path}`);
       await this.waitForLoadState("domcontentloaded");
@@ -336,6 +339,38 @@ export class MakestarPage extends BasePage {
     if (!this.currentUrl.includes("my-page")) {
       console.log("⚠️ 배송지 관리 페이지 리다이렉트됨, 재시도...");
       await this.goto(`${this.baseUrl}/my-page/address`);
+      await this.waitForLoadState("domcontentloaded");
+      await this.waitForNetworkStable(5000).catch(() => {});
+      await this.handleModal();
+    }
+  }
+
+  /** 팔로우 관리 페이지로 이동 (리다이렉트 대응 포함) */
+  async gotoFollow(): Promise<void> {
+    await this.goto(`${this.baseUrl}/my-page/follow`);
+    await this.waitForLoadState("domcontentloaded");
+    await this.waitForNetworkStable(5000).catch(() => {});
+    await this.handleModal();
+
+    if (!this.currentUrl.includes("my-page")) {
+      console.log("⚠️ 팔로우 관리 페이지 리다이렉트됨, 재시도...");
+      await this.goto(`${this.baseUrl}/my-page/follow`);
+      await this.waitForLoadState("domcontentloaded");
+      await this.waitForNetworkStable(5000).catch(() => {});
+      await this.handleModal();
+    }
+  }
+
+  /** 알림 설정 페이지로 이동 (리다이렉트 대응 포함) */
+  async gotoNotification(): Promise<void> {
+    await this.goto(`${this.baseUrl}/my-page/notification`);
+    await this.waitForLoadState("domcontentloaded");
+    await this.waitForNetworkStable(5000).catch(() => {});
+    await this.handleModal();
+
+    if (!this.currentUrl.includes("my-page")) {
+      console.log("⚠️ 알림 설정 페이지 리다이렉트됨, 재시도...");
+      await this.goto(`${this.baseUrl}/my-page/notification`);
       await this.waitForLoadState("domcontentloaded");
       await this.waitForNetworkStable(5000).catch(() => {});
       await this.handleModal();
@@ -925,7 +960,7 @@ export class MakestarPage extends BasePage {
 
     if (!clicked) {
       console.log("⚠️ 메뉴 클릭 실패, URL로 직접 이동");
-      await this.goto(`${this.baseUrl}/my-page/event-entry`);
+      await this.goto(`${this.baseUrl}/my-page/event-submissions`);
       await this.waitForLoadState("domcontentloaded");
       await this.handleModal();
     }
@@ -1810,7 +1845,7 @@ export class MakestarPage extends BasePage {
         "이벤트 응모정보 관리",
         "이벤트 응모",
         "Event Entry",
-        "event submissions",
+        "Manage Event Submissions",
       ],
     },
     {
@@ -1818,12 +1853,20 @@ export class MakestarPage extends BasePage {
       texts: ["비밀번호 변경", "비밀번호", "Password", "Change Password"],
     },
     {
+      name: "팔로우 관리",
+      texts: ["팔로우 관리", "팔로우", "Follow", "Manage Follows"],
+    },
+    {
       name: "주문내역",
-      texts: ["주문내역", "주문 내역", "Order", "order history"],
+      texts: ["주문내역", "주문 내역", "Order", "Order History"],
     },
     {
       name: "배송지 관리",
-      texts: ["배송지 관리", "배송지", "Address", "Shipping"],
+      texts: ["배송지 관리", "배송지", "Address", "Manage Delivery Address"],
+    },
+    {
+      name: "알림 설정",
+      texts: ["알림 설정", "알림", "Notification", "Notification Settings"],
     },
     { name: "로그아웃", texts: ["로그아웃", "Logout", "Log out", "Sign out"] },
   ] as const;
@@ -2187,7 +2230,7 @@ export class MakestarPage extends BasePage {
       .catch(() => false);
 
     const navVisible = await page
-      .getByRole("button", { name: /Home|Event|Shop/i })
+      .getByRole("link", { name: /Home|Event|Shop/i })
       .first()
       .isVisible({ timeout: 5000 })
       .catch(() => false);
@@ -2248,6 +2291,12 @@ export class MakestarPage extends BasePage {
    */
   async measureWebVitals(): Promise<WebVitalsResult> {
     return await this.page.evaluate(() => {
+      type LCPEntry = PerformanceEntry & { startTime: number };
+      type LayoutShiftEntry = PerformanceEntry & {
+        hadRecentInput: boolean;
+        value: number;
+      };
+
       const navigation = performance.getEntriesByType(
         "navigation",
       )[0] as PerformanceNavigationTiming;
@@ -2265,15 +2314,18 @@ export class MakestarPage extends BasePage {
         "largest-contentful-paint",
       );
       if (lcpEntries.length > 0) {
-        lcp = Math.round((lcpEntries[lcpEntries.length - 1] as any).startTime);
+        lcp = Math.round(
+          (lcpEntries[lcpEntries.length - 1] as LCPEntry).startTime,
+        );
       }
 
       // CLS (LayoutShift entries)
       let cls = 0;
       const layoutShiftEntries = performance.getEntriesByType("layout-shift");
       for (const entry of layoutShiftEntries) {
-        if (!(entry as any).hadRecentInput) {
-          cls += (entry as any).value || 0;
+        const shift = entry as LayoutShiftEntry;
+        if (!shift.hadRecentInput) {
+          cls += shift.value || 0;
         }
       }
 
@@ -2343,5 +2395,158 @@ export class MakestarPage extends BasePage {
       name: nameVisible,
       products: productsVisible,
     };
+  }
+
+  // --------------------------------------------------------------------------
+  // 페이지 콘텐츠 확인 메서드 (spec에서 직접 locator 사용 방지)
+  // --------------------------------------------------------------------------
+
+  /** Event 링크 존재 확인 (GNB eventButton 폴백) */
+  async hasEventLink(timeout = 5000): Promise<boolean> {
+    const eventLink = this.page
+      .getByRole("link", { name: /event/i })
+      .or(this.page.locator('a[href*="event"]'))
+      .first();
+    return await eventLink.isVisible({ timeout }).catch(() => false);
+  }
+
+  /** 검색 결과 텍스트 확인 (URL 또는 화면에서 검색 키워드/결과 텍스트 존재 확인) */
+  async hasSearchResultText(keyword: string): Promise<boolean> {
+    const currentUrl = this.currentUrl;
+    if (/search|keyword|q=/i.test(currentUrl)) return true;
+    return await this.page
+      .locator(`text=/${keyword}|검색 결과|결과/i`)
+      .first()
+      .isVisible({ timeout: 5000 })
+      .catch(() => false);
+  }
+
+  /** 최근 검색어 관련 요소 표시 확인 */
+  async hasRecentSearchIndicators(keyword: string): Promise<boolean> {
+    const selectors = [
+      "text=/최근 검색어|Recent searches|최근 검색|Recent|검색 기록/i",
+      `text=${keyword}`,
+      '[class*="recent"]',
+      '[class*="history"]',
+    ];
+    for (const selector of selectors) {
+      const visible = await this.page
+        .locator(selector)
+        .first()
+        .isVisible({ timeout: 5000 })
+        .catch(() => false);
+      if (visible) return true;
+    }
+    return false;
+  }
+
+  /** 마이페이지 콘텐츠 존재 확인 */
+  async hasMyPageContent(timeout = 5000): Promise<boolean> {
+    return await this.page
+      .getByText(/마이페이지|My Page|내 정보|profile|주문|order/i)
+      .first()
+      .isVisible({ timeout })
+      .catch(() => false);
+  }
+
+  /** 주문내역 페이지 콘텐츠 존재 확인 */
+  async hasOrderHistoryContent(timeout = 5000): Promise<boolean> {
+    return await this.page
+      .getByText(
+        /주문|우충전 주문|order|내역|history|없습니다|empty|Order History/i,
+      )
+      .first()
+      .isVisible({ timeout })
+      .catch(() => false);
+  }
+
+  /** 배송지 관리 페이지 콘텐츠 존재 확인 */
+  async hasAddressContent(timeout = 5000): Promise<boolean> {
+    return await this.page
+      .getByText(/배송지|address|추가|add|없습니다|empty|Shipping|Address/i)
+      .first()
+      .isVisible({ timeout })
+      .catch(() => false);
+  }
+
+  /** 비밀번호 입력 필드 존재 확인 및 개수 반환 */
+  async getPasswordInputCount(timeout = 5000): Promise<number> {
+    const roleInput = this.page
+      .getByRole("textbox", { name: /password|비밀번호/i })
+      .first();
+    const typeInput = this.page.locator('input[type="password"]').first();
+    const hasInput = await roleInput
+      .or(typeInput)
+      .isVisible({ timeout })
+      .catch(() => false);
+    if (!hasInput) return 0;
+    return await this.page.locator('input[type="password"]').count();
+  }
+
+  /** 이벤트 응모정보 페이지 콘텐츠 존재 확인 */
+  async hasEventEntryContent(timeout = 5000): Promise<boolean> {
+    const selectors = [
+      "text=/이벤트 응모|Event Entry|Event Submissions|Manage Event Submissions|응모 정보|응모정보|이벤트 참여|Submission/i",
+      "text=/응모 내역|참여 내역|Entry History|Register Submission/i",
+      '[class*="event-submissions"]',
+      '[class*="entry"]',
+    ];
+    for (const selector of selectors) {
+      const visible = await this.page
+        .locator(selector)
+        .first()
+        .isVisible({ timeout })
+        .catch(() => false);
+      if (visible) return true;
+    }
+    return false;
+  }
+
+  /** 이벤트 응모 내역/빈 상태 메시지 존재 확인 */
+  async hasEventEntryListContent(timeout = 5000): Promise<boolean> {
+    return await this.page
+      .locator(
+        "text=/응모|참여|entry|submission|내역|없습니다|empty|No entries|Register/i",
+      )
+      .first()
+      .isVisible({ timeout })
+      .catch(() => false);
+  }
+
+  /** 팔로우 관리 페이지 콘텐츠 존재 확인 */
+  async hasFollowContent(timeout = 5000): Promise<boolean> {
+    return await this.page
+      .getByText(/팔로우|Follow|Following|팔로잉|없습니다|empty|No follows/i)
+      .first()
+      .isVisible({ timeout })
+      .catch(() => false);
+  }
+
+  /** 알림 설정 페이지 콘텐츠 존재 확인 */
+  async hasNotificationContent(timeout = 5000): Promise<boolean> {
+    return await this.page
+      .getByText(/알림|Notification|푸시|Push|이메일|Email|설정|Settings/i)
+      .first()
+      .isVisible({ timeout })
+      .catch(() => false);
+  }
+
+  /** Shop 페이지에서 품절 상품 표시 여부 확인 */
+  async hasSoldOutIndicator(timeout = 3000): Promise<boolean> {
+    const selectors = [
+      "text=/Sold Out|sold out|품절|SOLD OUT/i",
+      '[class*="sold-out"]',
+      '[class*="soldout"]',
+      '[class*="out-of-stock"]',
+    ];
+    for (const selector of selectors) {
+      const visible = await this.page
+        .locator(selector)
+        .first()
+        .isVisible({ timeout })
+        .catch(() => false);
+      if (visible) return true;
+    }
+    return false;
   }
 }
