@@ -436,9 +436,7 @@ export class EventCreatePage extends AdminBasePage {
       if (await firstOption.isVisible({ timeout: 2000 }).catch(() => false)) {
         const optionText = await firstOption.textContent();
         await firstOption.click({ force: true });
-        console.log(
-          `ℹ️ 상품 카테고리 대체 선택: ${optionText?.trim()}`,
-        );
+        console.log(`ℹ️ 상품 카테고리 대체 선택: ${optionText?.trim()}`);
         return;
       }
     }
@@ -510,68 +508,151 @@ export class EventCreatePage extends AdminBasePage {
    */
   async selectTodayAsSalePeriod(): Promise<void> {
     await this.waitForOverlayToDisappear();
-
-    // 이전 드롭다운이 열려있으면 닫기
     await this.page.keyboard.press("Escape");
 
-    // '판매기간' 텍스트 바로 다음에 오는 날짜 입력 필드를 찾음
-    // 페이지 구조상 '판매기간' p 태그 다음 형제 요소에 날짜 입력 필드가 있음
-    const salePeriodLabel = this.page.locator('p:text-is("판매기간")');
-    await salePeriodLabel.scrollIntoViewIfNeeded({ timeout: 10000 });
+    // "판매기간" 라벨 근처의 readonly 날짜 입력 + 시간 선택 필드를 사용
+    // DOM 구조: 판매기간 섹션 내 [날짜 입력(readonly)] + [시간 선택] 쌍
+    const salePeriodLabel = this.page.locator(
+      'p:text-is("판매기간"), div:text-is("판매기간")',
+    );
+    await salePeriodLabel.first().scrollIntoViewIfNeeded({ timeout: 10000 });
 
-    // 판매기간 레이블 상위 컨테이너에서 날짜 입력 필드 찾기
-    const dateInputs = this.page.locator('input[placeholder="날짜 입력"]');
-    const inputCount = await dateInputs.count();
-    console.log(`ℹ️ 페이지의 날짜 입력 필드 수: ${inputCount}`);
+    // "판매기간" 라벨과 같은 행(flex 컨테이너)에 있는 날짜 입력 필드 찾기
+    const dateInput = await this.page.evaluate(() => {
+      const label = [...document.querySelectorAll("p")].find(
+        (e) => e.textContent?.trim() === "판매기간",
+      );
+      if (!label) return { found: false, index: -1 } as const;
 
-    // 판매기간 필드는 일반적으로 세 번째 날짜 입력 (첫 번째: 초도특전, 두 번째: 선주문)
-    // 하지만 index 순서가 다를 수 있으니 판매기간 섹션에서 찾기
-    const dateInput = dateInputs.nth(2); // 세 번째 날짜 입력 필드 (0-indexed)
+      // "판매기간" 라벨의 가장 가까운 부모에서 날짜 입력 찾기
+      // 2~4단계 부모까지만 탐색 (너무 넓으면 공지옵션 날짜가 포함됨)
+      for (let depth = 1; depth <= 4; depth++) {
+        let container: Element | null = label;
+        for (let i = 0; i < depth; i++)
+          container = container?.parentElement ?? null;
+        if (!container) continue;
 
-    // 입력 필드 클릭하여 달력 열기
-    await dateInput.click({ force: true });
+        const dateInputs = container.querySelectorAll(
+          'input[placeholder="날짜 입력"]',
+        );
+        if (dateInputs.length > 0) {
+          // 전체 페이지 기준 인덱스
+          const allInputs = document.querySelectorAll(
+            'input[placeholder="날짜 입력"]',
+          );
+          for (let i = 0; i < allInputs.length; i++) {
+            if (allInputs[i] === dateInputs[0]) {
+              return { found: true, index: i };
+            }
+          }
+        }
+      }
+      return { found: false, index: -1 } as const;
+    });
 
-    // 오늘 날짜 가져오기
-    const today = new Date();
-    const todayDate = today.getDate();
+    if (!dateInput.found) {
+      console.log("⚠️ 판매기간 날짜 입력 필드를 찾을 수 없음");
+      return;
+    }
 
-    // 달력이 열리면 현재 달의 날짜들이 표시됨
-    // 달력에서 정확히 오늘 날짜를 클릭 (현재 달에서만)
-    // 달력 셀은 cursor-pointer 클래스를 가진 div 내에 숫자가 텍스트로 있음
+    const input = this.page
+      .locator('input[placeholder="날짜 입력"]')
+      .nth(dateInput.index);
+    await input.scrollIntoViewIfNeeded();
 
-    // 달력이 열렸는지 확인
-    const calendarVisible = await this.page
+    // readonly input 클릭으로 달력 열기
+    await input.click({ force: true });
+    await this.wait(800);
+
+    // 달력 열림 확인 — img[alt="left-arrow"]로 감지 (timepicker 제외)
+    let calendarVisible = await this.page
       .locator('img[alt="left-arrow"]')
       .isVisible({ timeout: 3000 })
       .catch(() => false);
 
+    // 안 열리면 wrapper div 클릭 시도
+    if (!calendarVisible) {
+      const wrapper = input.locator("..");
+      await wrapper.click({ force: true });
+      await this.wait(800);
+      calendarVisible = await this.page
+        .locator('img[alt="left-arrow"]')
+        .isVisible({ timeout: 3000 })
+        .catch(() => false);
+    }
+
+    // 그래도 안 열리면 input에 직접 이벤트 발생
+    if (!calendarVisible) {
+      await input.evaluate((el: HTMLElement) => {
+        el.click();
+        el.focus();
+      });
+      await this.wait(800);
+      calendarVisible = await this.page
+        .locator('img[alt="left-arrow"]')
+        .isVisible({ timeout: 3000 })
+        .catch(() => false);
+    }
+
+    const today = new Date();
+    const todayDate = today.getDate();
+
     if (calendarVisible) {
-      // 현재 달의 날짜만 선택하기 위해, 달력 그리드에서 오늘 날짜 찾기
-      // 정확한 숫자 매칭으로 날짜 셀 클릭
-      const todayCell = this.page
-        .getByText(String(todayDate), { exact: true })
-        .first();
-      await todayCell.click();
-      console.log(
-        `ℹ️ 판매기간 시작일: ${todayDate}일 선택 완료 (달력 자동 닫힘)`,
-      );
-    } else {
-      // 달력이 안 열리면 JavaScript로 값 설정 (readonly input 대응)
-      const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-      const isReadonly = await dateInput.getAttribute("readonly");
-      if (isReadonly !== null) {
-        // readonly input — JS로 값 설정 후 input 이벤트 트리거
-        await dateInput.evaluate((el: HTMLInputElement, val: string) => {
-          el.removeAttribute("readonly");
-          el.value = val;
-          el.dispatchEvent(new Event("input", { bubbles: true }));
-          el.dispatchEvent(new Event("change", { bubbles: true }));
-        }, dateStr);
-        console.log(`ℹ️ 판매기간 시작일 JS 설정: ${dateStr}`);
+      // 달력 내 오늘 날짜 셀 클릭 — left-arrow의 상위 컨테이너에서 찾기
+      const clicked = await this.page.evaluate((day: number) => {
+        const arrow = document.querySelector('img[alt="left-arrow"]');
+        if (!arrow) return false;
+        // 달력 컨테이너: 화살표의 상위 div
+        let container: Element | null = arrow;
+        for (let i = 0; i < 8; i++) {
+          container = container?.parentElement ?? null;
+          if (!container) break;
+          // 날짜 셀이 있는 그리드를 포함하는 컨테이너인지 확인
+          const cells = container.querySelectorAll(
+            'div[class*="cursor-pointer"]',
+          );
+          if (cells.length > 10) break; // 달력 그리드 발견
+        }
+        if (!container) return false;
+
+        // 날짜 셀 찾기: cursor-pointer 클래스 + 정확한 숫자
+        const dayCells = container.querySelectorAll(
+          'div[class*="cursor-pointer"]',
+        );
+        for (const cell of dayCells) {
+          // 셀 안의 leaf 텍스트가 오늘 날짜와 일치하는지
+          const spans = cell.querySelectorAll("span, div, p");
+          for (const s of spans) {
+            if (
+              s.textContent?.trim() === String(day) &&
+              s.children.length === 0
+            ) {
+              (cell as HTMLElement).click();
+              return true;
+            }
+          }
+          // 셀 자체 텍스트
+          if (
+            cell.textContent?.trim() === String(day) &&
+            cell.children.length <= 1
+          ) {
+            (cell as HTMLElement).click();
+            return true;
+          }
+        }
+        return false;
+      }, todayDate);
+
+      if (clicked) {
+        await this.wait(500);
+        console.log(`ℹ️ 판매기간 시작일: ${todayDate}일 선택 완료 (달력)`);
       } else {
-        await dateInput.fill(dateStr);
-        console.log(`ℹ️ 판매기간 시작일 직접 입력: ${dateStr}`);
+        console.log(`⚠️ 달력 내 ${todayDate}일 셀 미발견`);
       }
+
+      // 시간은 기본값 "오전 00:00" 사용 — 별도 설정 불필요
+    } else {
+      console.log("⚠️ 달력이 열리지 않음");
     }
   }
 
