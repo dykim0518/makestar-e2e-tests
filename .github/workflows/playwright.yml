@@ -104,6 +104,19 @@ jobs:
         env:
           AB_AUTH_JSON: ${{ secrets.AB_AUTH_JSON }}
 
+      # 인증 토큰 자동 갱신 (만료/임박 시 headless Google OAuth로 갱신)
+      - name: Auto-refresh auth tokens
+        id: auth_refresh
+        run: node scripts/ci-refresh-auth.js
+        continue-on-error: true
+
+      # 갱신 후 토큰 유효성 최종 검증 (실패 시 테스트 중단 + 갱신 안내)
+      - name: Validate auth tokens
+        id: auth_check
+        run: node scripts/validate-auth.js
+        env:
+          AUTH_WARN_HOURS: "2"
+
       # 테스트 실행
       - name: Run Playwright tests
         id: run_playwright

@@ -12,7 +12,10 @@
     "test:admin:poca": "npx playwright test tests/admin_pocaalbum_pom.spec.ts --project=admin-setup --project=admin-pc",
     "test:admin:artist": "npx playwright test tests/admin_artist_pom.spec.ts --project=admin-setup --project=admin-pc",
     "test:admin:user": "npx playwright test tests/admin_user_pom.spec.ts --project=admin-setup --project=admin-pc",
-    "test:ci": "npx playwright test --config=playwright.ci.config.js"
+    "test:ci": "npx playwright test --config=playwright.ci.config.js",
+    "auth:refresh": "bash scripts/refresh-and-sync.sh",
+    "auth:refresh:ci": "node scripts/ci-refresh-auth.js",
+    "auth:validate": "node scripts/validate-auth.js"
   },
   "keywords": [],
   "author": "",
