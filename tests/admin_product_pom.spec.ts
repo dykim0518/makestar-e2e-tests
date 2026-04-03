@@ -1275,74 +1275,63 @@ test.describe.serial("상품 등록", () => {
       await eventCreatePage.uploadImage("fixtures/ta_sample.png");
 
       // 3-3: 노출 카테고리 선택 (필수)
-      // 커스텀 셀렉트 드롭다운 — 클릭하면 팝업 옵션 목록 노출
       console.log("  3-3: 노출 카테고리 선택");
       for (const catName of ["상품 카테고리", "B2B 카테고리"]) {
-        const label = page.getByText(catName, { exact: true });
-        const placeholder = label
-          .locator("..")
-          .getByText("카테고리를 선택해주세요")
-          .first();
-
-        if (!(await placeholder.isVisible().catch(() => false))) {
-          console.log(`ℹ️ ${catName}: 이미 선택됨 또는 없음 — 스킵`);
+        // 카테고리 탭 버튼 클릭 → 해당 카테고리 드롭다운 활성화
+        const catTab = page.getByText(catName, { exact: true });
+        if (!(await catTab.isVisible({ timeout: 3000 }).catch(() => false))) {
+          console.log(`  ℹ️ ${catName} 탭 미발견 — 스킵`);
           continue;
         }
 
-        // 오버레이 제거 (이전 드롭다운 잔여)
-        await page.keyboard.press("Escape");
-        await page
-          .locator("div.fixed.inset-0")
-          .first()
-          .waitFor({ state: "hidden", timeout: 2000 })
-          .catch(() => {});
-
-        await placeholder.scrollIntoViewIfNeeded({ timeout: 5000 });
-        await placeholder.click({ force: true });
+        await catTab.scrollIntoViewIfNeeded();
+        await catTab.click({ force: true });
         await page.waitForTimeout(500);
 
-        // 드롭다운 옵션 패널에서 "앨범" 선택
-        // 옵션은 placeholder와 같은 컨테이너가 아닌, 포탈/팝업으로 렌더링될 수 있음
-        // "카테고리를 선택해주세요" 가 사라지고 옵션 목록이 나타남
-        const option = page
-          .locator(
-            '[class*="select-option"], [class*="dropdown-item"], li[class*="option"]',
-          )
-          .filter({ hasText: "앨범" })
-          .first();
+        // "카테고리를 선택해주세요" placeholder 클릭으로 드롭다운 열기
+        const placeholder = page.getByText("카테고리를 선택해주세요").first();
+        if (await placeholder.isVisible({ timeout: 2000 }).catch(() => false)) {
+          await placeholder.click({ force: true });
+          await page.waitForTimeout(500);
 
-        if (await option.isVisible({ timeout: 3000 }).catch(() => false)) {
-          await option.click({ force: true });
-          console.log(`ℹ️ ${catName} "앨범" 선택 완료 (option element)`);
-        } else {
-          // 대안: 페이지 전체에서 새로 나타난 "앨범" 텍스트 (배지가 아닌 것)
-          // 배지는 badge__area 클래스를 가짐 — 이를 제외
-          const albumOptions = page.locator(
-            ':not([class*="badge"]) >> text="앨범"',
-          );
-          const count = await albumOptions.count();
-          let clicked = false;
-          for (let i = 0; i < count; i++) {
-            const el = albumOptions.nth(i);
-            const className = await el
-              .evaluate((e) => e.className)
-              .catch(() => "");
-            // 배지/태그가 아닌 옵션 요소만
-            if (!className.includes("badge")) {
-              await el.click({ force: true });
-              console.log(`ℹ️ ${catName} "앨범" 선택 완료 (text match #${i})`);
-              clicked = true;
-              break;
+          // 드롭다운이 열리면 "앨범" 옵션 클릭
+          // 체크박스 + 텍스트 형태의 옵션 리스트에서 찾기
+          const albumSelected = await page.evaluate(() => {
+            // 현재 보이는 드롭다운/팝업에서 "앨범" 텍스트를 가진 클릭 가능한 요소 찾기
+            const candidates = [...document.querySelectorAll("*")].filter(
+              (e) => {
+                const text = e.textContent?.trim();
+                const isLeaf = e.children.length === 0;
+                const isVisible = (e as HTMLElement).offsetParent !== null;
+                return text === "앨범" && isLeaf && isVisible;
+              },
+            );
+            // 가장 최근에 나타난(DOM 순서상 뒤쪽) 요소가 드롭다운 옵션일 확률이 높음
+            const target = candidates[candidates.length - 1];
+            if (target) {
+              // 부모 중 클릭 가능한 가장 가까운 요소 클릭
+              const clickable =
+                target.closest(
+                  "li, label, div[class*='option'], div[class*='item']",
+                ) || target;
+              (clickable as HTMLElement).click();
+              return true;
             }
-          }
-          if (!clicked) {
-            console.log(`⚠️ ${catName}: "앨범" 옵션을 찾을 수 없음`);
-          }
-        }
+            return false;
+          });
 
-        // 드롭다운 닫기
-        await page.keyboard.press("Escape");
-        await page.waitForTimeout(300);
+          if (albumSelected) {
+            console.log(`  ✅ ${catName} "앨범" 선택 완료`);
+          } else {
+            console.log(`  ⚠️ ${catName}: "앨범" 옵션 미발견`);
+          }
+
+          // 드롭다운 닫기
+          await page.keyboard.press("Escape");
+          await page.waitForTimeout(300);
+        } else {
+          console.log(`  ℹ️ ${catName}: 이미 선택됨 — 스킵`);
+        }
       }
 
       // 3-4: 판매기간 설정 (필수)
@@ -1411,8 +1400,73 @@ test.describe.serial("상품 등록", () => {
         `자동화 테스트 상품입니다. (${timestamp})`,
       );
 
-      // 3-10: 다량구매특전 — 테스트 전용 대분류에는 설정 없으므로 별도 처리 불필요
-      console.log("  3-10: 다량구매특전 — 테스트 전용 대분류 사용 (설정 없음)");
+      // 3-9-1: 상품설명 입력 (영어) — 필수 필드
+      console.log("  3-9-1: 상품설명 입력 (영어)");
+      {
+        // "상품설명" 섹션 내 "영어" 탭 버튼 클릭
+        const descSection = page.locator("text=상품설명").first();
+        await descSection.scrollIntoViewIfNeeded();
+
+        const enTab = page
+          .locator("button")
+          .filter({ hasText: /^영어$/ })
+          .first();
+        if (await enTab.isVisible({ timeout: 3000 }).catch(() => false)) {
+          await enTab.click({ force: true });
+          await page.waitForTimeout(500);
+        }
+
+        // 에디터 입력
+        const editor = page
+          .locator(
+            '.tiptap[contenteditable="true"], .ProseMirror[contenteditable="true"]',
+          )
+          .first();
+        if (await editor.isVisible({ timeout: 3000 }).catch(() => false)) {
+          await editor.evaluate((el: HTMLElement) => {
+            el.scrollIntoView({ behavior: "instant", block: "center" });
+          });
+          await page.waitForTimeout(300);
+          await editor.evaluate((el: HTMLElement) => {
+            el.focus();
+            el.click();
+          });
+          await page.keyboard.type(`Automation test product. (${timestamp})`);
+          console.log("  ✅ 상품설명(영어) 입력 완료");
+        } else {
+          console.log("  ⚠️ 영어 상품설명 에디터 미발견");
+        }
+      }
+
+      // 3-10: 다량구매특전 비활성화 (필수 아님 — label[for="toggle"] 클릭으로 OFF)
+      // DOM: <input id="toggle" type="checkbox" hidden> + <label for="toggle">
+      console.log("  3-10: 다량구매특전 비활성화");
+      const benefitToggled = await page.evaluate(() => {
+        const checkbox = document.querySelector(
+          'input#toggle[type="checkbox"]',
+        ) as HTMLInputElement | null;
+        if (!checkbox) return "not-found";
+        if (checkbox.checked) {
+          const label = document.querySelector(
+            'label[for="toggle"]',
+          ) as HTMLElement | null;
+          if (label) {
+            label.scrollIntoView({ behavior: "instant", block: "center" });
+            label.click();
+            return "toggled-off";
+          }
+          return "label-not-found";
+        }
+        return "already-off";
+      });
+      if (benefitToggled === "toggled-off") {
+        await page.waitForTimeout(500);
+        console.log("  ✅ 다량구매특전 토글 OFF");
+      } else if (benefitToggled === "already-off") {
+        console.log("  ℹ️ 다량구매특전 이미 OFF 상태");
+      } else {
+        console.log(`  ⚠️ 다량구매특전 토글 처리 실패: ${benefitToggled}`);
+      }
     });
 
     // -------------------------------------------------------------------------
