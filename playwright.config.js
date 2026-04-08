@@ -150,7 +150,7 @@ export default defineConfig({
       testMatch: [
         "**/admin_product_pom.spec.ts",
         "**/admin_order_pom.spec.ts",
-        "**/admin_pocaalbum_pom.spec.ts",
+        "**/admin_poca_*_pom.spec.ts",
         "**/admin_pocaalbum_functional.spec.ts",
         "**/admin_user_pom.spec.ts",
         "**/admin_artist_pom.spec.ts",
