@@ -105,6 +105,7 @@ import {
   POCA_DASHBOARD_CARDS,
   POCA_VALID_STATUSES,
   POCA_SECTIONS,
+  assertNoServerError,
 } from "./pages";
 import {
   setupAuthCookies,
@@ -121,16 +122,8 @@ import {
   applyAdminTestConfig,
 } from "./helpers/admin/test-helpers";
 
-// 토큰 유효성 사전 검증
-const tokenValid = isTokenValidSync();
-if (!tokenValid) {
-  test("토큰 유효성 검증", () => {
-    expect(
-      tokenValid,
-      "토큰이 만료되었습니다. node auto-refresh-token.js --setup 실행하세요.",
-    ).toBe(true);
-  });
-}
+// 공통 설정 (토큰검증 + 뷰포트체크 + 인증쿠키)
+applyAdminTestConfig("포카앨범");
 
 // ##############################################################################
 // Section 1: 대시보드 컴포넌트 검증 (/pocaalbum/test)
@@ -138,19 +131,7 @@ if (!tokenValid) {
 test.describe("POCAAlbum Admin 대시보드", () => {
   let pocaPage: PocaDashboardPage;
 
-  test.beforeAll(() => {
-    resetAuthCache();
-    const remaining = getTokenRemaining();
-    console.log(
-      `🔑 토큰 남은 시간: ${remaining.hours}시간 ${remaining.minutes}분`,
-    );
-  });
-
-  // 공통 설정 (뷰포트 + 토큰 검증)
-  applyAdminTestConfig();
-
   test.beforeEach(async ({ page }) => {
-    await setupAuthCookies(page);
     await setupApiInterceptor(page);
     pocaPage = new PocaDashboardPage(page);
     await pocaPage.navigate();
@@ -621,17 +602,7 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
         await albumCreatePage.navigate();
         await waitForPageStable(page);
 
-        const serverError = page
-          .getByText("500")
-          .or(page.getByText("Server Error"));
-        const hasServerError = await serverError
-          .first()
-          .isVisible({ timeout: 2000 })
-          .catch(() => false);
-        expect(
-          hasServerError,
-          "❌ 500 Server Error 발생 - 백엔드 확인 필요",
-        ).toBe(false);
+        await assertNoServerError(page, "앨범 생성 페이지");
       });
 
       // Step 3: 폼 필드 탐색 (디버깅용)
@@ -742,14 +713,7 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
         await albumCreatePage.navigate();
         await waitForPageStable(page);
 
-        const serverError = page
-          .getByText("500")
-          .or(page.getByText("Server Error"));
-        const hasServerError = await serverError
-          .first()
-          .isVisible({ timeout: 2000 })
-          .catch(() => false);
-        expect(hasServerError, "❌ 500 Server Error 발생").toBe(false);
+        await assertNoServerError(page, "유튜브 앨범 생성 페이지");
       });
 
       // 유튜브 앨범 타입 선택 시도
@@ -1081,21 +1045,7 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
       await shopCreatePage.navigate();
       await waitForPageStable(page);
 
-      // 404/500 에러 확인
-      const pageError = page
-        .getByText("404")
-        .or(page.getByText("Page not found"))
-        .or(page.getByText("500"))
-        .or(page.getByText("Server Error"));
-      const hasPageError = await pageError
-        .first()
-        .isVisible({ timeout: 2000 })
-        .catch(() => false);
-
-      expect(
-        hasPageError,
-        "❌ 페이지 에러 감지 — Shop 생성 페이지 접근 불가",
-      ).toBe(false);
+      await assertNoServerError(page, "Shop 생성 페이지");
 
       // 폼 필드 탐색
       const fields = await shopCreatePage.discoverFormFields();
@@ -1292,21 +1242,7 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
       await faveCreatePage.navigate();
       await waitForPageStable(page);
 
-      // 404/500 에러 확인
-      const pageError = page
-        .getByText("404")
-        .or(page.getByText("Page not found"))
-        .or(page.getByText("500"))
-        .or(page.getByText("Server Error"));
-      const hasPageError = await pageError
-        .first()
-        .isVisible({ timeout: 2000 })
-        .catch(() => false);
-
-      expect(
-        hasPageError,
-        "❌ 페이지 에러 감지 — FAVE 생성 페이지 접근 불가",
-      ).toBe(false);
+      await assertNoServerError(page, "FAVE 생성 페이지");
 
       const fields = await faveCreatePage.discoverFormFields();
       console.log(`  발견된 필드 수: ${Object.keys(fields).length}`);
@@ -1474,21 +1410,7 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
       await benefitCreatePage.navigate();
       await waitForPageStable(page);
 
-      // 404/500 에러 확인
-      const pageError = page
-        .getByText("404")
-        .or(page.getByText("Page not found"))
-        .or(page.getByText("500"))
-        .or(page.getByText("Server Error"));
-      const hasPageError = await pageError
-        .first()
-        .isVisible({ timeout: 2000 })
-        .catch(() => false);
-
-      expect(
-        hasPageError,
-        "❌ 페이지 에러 감지 — BENEFIT 생성 페이지 접근 불가 (URL 확인 필요)",
-      ).toBe(false);
+      await assertNoServerError(page, "BENEFIT 생성 페이지");
 
       const fields = await benefitCreatePage.discoverFormFields();
       console.log(`  발견된 필드 수: ${Object.keys(fields).length}`);
@@ -1663,21 +1585,7 @@ test.describe("POCAAlbum Admin 기능 테스트", () => {
       await notifCreatePage.navigate();
       await waitForPageStable(page);
 
-      // 404/500 에러 확인
-      const pageError = page
-        .getByText("404")
-        .or(page.getByText("Page not found"))
-        .or(page.getByText("500"))
-        .or(page.getByText("Server Error"));
-      const hasPageError = await pageError
-        .first()
-        .isVisible({ timeout: 2000 })
-        .catch(() => false);
-
-      expect(
-        hasPageError,
-        "❌ 페이지 에러 감지 — 알림 생성 페이지 접근 불가 (URL 확인 필요)",
-      ).toBe(false);
+      await assertNoServerError(page, "알림 생성 페이지");
 
       const fields = await notifCreatePage.discoverFormFields();
       console.log(`  발견된 필드 수: ${Object.keys(fields).length}`);

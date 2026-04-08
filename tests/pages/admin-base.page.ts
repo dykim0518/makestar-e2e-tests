@@ -593,4 +593,42 @@ export abstract class AdminBasePage extends BasePage {
       trimmed !== "N/A"
     );
   }
+
+  /**
+   * 서버 에러(500, Server Error, Page not found) 발생 여부를 확인합니다.
+   * 에러가 발견되면 expect 실패를 발생시킵니다.
+   *
+   * @param context - 에러 메시지에 표시할 컨텍스트 (예: "앨범 생성 후")
+   */
+  async assertNoServerError(context?: string): Promise<void> {
+    await assertNoServerError(this.page, context);
+  }
+}
+
+/**
+ * 서버 에러(500 Server Error, Page not found) 발생 여부를 확인합니다.
+ * POM 인스턴스 없이 page만으로 호출 가능한 standalone 버전.
+ *
+ * @param page - Playwright Page
+ * @param context - 에러 메시지에 표시할 컨텍스트 (예: "대분류 생성 후")
+ */
+export async function assertNoServerError(
+  page: Page,
+  context?: string,
+): Promise<void> {
+  const label = context ? ` (${context})` : "";
+
+  const bodyText = await page
+    .locator("body")
+    .textContent()
+    .catch(() => "");
+
+  const hasServerError =
+    /500\s*(Internal\s*)?Server\s*Error/i.test(bodyText ?? "") ||
+    /Page\s*not\s*found/i.test(bodyText ?? "");
+
+  expect(
+    hasServerError,
+    `❌ 서버 에러 발생${label} — 백엔드 환경 확인 필요`,
+  ).toBe(false);
 }

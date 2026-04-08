@@ -16,92 +16,18 @@
  * - 상세 페이지 진입, 데이터 일관성, 목록 복귀
  */
 
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 import { UserListPage, UserDetailPage } from "./pages";
-import { setupAuthCookies, resetAuthCache } from "./helpers/admin";
+import { initPageWithRecovery } from "./helpers/admin";
 import {
-  isAuthFailed,
-  isTokenValidSync,
-  getTokenRemaining,
-  waitForPageStable,
   ELEMENT_TIMEOUT,
+  applyAdminTestConfig,
 } from "./helpers/admin/test-helpers";
 
 // ============================================================================
 // 테스트 설정
 // ============================================================================
-const tokenValid = isTokenValidSync();
-
-if (!tokenValid) {
-  test("토큰 유효성 검증", () => {
-    expect(
-      tokenValid,
-      "⚠️ 토큰이 만료되었습니다! 전체 테스트 실행: npx playwright test --project=admin-setup --project=admin-pc",
-    ).toBe(true);
-  });
-}
-
-test.beforeAll(async () => {
-  resetAuthCache();
-  if (tokenValid) {
-    const { hours, minutes } = getTokenRemaining();
-    console.log(
-      `\n✅ Admin 회원관리 테스트 시작 (토큰 유효, 남은 시간: ${hours}시간 ${minutes}분)`,
-    );
-  }
-});
-
-test.beforeEach(async ({ page, viewport }) => {
-  expect(
-    viewport === null || viewport.width >= 1024,
-    "이 테스트는 데스크톱 뷰포트에서만 실행됩니다",
-  ).toBeTruthy();
-
-  const authStatus = isAuthFailed();
-  expect(authStatus.failed, `인증 실패: ${authStatus.reason}`).toBe(false);
-
-  await setupAuthCookies(page);
-});
-
-/**
- * 회원관리 페이지 초기화 (인증/네비게이션 복구 포함)
- */
-async function initUserPageWithRecovery(seedPage: Page): Promise<UserListPage> {
-  if (seedPage.isClosed()) {
-    throw new Error(
-      "Playwright page가 닫혀 회원관리 페이지를 초기화할 수 없습니다.",
-    );
-  }
-
-  await setupAuthCookies(seedPage);
-
-  const userPage = new UserListPage(seedPage);
-  await userPage.navigate();
-
-  const currentUrl = userPage.currentUrl;
-  const redirectedToLogin = /\/login|\/auth|stage-auth/i.test(currentUrl);
-  if (redirectedToLogin) {
-    resetAuthCache();
-    await setupAuthCookies(seedPage);
-    await userPage.navigate();
-  }
-
-  await waitForPageStable(seedPage);
-
-  await userPage.waitForTableOrNoResult(15000).catch(async () => {
-    const hasNoResult = await userPage.noResultMessage
-      .isVisible({ timeout: 3000 })
-      .catch(() => false);
-    const hasTable = await userPage.table
-      .isVisible({ timeout: 3000 })
-      .catch(() => false);
-    if (!hasNoResult && !hasTable) {
-      throw new Error("회원관리 목록 영역이 로드되지 않았습니다.");
-    }
-  });
-
-  return userPage;
-}
+applyAdminTestConfig("회원관리");
 
 // ##############################################################################
 // 회원관리 목록
@@ -110,7 +36,7 @@ test.describe.serial("회원관리 목록", () => {
   let userPage: UserListPage;
 
   test.beforeEach(async ({ page }) => {
-    userPage = await initUserPageWithRecovery(page);
+    userPage = await initPageWithRecovery(UserListPage, page, "회원관리");
   });
 
   test("USR-PAGE-01: 페이지 기본 요소 노출 검증", async () => {
@@ -216,7 +142,7 @@ test.describe.serial("탭 기능", () => {
   let userPage: UserListPage;
 
   test.beforeEach(async ({ page }) => {
-    userPage = await initUserPageWithRecovery(page);
+    userPage = await initPageWithRecovery(UserListPage, page, "회원관리");
   });
 
   test("USR-TAB-01: B2C/B2B 회원관리 탭 전환 검증", async () => {
@@ -268,7 +194,7 @@ test.describe.serial("검색 기능", () => {
   let userPage: UserListPage;
 
   test.beforeEach(async ({ page }) => {
-    userPage = await initUserPageWithRecovery(page);
+    userPage = await initPageWithRecovery(UserListPage, page, "회원관리");
   });
 
   test("USR-SEARCH-01: 키워드 검색 정합성 검증", async () => {
@@ -383,7 +309,7 @@ test.describe.serial("필터 기능", () => {
   let userPage: UserListPage;
 
   test.beforeEach(async ({ page }) => {
-    userPage = await initUserPageWithRecovery(page);
+    userPage = await initPageWithRecovery(UserListPage, page, "회원관리");
   });
 
   test("USR-FLT-01: 회원상태 필터 적용 검증", async () => {
@@ -506,7 +432,7 @@ test.describe.serial("페이지네이션", () => {
   let userPage: UserListPage;
 
   test.beforeEach(async ({ page }) => {
-    userPage = await initUserPageWithRecovery(page);
+    userPage = await initPageWithRecovery(UserListPage, page, "회원관리");
   });
 
   test("USR-PAGIN-01: 다음 페이지 이동 검증", async ({ page }) => {
@@ -587,7 +513,7 @@ test.describe.serial("액션", () => {
   let userPage: UserListPage;
 
   test.beforeEach(async ({ page }) => {
-    userPage = await initUserPageWithRecovery(page);
+    userPage = await initPageWithRecovery(UserListPage, page, "회원관리");
   });
 
   test("USR-ACTION-01: 엑셀 다운로드 버튼 동작 검증", async () => {
@@ -664,7 +590,7 @@ test.describe.serial("상세 페이지", () => {
   let userPage: UserListPage;
 
   test.beforeEach(async ({ page }) => {
-    userPage = await initUserPageWithRecovery(page);
+    userPage = await initPageWithRecovery(UserListPage, page, "회원관리");
   });
 
   test("USR-DETAIL-01: 상세 페이지 진입 및 기본정보 확인", async ({ page }) => {

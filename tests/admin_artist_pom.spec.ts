@@ -39,53 +39,24 @@
  * @see tests/pages/admin-artist-list.page.ts
  */
 
-import { test, expect, type Page } from "@playwright/test";
-import { ArtistListPage, ARTIST_TABLE_HEADERS, ARTIST_COL } from "./pages";
-import type { ArtistRowData } from "./pages";
-import { setupAuthCookies, resetAuthCache } from "./helpers/admin";
+import { test, expect } from "@playwright/test";
 import {
-  isAuthFailed,
-  isTokenValidSync,
-  getTokenRemaining,
+  ArtistListPage,
+  ARTIST_TABLE_HEADERS,
+  ARTIST_COL,
+  assertNoServerError,
+} from "./pages";
+import type { ArtistRowData } from "./pages";
+import {
   waitForPageStable,
   ELEMENT_TIMEOUT,
+  applyAdminTestConfig,
 } from "./helpers/admin/test-helpers";
 
 // ============================================================================
 // 테스트 설정
 // ============================================================================
-const tokenValid = isTokenValidSync();
-
-if (!tokenValid) {
-  test("토큰 유효성 검증", () => {
-    expect(
-      tokenValid,
-      "⚠️ 토큰이 만료되었습니다! 전체 테스트 실행: npx playwright test --project=admin-setup --project=admin-pc",
-    ).toBe(true);
-  });
-}
-
-test.beforeAll(async () => {
-  resetAuthCache();
-  if (tokenValid) {
-    const { hours, minutes } = getTokenRemaining();
-    console.log(
-      `\n✅ Admin 아티스트 테스트 시작 (토큰 유효, 남은 시간: ${hours}시간 ${minutes}분)`,
-    );
-  }
-});
-
-test.beforeEach(async ({ page, viewport }) => {
-  expect(
-    viewport === null || viewport.width >= 1024,
-    "이 테스트는 데스크톱 뷰포트에서만 실행됩니다",
-  ).toBeTruthy();
-
-  const authStatus = isAuthFailed();
-  expect(authStatus.failed, `인증 실패: ${authStatus.reason}`).toBe(false);
-
-  await setupAuthCookies(page);
-});
+applyAdminTestConfig("아티스트");
 
 // ##############################################################################
 // 아티스트 목록 - 페이지 로드 및 기본 요소
@@ -506,18 +477,8 @@ test.describe("아티스트 목록", () => {
       );
       await waitForPageStable(page);
 
-      // 500 Server Error 체크
-      const serverError = page
-        .getByText("500")
-        .or(page.getByText("Server Error"));
-      const hasServerError = await serverError
-        .first()
-        .isVisible({ timeout: 2000 })
-        .catch(() => false);
-      expect(
-        hasServerError,
-        "❌ 500 Server Error 발생 - 백엔드 환경 확인 필요",
-      ).toBe(false);
+      // 서버 에러 체크
+      await assertNoServerError(page, "아티스트 등록 폼");
 
       // 등록 폼 필수 섹션 존재 여부
       const sections = ["기본정보", "아티스트 이미지", "아티스트 연관 정보"];

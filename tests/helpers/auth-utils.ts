@@ -1,0 +1,44 @@
+/**
+ * 인증 파일 유틸리티
+ *
+ * 세션 파일(auth.json, ab-auth.json)의 유효성을 검증하는 공통 함수.
+ */
+
+import * as fs from "fs";
+
+type AuthFileStatus = {
+  available: boolean;
+  reason: string;
+};
+
+/**
+ * 인증 파일의 존재 여부와 쿠키 유효성을 확인합니다.
+ *
+ * @param authFilePath - 인증 파일 절대 경로
+ * @returns available: true면 유효한 쿠키 존재, false면 reason에 사유 포함
+ */
+export function checkAuthFile(authFilePath: string): AuthFileStatus {
+  if (!fs.existsSync(authFilePath)) {
+    return {
+      available: false,
+      reason: `세션 파일이 존재하지 않습니다: ${authFilePath}`,
+    };
+  }
+  try {
+    const auth = JSON.parse(fs.readFileSync(authFilePath, "utf-8"));
+    const cookies = auth.cookies || [];
+    if (cookies.length === 0) {
+      return { available: false, reason: "세션 파일에 쿠키가 없습니다" };
+    }
+    const now = Date.now() / 1000;
+    const validCookies = cookies.filter(
+      (c: { expires?: number }) => !c.expires || c.expires > now,
+    );
+    if (validCookies.length === 0) {
+      return { available: false, reason: "세션의 모든 쿠키가 만료되었습니다" };
+    }
+    return { available: true, reason: "" };
+  } catch (e) {
+    return { available: false, reason: `세션 파일 파싱 오류: ${e}` };
+  }
+}

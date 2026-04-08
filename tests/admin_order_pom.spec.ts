@@ -11,7 +11,7 @@
  * - 검색 초기화 및 무효 키워드 검색
  */
 
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from "@playwright/test";
 import {
   OrderListPage,
   PurchaseListPage,
@@ -19,137 +19,85 @@ import {
   type OrderStatusKey,
   type OrderTabKey,
   type PurchaseTabKey,
-} from './pages';
-import { setupAuthCookies, resetAuthCache } from './helpers/admin';
+} from "./pages";
+import { initPageWithRecovery } from "./helpers/admin";
 import {
-  isAuthFailed,
-  isTokenValidSync,
-  getTokenRemaining,
-  waitForPageStable,
   ELEMENT_TIMEOUT,
-} from './helpers/admin/test-helpers';
+  applyAdminTestConfig,
+} from "./helpers/admin/test-helpers";
 
 // ============================================================================
 // 테스트 설정
 // ============================================================================
-const tokenValid = isTokenValidSync();
-
-if (!tokenValid) {
-  test('토큰 유효성 검증', () => {
-    expect(
-      tokenValid,
-      '⚠️ 토큰이 만료되었습니다! 전체 테스트 실행: npx playwright test --project=admin-setup --project=admin-pc'
-    ).toBe(true);
-  });
-}
-
-test.beforeAll(async () => {
-  resetAuthCache();
-  if (tokenValid) {
-    const { hours, minutes } = getTokenRemaining();
-    console.log(`\n✅ Admin 주문관리 테스트 시작 (토큰 유효, 남은 시간: ${hours}시간 ${minutes}분)`);
-  }
-});
-
-test.beforeEach(async ({ page, viewport }) => {
-  expect(
-    viewport === null || viewport.width >= 1024,
-    '이 테스트는 데스크톱 뷰포트에서만 실행됩니다'
-  ).toBeTruthy();
-
-  const authStatus = isAuthFailed();
-  expect(authStatus.failed, `인증 실패: ${authStatus.reason}`).toBe(false);
-
-  await setupAuthCookies(page);
-});
-
-/**
- * 주문관리 페이지 초기화 (인증/네비게이션 복구 포함)
- *
- * - 로그인 리다이렉트 발생 시 쿠키 재주입 후 재시도
- * - 페이지가 닫힌 경우 새 페이지를 열어 복구
- */
-async function initOrderPageWithRecovery(seedPage: Page): Promise<OrderListPage> {
-  if (seedPage.isClosed()) {
-    throw new Error('Playwright page가 닫혀 주문관리 페이지를 초기화할 수 없습니다.');
-  }
-
-  await setupAuthCookies(seedPage);
-
-  const orderPage = new OrderListPage(seedPage);
-  await orderPage.navigate();
-
-  const currentUrl = orderPage.currentUrl;
-  const redirectedToLogin = /\/login|\/auth|stage-auth/i.test(currentUrl);
-  if (redirectedToLogin) {
-    resetAuthCache();
-    await setupAuthCookies(seedPage);
-    await orderPage.navigate();
-  }
-
-  await waitForPageStable(seedPage);
-
-  await orderPage.waitForTableOrNoResult(15000).catch(async () => {
-    const hasSummary = await orderPage.resultSummary.isVisible({ timeout: 3000 }).catch(() => false);
-    const hasNoResult = await orderPage.noResultMessage.isVisible({ timeout: 3000 }).catch(() => false);
-    if (!hasSummary && !hasNoResult) {
-      throw new Error('주문관리 목록 영역이 로드되지 않았습니다.');
-    }
-  });
-
-  return orderPage;
-}
+applyAdminTestConfig("주문관리");
 
 // ##############################################################################
 // 주문관리 목록
 // ##############################################################################
-test.describe.serial('주문관리 목록', () => {
+test.describe.serial("주문관리 목록", () => {
   let orderPage: OrderListPage;
 
   test.beforeEach(async ({ page }) => {
-    orderPage = await initOrderPageWithRecovery(page);
+    orderPage = await initPageWithRecovery(OrderListPage, page, "주문관리");
   });
 
-  test('ORD-PAGE-01: 페이지 기본 요소 및 탭 노출 검증', async () => {
+  test("ORD-PAGE-01: 페이지 기본 요소 및 탭 노출 검증", async () => {
     await orderPage.assertPageTitle();
     await orderPage.assertHeading();
-    await expect(orderPage.breadcrumb).toBeVisible({ timeout: ELEMENT_TIMEOUT });
+    await expect(orderPage.breadcrumb).toBeVisible({
+      timeout: ELEMENT_TIMEOUT,
+    });
     await orderPage.assertTabsVisible();
   });
 
-  test('ORD-TAB-01: 전체/B2C/B2B/프로젝트별 주문 탭 전환 검증', async () => {
-    await orderPage.switchTab('all');
+  test("ORD-TAB-01: 전체/B2C/B2B/프로젝트별 주문 탭 전환 검증", async () => {
+    await orderPage.switchTab("all");
     const allCount = await orderPage.getRowCount();
 
-    await orderPage.switchTab('b2c');
+    await orderPage.switchTab("b2c");
     const b2cCount = await orderPage.getRowCount();
 
-    await orderPage.switchTab('b2b');
+    await orderPage.switchTab("b2b");
     const b2bCount = await orderPage.getRowCount();
 
-    await orderPage.switchTab('project');
-    const hasSummary = await orderPage.resultSummary.isVisible({ timeout: ELEMENT_TIMEOUT }).catch(() => false);
-    const hasNoResult = await orderPage.noResultMessage.isVisible({ timeout: ELEMENT_TIMEOUT }).catch(() => false);
-    expect(hasSummary || hasNoResult, '프로젝트별 주문 탭에서 목록 영역이 보이지 않습니다.').toBeTruthy();
+    await orderPage.switchTab("project");
+    const hasSummary = await orderPage.resultSummary
+      .isVisible({ timeout: ELEMENT_TIMEOUT })
+      .catch(() => false);
+    const hasNoResult = await orderPage.noResultMessage
+      .isVisible({ timeout: ELEMENT_TIMEOUT })
+      .catch(() => false);
+    expect(
+      hasSummary || hasNoResult,
+      "프로젝트별 주문 탭에서 목록 영역이 보이지 않습니다.",
+    ).toBeTruthy();
 
-    const hasDataInAnyTab = [allCount, b2cCount, b2bCount].some((count) => count > 0);
-    expect(hasDataInAnyTab, '전체/B2C/B2B 탭 모두 데이터가 없습니다.').toBeTruthy();
+    const hasDataInAnyTab = [allCount, b2cCount, b2bCount].some(
+      (count) => count > 0,
+    );
+    expect(
+      hasDataInAnyTab,
+      "전체/B2C/B2B 탭 모두 데이터가 없습니다.",
+    ).toBeTruthy();
   });
 
-  test('ORD-SEARCH-01: 상태 조합 검색(주문/결제/배송/재고할당) 정합성 검증', async () => {
-    const candidateTabs: OrderTabKey[] = ['all', 'b2c', 'b2b'];
+  test("ORD-SEARCH-01: 상태 조합 검색(주문/결제/배송/재고할당) 정합성 검증", async () => {
+    const candidateTabs: OrderTabKey[] = ["all", "b2c", "b2b"];
     const errors: string[] = [];
     let verified = false;
 
     for (const tab of candidateTabs) {
       await orderPage.switchTab(tab);
       try {
-        const appliedSnapshot = await orderPage.applyFirstAvailableCombinedStatusFilters();
+        const appliedSnapshot =
+          await orderPage.applyFirstAvailableCombinedStatusFilters();
         await orderPage.clickSearchAndWait();
 
         const isNoResult = await orderPage.hasNoResultOrEmptyTable();
         if (isNoResult) {
-          const hasNoResultBanner = await orderPage.noResultMessage.isVisible({ timeout: ELEMENT_TIMEOUT }).catch(() => false);
+          const hasNoResultBanner = await orderPage.noResultMessage
+            .isVisible({ timeout: ELEMENT_TIMEOUT })
+            .catch(() => false);
           const hasZeroSummary = await orderPage.hasZeroSummaryCount();
           expect(
             hasNoResultBanner || hasZeroSummary,
@@ -167,45 +115,64 @@ test.describe.serial('주문관리 목록', () => {
       }
     }
 
-    expect(verified, `상태 조합 검색 검증을 수행할 수 있는 탭이 없습니다.\n${errors.join('\n')}`).toBeTruthy();
+    expect(
+      verified,
+      `상태 조합 검색 검증을 수행할 수 있는 탭이 없습니다.\n${errors.join("\n")}`,
+    ).toBeTruthy();
   });
 
-  test('ORD-SEARCH-02: 검색 초기화 후 동일 조건 재검색 시 재실행 가능성 검증', async () => {
-    await orderPage.switchTab('all');
+  test("ORD-SEARCH-02: 검색 초기화 후 동일 조건 재검색 시 재실행 가능성 검증", async () => {
+    await orderPage.switchTab("all");
     const initialCount = await orderPage.getRowCount();
-    expect(initialCount, '초기 주문 목록이 비어 있습니다.').toBeGreaterThan(0);
+    expect(initialCount, "초기 주문 목록이 비어 있습니다.").toBeGreaterThan(0);
 
     await orderPage.clickSearchAndWait();
     await orderPage.waitForTableOrNoResult();
     const firstSearchCount = await orderPage.getRowCount();
-    expect(firstSearchCount, '첫 조회 결과가 비어 있습니다.').toBeGreaterThan(0);
+    expect(firstSearchCount, "첫 조회 결과가 비어 있습니다.").toBeGreaterThan(
+      0,
+    );
 
     await orderPage.resetFiltersAndWait();
     const resetCount = await orderPage.getRowCount();
-    expect(resetCount, '검색 초기화 이후 목록이 비어 있습니다.').toBeGreaterThan(0);
+    expect(
+      resetCount,
+      "검색 초기화 이후 목록이 비어 있습니다.",
+    ).toBeGreaterThan(0);
 
     await orderPage.clickSearchAndWait();
     await orderPage.waitForTableOrNoResult();
     const rerunCount = await orderPage.getRowCount();
-    expect(rerunCount, '검색 초기화 후 재조회 결과가 비어 있습니다.').toBeGreaterThan(0);
+    expect(
+      rerunCount,
+      "검색 초기화 후 재조회 결과가 비어 있습니다.",
+    ).toBeGreaterThan(0);
   });
 
-  test('ORD-SEARCH-03: 존재하지 않는 주문번호 검색 시 결과 없음 검증', async () => {
-    await orderPage.switchTab('all');
+  test("ORD-SEARCH-03: 존재하지 않는 주문번호 검색 시 결과 없음 검증", async () => {
+    await orderPage.switchTab("all");
 
     const impossibleKeyword = `AUTO-NOT-FOUND-${Date.now()}`;
     await orderPage.searchByKeyword(impossibleKeyword);
 
     const noResult = await orderPage.hasNoResultOrEmptyTable();
-    expect(noResult, '존재하지 않는 주문번호 검색에서 결과 없음 상태가 확인되지 않았습니다.').toBeTruthy();
+    expect(
+      noResult,
+      "존재하지 않는 주문번호 검색에서 결과 없음 상태가 확인되지 않았습니다.",
+    ).toBeTruthy();
 
     await orderPage.resetFiltersAndWait();
   });
 
-  test('ORD-FLT-01: 단일 상태 필터 검색 정합성 검증', async () => {
-    await orderPage.switchTab('all');
+  test("ORD-FLT-01: 단일 상태 필터 검색 정합성 검증", async () => {
+    await orderPage.switchTab("all");
 
-    const statusKeys: OrderStatusKey[] = ['orderStatus', 'paymentStatus', 'deliveryStatus', 'stockAllocationStatus'];
+    const statusKeys: OrderStatusKey[] = [
+      "orderStatus",
+      "paymentStatus",
+      "deliveryStatus",
+      "stockAllocationStatus",
+    ];
     const validatedKeys: string[] = [];
     const unavailableKeys: string[] = [];
 
@@ -227,7 +194,9 @@ test.describe.serial('주문관리 목록', () => {
           `${key} 단일 필터 0건 결과 표기가 없습니다.`,
         ).toBeTruthy();
       } else {
-        const partial: Partial<Record<OrderStatusKey, string>> = { [key]: selected };
+        const partial: Partial<Record<OrderStatusKey, string>> = {
+          [key]: selected,
+        };
         await orderPage.assertRowsMatchPartialStatus(partial, 10);
       }
 
@@ -236,18 +205,18 @@ test.describe.serial('주문관리 목록', () => {
 
     expect(
       validatedKeys.length,
-      `검증 가능한 단일 상태 필터가 없습니다. 누락: ${unavailableKeys.join(', ') || 'none'}`,
+      `검증 가능한 단일 상태 필터가 없습니다. 누락: ${unavailableKeys.join(", ") || "none"}`,
     ).toBeGreaterThan(0);
   });
 
-  test('ORD-FLT-02: 상태 2개 조합(Pairwise) 검색 정합성 검증', async () => {
-    await orderPage.switchTab('all');
+  test("ORD-FLT-02: 상태 2개 조합(Pairwise) 검색 정합성 검증", async () => {
+    await orderPage.switchTab("all");
 
     const pairs: Array<[OrderStatusKey, OrderStatusKey]> = [
-      ['orderStatus', 'paymentStatus'],
-      ['orderStatus', 'deliveryStatus'],
-      ['paymentStatus', 'deliveryStatus'],
-      ['deliveryStatus', 'stockAllocationStatus'],
+      ["orderStatus", "paymentStatus"],
+      ["orderStatus", "deliveryStatus"],
+      ["paymentStatus", "deliveryStatus"],
+      ["deliveryStatus", "stockAllocationStatus"],
     ];
 
     let validatedPairs = 0;
@@ -286,49 +255,63 @@ test.describe.serial('주문관리 목록', () => {
 
         validatedPairs += 1;
       } catch (error: any) {
-        failedPairs.push(`${leftKey}+${rightKey}: ${error?.message ?? String(error)}`);
+        failedPairs.push(
+          `${leftKey}+${rightKey}: ${error?.message ?? String(error)}`,
+        );
       }
     }
 
     expect(
       validatedPairs,
-      `검증 가능한 pairwise 조합이 없습니다. 누락: ${skippedPairs.join(', ') || 'none'}\n실패: ${failedPairs.join('\n') || 'none'}`,
+      `검증 가능한 pairwise 조합이 없습니다. 누락: ${skippedPairs.join(", ") || "none"}\n실패: ${failedPairs.join("\n") || "none"}`,
     ).toBeGreaterThan(0);
   });
 
-  test('ORD-FLT-03: 탭 전환 시 주문상태 필터 격리 검증', async () => {
-    await orderPage.switchTab('all');
+  test("ORD-FLT-03: 탭 전환 시 주문상태 필터 격리 검증", async () => {
+    await orderPage.switchTab("all");
     await orderPage.resetFiltersAndWait();
 
-    const baseOptions = await orderPage.getStatusOptionsByKey('orderStatus');
-    expect(baseOptions.length, 'ALL 탭 주문상태 옵션이 없습니다.').toBeGreaterThan(0);
+    const baseOptions = await orderPage.getStatusOptionsByKey("orderStatus");
+    expect(
+      baseOptions.length,
+      "ALL 탭 주문상태 옵션이 없습니다.",
+    ).toBeGreaterThan(0);
 
-    const allSelected = await orderPage.selectFirstStatusOption('orderStatus');
+    const allSelected = await orderPage.selectFirstStatusOption("orderStatus");
     await orderPage.clickSearchAndWait();
 
-    const secondaryTabs: OrderTabKey[] = ['b2c', 'b2b'];
+    const secondaryTabs: OrderTabKey[] = ["b2c", "b2b"];
     let isolationValidated = false;
 
     for (const tab of secondaryTabs) {
       await orderPage.switchTab(tab);
       await orderPage.resetFiltersAndWait();
 
-      const secondaryOptions = await orderPage.getStatusOptionsByKey('orderStatus');
+      const secondaryOptions =
+        await orderPage.getStatusOptionsByKey("orderStatus");
       if (secondaryOptions.length === 0) {
         continue;
       }
 
-      const secondaryDifferent = await orderPage.getDifferentStatusOption('orderStatus', allSelected);
+      const secondaryDifferent = await orderPage.getDifferentStatusOption(
+        "orderStatus",
+        allSelected,
+      );
       if (!secondaryDifferent) {
         continue;
       }
 
-      await orderPage.selectStatusOptionByValue('orderStatus', secondaryDifferent);
+      await orderPage.selectStatusOptionByValue(
+        "orderStatus",
+        secondaryDifferent,
+      );
       await orderPage.clickSearchAndWait();
 
-      await orderPage.switchTab('all');
-      const restored = await orderPage.getCurrentStatusValueByKey('orderStatus');
-      const isRestoredByIsolationPolicy = restored === '' || restored === allSelected;
+      await orderPage.switchTab("all");
+      const restored =
+        await orderPage.getCurrentStatusValueByKey("orderStatus");
+      const isRestoredByIsolationPolicy =
+        restored === "" || restored === allSelected;
       expect(
         isRestoredByIsolationPolicy,
         `${tab} 탭 전환 후 ALL 탭 주문상태 값이 정책(유지/초기화)과 다릅니다. restored=${restored}, before=${allSelected}`,
@@ -338,11 +321,14 @@ test.describe.serial('주문관리 목록', () => {
       break;
     }
 
-    expect(isolationValidated, '탭 격리 검증을 수행할 수 있는 보조 탭/옵션을 찾지 못했습니다.').toBeTruthy();
+    expect(
+      isolationValidated,
+      "탭 격리 검증을 수행할 수 있는 보조 탭/옵션을 찾지 못했습니다.",
+    ).toBeTruthy();
   });
 
-  test('ORD-DATA-01: 검색 결과 요약 카운트와 목록 데이터 일관성 검증', async () => {
-    await orderPage.switchTab('all');
+  test("ORD-DATA-01: 검색 결과 요약 카운트와 목록 데이터 일관성 검증", async () => {
+    await orderPage.switchTab("all");
     await orderPage.resetFiltersAndWait();
     await orderPage.clickSearchAndWait();
 
@@ -350,23 +336,29 @@ test.describe.serial('주문관리 목록', () => {
     const pageLimit = await orderPage.getPerPageLimit(10);
 
     if (metrics.noResultState) {
-      expect(metrics.rowCount, 'no-result 상태인데 행 데이터가 존재합니다.').toBe(0);
+      expect(
+        metrics.rowCount,
+        "no-result 상태인데 행 데이터가 존재합니다.",
+      ).toBe(0);
       expect(
         metrics.hasNoResultMessage || metrics.hasZeroSummary,
-        'no-result 상태 표시(메시지/전체 0건)가 없습니다.',
+        "no-result 상태 표시(메시지/전체 0건)가 없습니다.",
       ).toBeTruthy();
       return;
     }
 
-    expect(metrics.summaryCount, '결과 요약 카운트를 찾지 못했습니다.').not.toBeNull();
+    expect(
+      metrics.summaryCount,
+      "결과 요약 카운트를 찾지 못했습니다.",
+    ).not.toBeNull();
     if (metrics.summaryCount !== null) {
       expect(metrics.summaryCount).toBeGreaterThanOrEqual(metrics.rowCount);
     }
     expect(metrics.rowCount).toBeLessThanOrEqual(pageLimit);
   });
 
-  test('ORD-PAGE-02: 페이징 이동 및 페이지당 표시 개수 검증', async () => {
-    await orderPage.switchTab('all');
+  test("ORD-PAGE-02: 페이징 이동 및 페이지당 표시 개수 검증", async () => {
+    await orderPage.switchTab("all");
     await orderPage.resetFiltersAndWait();
     await orderPage.clickSearchAndWait();
 
@@ -390,14 +382,17 @@ test.describe.serial('주문관리 목록', () => {
 
     const firstRowBefore = await orderPage.getFirstRowFingerprint();
     const moved = await orderPage.goToNextPageSafely();
-    expect(moved, '다음 페이지 이동에 실패했습니다.').toBeTruthy();
+    expect(moved, "다음 페이지 이동에 실패했습니다.").toBeTruthy();
 
     const secondMetrics = await orderPage.getResultMetrics();
     expect(secondMetrics.rowCount).toBeLessThanOrEqual(pageLimit);
 
     if (firstRowBefore.length > 0 && secondMetrics.rowCount > 0) {
       const firstRowAfter = await orderPage.getFirstRowFingerprint();
-      expect(firstRowAfter, '다음 페이지 첫 번째 행이 비어 있습니다.').toBeTruthy();
+      expect(
+        firstRowAfter,
+        "다음 페이지 첫 번째 행이 비어 있습니다.",
+      ).toBeTruthy();
     }
 
     await orderPage.goToPreviousPageSafely();
@@ -407,63 +402,41 @@ test.describe.serial('주문관리 목록', () => {
 // ##############################################################################
 // [추가 위치] 발주/입고 목록 (주문관리 목록 블록 아래에 추가)
 // ##############################################################################
-/**
- * 발주/입고 페이지 초기화 (인증/네비게이션 복구 포함)
- */
-async function initPurchasePageWithRecovery(seedPage: Page): Promise<PurchaseListPage> {
-  if (seedPage.isClosed()) {
-    throw new Error('Playwright page가 닫혀 발주/입고 페이지를 초기화할 수 없습니다.');
-  }
-
-  await setupAuthCookies(seedPage);
-
-  const purchasePage = new PurchaseListPage(seedPage);
-  await purchasePage.navigate();
-
-  const currentUrl = purchasePage.currentUrl;
-  const redirectedToLogin = /\/login|\/auth|stage-auth/i.test(currentUrl);
-  if (redirectedToLogin) {
-    resetAuthCache();
-    await setupAuthCookies(seedPage);
-    await purchasePage.navigate();
-  }
-
-  await waitForPageStable(seedPage);
-
-  await purchasePage.waitForTableOrNoResult(15000).catch(async () => {
-    const hasSummary = await purchasePage.resultSummary.isVisible({ timeout: 3000 }).catch(() => false);
-    const hasNoResult = await purchasePage.noResultMessage.isVisible({ timeout: 3000 }).catch(() => false);
-    if (!hasSummary && !hasNoResult) {
-      throw new Error('발주/입고 목록 영역이 로드되지 않았습니다.');
-    }
-  });
-
-  return purchasePage;
-}
 
 // ##############################################################################
 // 발주/입고 목록
 // ##############################################################################
-test.describe.serial('발주/입고 목록', () => {
+test.describe.serial("발주/입고 목록", () => {
   let purchasePage: PurchaseListPage;
-  const sortFilterSnapshot = (filters: Array<{ label: string; value: string }>): string[] =>
+  const sortFilterSnapshot = (
+    filters: Array<{ label: string; value: string }>,
+  ): string[] =>
     filters
-      .map((filter) => `${filter.label.replace(/\s+/g, ' ').trim().toLowerCase()}::${filter.value.replace(/\s+/g, ' ').trim().toLowerCase()}`)
+      .map(
+        (filter) =>
+          `${filter.label.replace(/\s+/g, " ").trim().toLowerCase()}::${filter.value.replace(/\s+/g, " ").trim().toLowerCase()}`,
+      )
       .sort();
 
   test.beforeEach(async ({ page }) => {
-    purchasePage = await initPurchasePageWithRecovery(page);
+    purchasePage = await initPageWithRecovery(
+      PurchaseListPage,
+      page,
+      "발주/입고",
+    );
   });
 
-  test('PUR-PAGE-01: 페이지 기본 요소 및 탭 노출 검증', async () => {
+  test("PUR-PAGE-01: 페이지 기본 요소 및 탭 노출 검증", async () => {
     await purchasePage.assertPageTitle();
     await purchasePage.assertHeading();
-    await expect(purchasePage.breadcrumb).toBeVisible({ timeout: ELEMENT_TIMEOUT });
+    await expect(purchasePage.breadcrumb).toBeVisible({
+      timeout: ELEMENT_TIMEOUT,
+    });
     await purchasePage.assertTabsVisible();
   });
 
-  test('PUR-TAB-01: 발주 요청관리/발주관리/입고내역 탭 전환 검증', async () => {
-    const tabs: PurchaseTabKey[] = ['request', 'manage', 'inbound'];
+  test("PUR-TAB-01: 발주 요청관리/발주관리/입고내역 탭 전환 검증", async () => {
+    const tabs: PurchaseTabKey[] = ["request", "manage", "inbound"];
 
     for (const tab of tabs) {
       await purchasePage.switchTab(tab);
@@ -475,13 +448,16 @@ test.describe.serial('발주/입고 목록', () => {
           `${tab} 탭에서 no-result 표기가 누락되었습니다.`,
         ).toBeTruthy();
       } else {
-        expect(metrics.rowCount, `${tab} 탭에서 조회 결과가 없습니다.`).toBeGreaterThan(0);
+        expect(
+          metrics.rowCount,
+          `${tab} 탭에서 조회 결과가 없습니다.`,
+        ).toBeGreaterThan(0);
       }
     }
   });
 
-  test('PUR-SEARCH-01: 탭별 검색항목+필터 조합 조회 정합성 검증', async () => {
-    const tabs: PurchaseTabKey[] = ['request', 'manage', 'inbound'];
+  test("PUR-SEARCH-01: 탭별 검색항목+필터 조합 조회 정합성 검증", async () => {
+    const tabs: PurchaseTabKey[] = ["request", "manage", "inbound"];
     const validatedTabs: string[] = [];
     const failures: string[] = [];
 
@@ -493,7 +469,8 @@ test.describe.serial('발주/입고 목록', () => {
         const baselineMetrics = await purchasePage.getResultMetrics();
         if (baselineMetrics.noResultState) {
           expect(
-            baselineMetrics.hasNoResultMessage || baselineMetrics.hasZeroSummary,
+            baselineMetrics.hasNoResultMessage ||
+              baselineMetrics.hasZeroSummary,
             `${tab} 탭 기본 조회에서 no-result 표기가 없습니다.`,
           ).toBeTruthy();
           validatedTabs.push(`${tab}(empty)`);
@@ -533,19 +510,19 @@ test.describe.serial('발주/입고 목록', () => {
 
     expect(
       validatedTabs.length,
-      `탭별 조합 검색 정합성 검증 실패\n성공: ${validatedTabs.join(', ') || 'none'}\n실패:\n${failures.join('\n') || 'none'}`,
+      `탭별 조합 검색 정합성 검증 실패\n성공: ${validatedTabs.join(", ") || "none"}\n실패:\n${failures.join("\n") || "none"}`,
     ).toBe(tabs.length);
   });
 
-  test('PUR-SEARCH-02: 검색 초기화 후 동일 조건 재조회(idempotent) 검증', async () => {
-    await purchasePage.switchTab('request');
+  test("PUR-SEARCH-02: 검색 초기화 후 동일 조건 재조회(idempotent) 검증", async () => {
+    await purchasePage.switchTab("request");
     await purchasePage.resetFiltersAndWait();
 
     const baselineMetrics = await purchasePage.getResultMetrics();
     if (baselineMetrics.noResultState) {
       expect(
         baselineMetrics.hasNoResultMessage || baselineMetrics.hasZeroSummary,
-        '기본 조회 no-result 표기가 없습니다.',
+        "기본 조회 no-result 표기가 없습니다.",
       ).toBeTruthy();
       return;
     }
@@ -554,7 +531,9 @@ test.describe.serial('발주/입고 목록', () => {
     await purchasePage.clickSearchAndWait();
 
     const firstMetrics = await purchasePage.getResultMetrics();
-    const firstFingerprint = !firstMetrics.noResultState ? await purchasePage.getFirstRowFingerprint() : '';
+    const firstFingerprint = !firstMetrics.noResultState
+      ? await purchasePage.getFirstRowFingerprint()
+      : "";
     if (!firstMetrics.noResultState) {
       await purchasePage.assertRowsMatchSearchSeed(searchSeed, 5);
     }
@@ -564,39 +543,57 @@ test.describe.serial('발주/입고 목록', () => {
     await purchasePage.clickSearchAndWait();
 
     const rerunMetrics = await purchasePage.getResultMetrics();
-    const rerunFingerprint = !rerunMetrics.noResultState ? await purchasePage.getFirstRowFingerprint() : '';
+    const rerunFingerprint = !rerunMetrics.noResultState
+      ? await purchasePage.getFirstRowFingerprint()
+      : "";
     if (!rerunMetrics.noResultState) {
       await purchasePage.assertRowsMatchSearchSeed(searchSeed, 5);
     }
 
     const firstIsZero = firstMetrics.noResultState;
     const rerunIsZero = rerunMetrics.noResultState;
-    expect(firstIsZero, '동일 조건 재조회 시 결과 상태가 변경되었습니다.').toBe(rerunIsZero);
-    expect(firstMetrics.summaryCount, '동일 조건 재조회 시 요약 카운트가 변경되었습니다.').toBe(rerunMetrics.summaryCount);
-    if (!firstIsZero && !rerunIsZero && firstFingerprint.length > 0 && rerunFingerprint.length > 0) {
-      expect(rerunFingerprint, '동일 조건 재조회 시 첫 행 식별자가 변경되었습니다.').toBe(firstFingerprint);
+    expect(firstIsZero, "동일 조건 재조회 시 결과 상태가 변경되었습니다.").toBe(
+      rerunIsZero,
+    );
+    expect(
+      firstMetrics.summaryCount,
+      "동일 조건 재조회 시 요약 카운트가 변경되었습니다.",
+    ).toBe(rerunMetrics.summaryCount);
+    if (
+      !firstIsZero &&
+      !rerunIsZero &&
+      firstFingerprint.length > 0 &&
+      rerunFingerprint.length > 0
+    ) {
+      expect(
+        rerunFingerprint,
+        "동일 조건 재조회 시 첫 행 식별자가 변경되었습니다.",
+      ).toBe(firstFingerprint);
     }
   });
 
-  test('PUR-SEARCH-03: 존재하지 않는 발주번호 검색 시 결과 없음 표기 검증', async () => {
-    await purchasePage.switchTab('request');
+  test("PUR-SEARCH-03: 존재하지 않는 발주번호 검색 시 결과 없음 표기 검증", async () => {
+    await purchasePage.switchTab("request");
     await purchasePage.resetFiltersAndWait();
 
     const impossibleKeyword = `AUTO-PUR-NOT-FOUND-${Date.now()}`;
     await purchasePage.searchByKeyword(impossibleKeyword);
 
     const metrics = await purchasePage.getResultMetrics();
-    expect(metrics.rowCount, '존재하지 않는 발주번호 검색 결과에 데이터 행이 존재합니다.').toBe(0);
+    expect(
+      metrics.rowCount,
+      "존재하지 않는 발주번호 검색 결과에 데이터 행이 존재합니다.",
+    ).toBe(0);
     expect(
       metrics.hasNoResultMessage || metrics.hasZeroSummary,
-      '결과 없음 상태인데 no-result 문구 또는 전체 0건 표기가 없습니다.',
+      "결과 없음 상태인데 no-result 문구 또는 전체 0건 표기가 없습니다.",
     ).toBeTruthy();
 
     await purchasePage.resetFiltersAndWait();
   });
 
-  test('PUR-FLT-01: 탭 전환 시 키워드 검색조건 격리 검증', async () => {
-    await purchasePage.switchTab('request');
+  test("PUR-FLT-01: 탭 전환 시 키워드 검색조건 격리 검증", async () => {
+    await purchasePage.switchTab("request");
     await purchasePage.resetFiltersAndWait();
 
     const requestKeyword = `REQ-ISO-${Date.now()}`;
@@ -605,32 +602,38 @@ test.describe.serial('발주/입고 목록', () => {
     const requestMetrics = await purchasePage.getResultMetrics();
     expect(
       requestMetrics.hasNoResultMessage || requestMetrics.hasZeroSummary,
-      'request 탭의 키워드 검색 결과 없음 표기가 확인되지 않습니다.',
+      "request 탭의 키워드 검색 결과 없음 표기가 확인되지 않습니다.",
     ).toBeTruthy();
 
-    await purchasePage.switchTab('manage');
+    await purchasePage.switchTab("manage");
     const manageKeyword = `MNG-ISO-${Date.now()}`;
     await purchasePage.searchByKeyword(manageKeyword);
 
-    await purchasePage.switchTab('request');
+    await purchasePage.switchTab("request");
     const restoredKeyword = await purchasePage.getCurrentKeywordValue();
-    const isRestoredByIsolationPolicy = restoredKeyword === '' || restoredKeyword === requestKeyword;
+    const isRestoredByIsolationPolicy =
+      restoredKeyword === "" || restoredKeyword === requestKeyword;
 
     expect(
       isRestoredByIsolationPolicy,
       `탭 전환 후 request 키워드가 정책(유지/초기화)과 다릅니다. restored=${restoredKeyword}, before=${requestKeyword}`,
     ).toBeTruthy();
-    expect(restoredKeyword, '다른 탭 키워드가 request 탭으로 누수되었습니다.').not.toBe(manageKeyword);
+    expect(
+      restoredKeyword,
+      "다른 탭 키워드가 request 탭으로 누수되었습니다.",
+    ).not.toBe(manageKeyword);
 
     await purchasePage.resetFiltersAndWait();
   });
 
-  test('PUR-RESET-01: 검색 초기화 시 키워드/필터 상태 복원 검증', async () => {
-    await purchasePage.switchTab('request');
+  test("PUR-RESET-01: 검색 초기화 시 키워드/필터 상태 복원 검증", async () => {
+    await purchasePage.switchTab("request");
     await purchasePage.resetFiltersAndWait();
 
     const baselineKeyword = await purchasePage.getCurrentKeywordValue();
-    const baselineFilterSnapshot = sortFilterSnapshot(await purchasePage.getCurrentAppliedFilters());
+    const baselineFilterSnapshot = sortFilterSnapshot(
+      await purchasePage.getCurrentAppliedFilters(),
+    );
     const baselineMetrics = await purchasePage.getResultMetrics();
 
     if (!baselineMetrics.noResultState) {
@@ -642,20 +645,29 @@ test.describe.serial('발주/입고 목록', () => {
     await purchasePage.clickSearchAndWait();
 
     const keywordBeforeReset = await purchasePage.getCurrentKeywordValue();
-    expect(keywordBeforeReset, '검색 적용 후 키워드 입력값이 반영되지 않았습니다.').toContain(forcedKeyword);
+    expect(
+      keywordBeforeReset,
+      "검색 적용 후 키워드 입력값이 반영되지 않았습니다.",
+    ).toContain(forcedKeyword);
 
     await purchasePage.resetFiltersAndWait();
 
     const keywordAfterReset = await purchasePage.getCurrentKeywordValue();
-    const afterFilterSnapshot = sortFilterSnapshot(await purchasePage.getCurrentAppliedFilters());
-    expect(keywordAfterReset, '검색 초기화 후 키워드 입력값이 초기 상태로 복원되지 않았습니다.').toBe(baselineKeyword);
-    expect(afterFilterSnapshot, '검색 초기화 후 필터 선택값이 초기 상태로 복원되지 않았습니다.').toEqual(
-      baselineFilterSnapshot,
+    const afterFilterSnapshot = sortFilterSnapshot(
+      await purchasePage.getCurrentAppliedFilters(),
     );
+    expect(
+      keywordAfterReset,
+      "검색 초기화 후 키워드 입력값이 초기 상태로 복원되지 않았습니다.",
+    ).toBe(baselineKeyword);
+    expect(
+      afterFilterSnapshot,
+      "검색 초기화 후 필터 선택값이 초기 상태로 복원되지 않았습니다.",
+    ).toEqual(baselineFilterSnapshot);
   });
 
-  test('PUR-PAGE-02: 검색 결과 요약/페이지네이션 정합성 검증', async () => {
-    const tabs: PurchaseTabKey[] = ['request', 'manage', 'inbound'];
+  test("PUR-PAGE-02: 검색 결과 요약/페이지네이션 정합성 검증", async () => {
+    const tabs: PurchaseTabKey[] = ["request", "manage", "inbound"];
     let validated = false;
     const skippedReasons: string[] = [];
 
@@ -679,7 +691,9 @@ test.describe.serial('발주/입고 목록', () => {
 
       expect(firstMetrics.rowCount).toBeLessThanOrEqual(pageLimit);
       if (firstMetrics.summaryCount !== null) {
-        expect(firstMetrics.summaryCount).toBeGreaterThanOrEqual(firstMetrics.rowCount);
+        expect(firstMetrics.summaryCount).toBeGreaterThanOrEqual(
+          firstMetrics.rowCount,
+        );
       }
 
       const canGoNext = await purchasePage.canGoToNextPage();
@@ -693,14 +707,17 @@ test.describe.serial('발주/입고 목록', () => {
 
       const firstRowBefore = await purchasePage.getFirstRowFingerprint();
       const moved = await purchasePage.goToNextPageSafely();
-      expect(moved, '다음 페이지 이동에 실패했습니다.').toBeTruthy();
+      expect(moved, "다음 페이지 이동에 실패했습니다.").toBeTruthy();
 
       const secondMetrics = await purchasePage.getResultMetrics();
       expect(secondMetrics.rowCount).toBeLessThanOrEqual(pageLimit);
 
       if (firstRowBefore.length > 0 && secondMetrics.rowCount > 0) {
         const firstRowAfter = await purchasePage.getFirstRowFingerprint();
-        expect(firstRowAfter, '다음 페이지 첫 번째 행이 비어 있습니다.').toBeTruthy();
+        expect(
+          firstRowAfter,
+          "다음 페이지 첫 번째 행이 비어 있습니다.",
+        ).toBeTruthy();
       }
 
       await purchasePage.goToPreviousPageSafely();
@@ -708,11 +725,14 @@ test.describe.serial('발주/입고 목록', () => {
       break;
     }
 
-    expect(validated, `요약/페이지네이션 검증 가능한 탭이 없습니다. ${skippedReasons.join(', ')}`).toBeTruthy();
+    expect(
+      validated,
+      `요약/페이지네이션 검증 가능한 탭이 없습니다. ${skippedReasons.join(", ")}`,
+    ).toBeTruthy();
   });
 
-  test('PUR-PAGE-03: 다음 페이지 이동 시 페이지 식별자 변화 검증', async () => {
-    const tabs: PurchaseTabKey[] = ['request', 'manage', 'inbound'];
+  test("PUR-PAGE-03: 다음 페이지 이동 시 페이지 식별자 변화 검증", async () => {
+    const tabs: PurchaseTabKey[] = ["request", "manage", "inbound"];
     let validated = false;
     const skippedReasons: string[] = [];
 
@@ -723,7 +743,9 @@ test.describe.serial('발주/입고 목록', () => {
 
       const firstMetrics = await purchasePage.getResultMetrics();
       if (firstMetrics.noResultState) {
-        expect(firstMetrics.hasNoResultMessage || firstMetrics.hasZeroSummary).toBeTruthy();
+        expect(
+          firstMetrics.hasNoResultMessage || firstMetrics.hasZeroSummary,
+        ).toBeTruthy();
         skippedReasons.push(`${tab}: no-result`);
         continue;
       }
@@ -739,17 +761,21 @@ test.describe.serial('발주/입고 목록', () => {
       const beforeFirstRow = await purchasePage.getFirstRowFingerprint();
 
       const moved = await purchasePage.goToNextPageSafely();
-      expect(moved, '다음 페이지 이동에 실패했습니다.').toBeTruthy();
+      expect(moved, "다음 페이지 이동에 실패했습니다.").toBeTruthy();
 
       const afterMetrics = await purchasePage.getResultMetrics();
       const afterPage = await purchasePage.getCurrentPageNumber();
       const afterUrl = purchasePage.currentUrl;
-      const afterFirstRow = !afterMetrics.noResultState ? await purchasePage.getFirstRowFingerprint() : '';
+      const afterFirstRow = !afterMetrics.noResultState
+        ? await purchasePage.getFirstRowFingerprint()
+        : "";
 
       const pageChanged = beforePage !== afterPage;
       const urlChanged = beforeUrl !== afterUrl;
       const rowChanged =
-        beforeFirstRow.length > 0 && afterFirstRow.length > 0 && beforeFirstRow !== afterFirstRow;
+        beforeFirstRow.length > 0 &&
+        afterFirstRow.length > 0 &&
+        beforeFirstRow !== afterFirstRow;
 
       expect(
         pageChanged || urlChanged || rowChanged,
@@ -757,70 +783,49 @@ test.describe.serial('발주/입고 목록', () => {
       ).toBeTruthy();
 
       const returned = await purchasePage.goToPreviousPageSafely();
-      expect(returned, '이전 페이지 복귀에 실패했습니다.').toBeTruthy();
+      expect(returned, "이전 페이지 복귀에 실패했습니다.").toBeTruthy();
 
       validated = true;
       break;
     }
 
-    expect(validated, `페이지 이동 검증 가능한 탭이 없습니다. ${skippedReasons.join(', ')}`).toBeTruthy();
+    expect(
+      validated,
+      `페이지 이동 검증 가능한 탭이 없습니다. ${skippedReasons.join(", ")}`,
+    ).toBeTruthy();
   });
 });
 
 // ##############################################################################
 // 차트 집계 목록
 // ##############################################################################
-/**
- * 차트 집계 페이지 초기화 (인증/네비게이션 복구 포함)
- */
-async function initChartPageWithRecovery(seedPage: Page): Promise<ChartInfoListPage> {
-  if (seedPage.isClosed()) {
-    throw new Error('Playwright page가 닫혀 차트 집계 페이지를 초기화할 수 없습니다.');
-  }
-
-  await setupAuthCookies(seedPage);
-
-  const chartPage = new ChartInfoListPage(seedPage);
-  await chartPage.navigate();
-
-  const currentUrl = chartPage.currentUrl;
-  const redirectedToLogin = /\/login|\/auth|stage-auth/i.test(currentUrl);
-  if (redirectedToLogin) {
-    resetAuthCache();
-    await setupAuthCookies(seedPage);
-    await chartPage.navigate();
-  }
-
-  await waitForPageStable(seedPage);
-
-  await chartPage.waitForTableOrNoResult(15000).catch(async () => {
-    const hasSummary = await chartPage.resultSummary.isVisible({ timeout: 3000 }).catch(() => false);
-    const hasNoResult = await chartPage.noResultMessage.isVisible({ timeout: 3000 }).catch(() => false);
-    if (!hasSummary && !hasNoResult) {
-      throw new Error('차트 집계 결과 영역이 로드되지 않았습니다.');
-    }
-  });
-
-  return chartPage;
-}
-
-test.describe.serial('차트 집계 목록', () => {
+test.describe.serial("차트 집계 목록", () => {
   let chartPage: ChartInfoListPage;
 
   test.beforeEach(async ({ page }) => {
-    chartPage = await initChartPageWithRecovery(page);
+    chartPage = await initPageWithRecovery(
+      ChartInfoListPage,
+      page,
+      "차트 집계",
+    );
   });
 
-  test('CHART-PAGE-01: 페이지 기본 요소 및 검색 영역 노출 검증', async () => {
+  test("CHART-PAGE-01: 페이지 기본 요소 및 검색 영역 노출 검증", async () => {
     await chartPage.assertPageTitle();
     await chartPage.assertHeading();
-    await expect(chartPage.breadcrumb).toBeVisible({ timeout: ELEMENT_TIMEOUT });
+    await expect(chartPage.breadcrumb).toBeVisible({
+      timeout: ELEMENT_TIMEOUT,
+    });
     await chartPage.assertBreadcrumb(chartPage.getBreadcrumbPath());
-    await expect(chartPage.submitSearchButton).toBeVisible({ timeout: ELEMENT_TIMEOUT });
-    await expect(chartPage.searchResetButton).toBeVisible({ timeout: ELEMENT_TIMEOUT });
+    await expect(chartPage.submitSearchButton).toBeVisible({
+      timeout: ELEMENT_TIMEOUT,
+    });
+    await expect(chartPage.searchResetButton).toBeVisible({
+      timeout: ELEMENT_TIMEOUT,
+    });
   });
 
-  test('CHART-DATA-01: 기본 조회 결과 영역 정합성 검증', async () => {
+  test("CHART-DATA-01: 기본 조회 결과 영역 정합성 검증", async () => {
     await chartPage.resetFiltersAndWait();
     await chartPage.clickSearchAndWait();
 
@@ -828,47 +833,58 @@ test.describe.serial('차트 집계 목록', () => {
     const pageLimit = await chartPage.getPerPageLimit(10);
 
     if (metrics.noResultState) {
-      expect(metrics.rowCount, 'no-result 상태인데 데이터 행이 존재합니다.').toBe(0);
+      expect(
+        metrics.rowCount,
+        "no-result 상태인데 데이터 행이 존재합니다.",
+      ).toBe(0);
       expect(
         metrics.hasNoResultMessage || metrics.hasZeroSummary,
-        'no-result 상태인데 메시지/요약(0건) 표기가 없습니다.',
+        "no-result 상태인데 메시지/요약(0건) 표기가 없습니다.",
       ).toBeTruthy();
       return;
     }
 
-    expect(metrics.rowCount, '기본 조회 결과가 없습니다.').toBeGreaterThan(0);
+    expect(metrics.rowCount, "기본 조회 결과가 없습니다.").toBeGreaterThan(0);
     expect(metrics.rowCount).toBeLessThanOrEqual(pageLimit);
     if (metrics.summaryCount !== null) {
       expect(metrics.summaryCount).toBeGreaterThanOrEqual(metrics.rowCount);
     }
   });
 
-  test('CHART-SEARCH-01: 존재하지 않는 키워드 검색 시 결과 없음 표기 검증', async () => {
+  test("CHART-SEARCH-01: 존재하지 않는 키워드 검색 시 결과 없음 표기 검증", async () => {
     await chartPage.resetFiltersAndWait();
 
     const hasKeywordInput = await chartPage.hasKeywordInput();
-    expect(hasKeywordInput, '차트 집계 검색 키워드 입력창을 찾지 못했습니다.').toBeTruthy();
+    expect(
+      hasKeywordInput,
+      "차트 집계 검색 키워드 입력창을 찾지 못했습니다.",
+    ).toBeTruthy();
 
     const impossibleKeyword = `AUTO-CHART-NOT-FOUND-${Date.now()}`;
     await chartPage.searchByKeyword(impossibleKeyword);
 
     const metrics = await chartPage.getResultMetrics();
-    expect(metrics.rowCount, '존재하지 않는 키워드 검색 결과에 데이터 행이 존재합니다.').toBe(0);
+    expect(
+      metrics.rowCount,
+      "존재하지 않는 키워드 검색 결과에 데이터 행이 존재합니다.",
+    ).toBe(0);
     expect(
       metrics.hasNoResultMessage || metrics.hasZeroSummary,
-      '결과 없음 상태인데 no-result 문구 또는 전체 0건 표기가 없습니다.',
+      "결과 없음 상태인데 no-result 문구 또는 전체 0건 표기가 없습니다.",
     ).toBeTruthy();
 
     await chartPage.resetFiltersAndWait();
   });
 
-  test('CHART-PAGE-02: 페이지네이션 이동 정합성 검증', async () => {
+  test("CHART-PAGE-02: 페이지네이션 이동 정합성 검증", async () => {
     await chartPage.resetFiltersAndWait();
     await chartPage.clickSearchAndWait();
 
     const firstMetrics = await chartPage.getResultMetrics();
     if (firstMetrics.noResultState) {
-      expect(firstMetrics.hasNoResultMessage || firstMetrics.hasZeroSummary).toBeTruthy();
+      expect(
+        firstMetrics.hasNoResultMessage || firstMetrics.hasZeroSummary,
+      ).toBeTruthy();
       return;
     }
 
@@ -886,16 +902,21 @@ test.describe.serial('차트 집계 목록', () => {
     const beforeFirstRow = await chartPage.getFirstRowFingerprint();
 
     const moved = await chartPage.goToNextPageSafely();
-    expect(moved, '다음 페이지 이동에 실패했습니다.').toBeTruthy();
+    expect(moved, "다음 페이지 이동에 실패했습니다.").toBeTruthy();
 
     const secondMetrics = await chartPage.getResultMetrics();
     const afterPage = await chartPage.getCurrentPageNumber();
     const afterUrl = chartPage.currentUrl;
-    const afterFirstRow = !secondMetrics.noResultState ? await chartPage.getFirstRowFingerprint() : '';
+    const afterFirstRow = !secondMetrics.noResultState
+      ? await chartPage.getFirstRowFingerprint()
+      : "";
 
     const pageChanged = beforePage !== afterPage;
     const urlChanged = beforeUrl !== afterUrl;
-    const rowChanged = beforeFirstRow.length > 0 && afterFirstRow.length > 0 && beforeFirstRow !== afterFirstRow;
+    const rowChanged =
+      beforeFirstRow.length > 0 &&
+      afterFirstRow.length > 0 &&
+      beforeFirstRow !== afterFirstRow;
 
     expect(
       pageChanged || urlChanged || rowChanged,
@@ -903,6 +924,6 @@ test.describe.serial('차트 집계 목록', () => {
     ).toBeTruthy();
 
     const returned = await chartPage.goToPreviousPageSafely();
-    expect(returned, '이전 페이지 복귀에 실패했습니다.').toBeTruthy();
+    expect(returned, "이전 페이지 복귀에 실패했습니다.").toBeTruthy();
   });
 });

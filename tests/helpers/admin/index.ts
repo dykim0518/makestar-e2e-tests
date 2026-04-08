@@ -1,12 +1,12 @@
 /**
  * Admin 테스트 공통 헬퍼 모듈
- * 
+ *
  * 이 모듈은 admin 관련 테스트에서 사용하는 공통 함수들을 제공합니다.
- * 
+ *
  * 사용법:
- *   import { 
- *     ensureValidToken, 
- *     setupAuthCookies, 
+ *   import {
+ *     ensureValidToken,
+ *     setupAuthCookies,
  *     getAuthenticatedUrl,
  *     isTokenExpired,
  *     hasValidSession
@@ -28,9 +28,12 @@ export {
   getSystemToken,
   setupApiInterceptor,
   resetSystemTokenCache,
-} from './auth-helper';
+} from "./auth-helper";
 
-export const ADMIN_BASE_URL = 'https://stage-new-admin.makeuni2026.com';
+export { performGoogleLogin } from "./google-login";
+export { initPageWithRecovery } from "./page-recovery";
+
+export const ADMIN_BASE_URL = "https://stage-new-admin.makeuni2026.com";
 
 // 공통 타임아웃 설정
 export const TIMEOUTS = {
@@ -42,9 +45,9 @@ export const TIMEOUTS = {
 
 // 공통 셀렉터 패턴
 export const COMMON_SELECTORS = {
-  table: 'table',
-  tableRows: 'table tbody tr',
-  tableHeaders: 'table thead th',
+  table: "table",
+  tableRows: "table tbody tr",
+  tableHeaders: "table thead th",
   noResultMessage: ':text("검색결과가 없습니다")',
   pagination: {
     nav: 'nav[aria-label="Pagination"]',

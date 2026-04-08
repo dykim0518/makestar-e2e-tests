@@ -36,6 +36,7 @@ export {
   AdminBasePage,
   ADMIN_TIMEOUTS,
   ADMIN_SELECTORS,
+  assertNoServerError,
 } from "./admin-base.page";
 export type {
   SearchCriteria,

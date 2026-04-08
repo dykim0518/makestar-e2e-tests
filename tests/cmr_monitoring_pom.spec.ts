@@ -84,9 +84,9 @@ test.describe("기본 페이지", () => {
   test("CMR-HOME-02: 주요 요소 존재 여부 검증", async ({ page }) => {
     test.setTimeout(TEST_TIMEOUT);
 
-    await page.evaluate(() => window.scrollTo(0, 0));
     await makestar.waitForLoadState("domcontentloaded");
     await makestar.waitForPageContent();
+    await page.evaluate(() => window.scrollTo(0, 0)).catch(() => {});
 
     // 로고 검증
     let logoFound = await makestar.verifyLogo(10000);

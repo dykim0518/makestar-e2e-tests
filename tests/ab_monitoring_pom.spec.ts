@@ -27,39 +27,12 @@ import {
   PERFORMANCE_THRESHOLD,
 } from "./pages";
 import * as path from "path";
+import { checkAuthFile } from "./helpers/auth-utils";
 
 // ============================================================================
 // 상수 및 헬퍼
 // ============================================================================
 const AUTH_FILE = path.join(__dirname, "..", "ab-auth.json");
-
-/** 인증 파일 상태 확인 */
-const checkAuthFile = (): { available: boolean; reason: string } => {
-  const fs = require("fs");
-  if (!fs.existsSync(AUTH_FILE)) {
-    return {
-      available: false,
-      reason: `세션 파일이 존재하지 않습니다: ${AUTH_FILE}`,
-    };
-  }
-  try {
-    const auth = JSON.parse(fs.readFileSync(AUTH_FILE, "utf-8"));
-    const cookies = auth.cookies || [];
-    if (cookies.length === 0) {
-      return { available: false, reason: "세션 파일에 쿠키가 없습니다" };
-    }
-    const now = Date.now() / 1000;
-    const validCookies = cookies.filter(
-      (c: any) => !c.expires || c.expires > now,
-    );
-    if (validCookies.length === 0) {
-      return { available: false, reason: "세션의 모든 쿠키가 만료되었습니다" };
-    }
-    return { available: true, reason: "" };
-  } catch (e) {
-    return { available: false, reason: `세션 파일 파싱 오류: ${e}` };
-  }
-};
 
 // ============================================================================
 // Health Check - 서비스 상태 확인
@@ -105,7 +78,9 @@ test.describe.serial("Health Check", () => {
         waitUntil: "domcontentloaded",
         timeout: 60000,
       });
-      await page.waitForTimeout(3000); // 추가 네트워크 요청 대기
+      await page
+        .waitForLoadState("networkidle", { timeout: 10000 })
+        .catch(() => {});
     });
 
     expect(criticalFailures).toHaveLength(0);
@@ -608,7 +583,7 @@ test.describe("Dashboard", () => {
 
   // 로그인 상태 테스트
   test.describe("인증 세션 검증", () => {
-    const authStatus = checkAuthFile();
+    const authStatus = checkAuthFile(AUTH_FILE);
 
     test.use({
       storageState: authStatus.available
@@ -626,7 +601,7 @@ test.describe("Dashboard", () => {
   });
 
   test.describe("Purchasing", () => {
-    const authStatus = checkAuthFile();
+    const authStatus = checkAuthFile(AUTH_FILE);
 
     test.use({
       storageState: authStatus.available
@@ -685,7 +660,7 @@ test.describe("Dashboard", () => {
   });
 
   test.describe("Package", () => {
-    const authStatus = checkAuthFile();
+    const authStatus = checkAuthFile(AUTH_FILE);
 
     test.use({
       storageState: authStatus.available

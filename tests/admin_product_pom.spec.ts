@@ -51,12 +51,9 @@ import {
   SkuCreatePage,
   EventListPage,
   EventCreatePage,
+  assertNoServerError,
 } from "./pages";
-import { setupAuthCookies, resetAuthCache } from "./helpers/admin";
 import {
-  isAuthFailed,
-  isTokenValidSync,
-  getTokenRemaining,
   waitForPageStable,
   waitForTableUpdate,
   formatDate,
@@ -64,56 +61,19 @@ import {
   getMaxSkuAutomationTestNumber,
   getMaxProductAutomationTestNumber,
   ELEMENT_TIMEOUT,
+  applyAdminTestConfig,
 } from "./helpers/admin/test-helpers";
 
 // ============================================================================
 // 테스트 설정
 // ============================================================================
-const tokenValid = isTokenValidSync();
-
-// 토큰 만료 시 즉시 Fail (이슈 감지를 위해 skip 대신 fail 처리)
-if (!tokenValid) {
-  test("토큰 유효성 검증", () => {
-    expect(
-      tokenValid,
-      `⚠️ 토큰이 만료되었습니다! 전체 테스트 실행: npx playwright test --project=admin-setup --project=admin-pc / 수동 로그인: node auto-refresh-token.js --setup`,
-    ).toBe(true);
-  });
-}
+applyAdminTestConfig("상품 메뉴");
 
 // ============================================================================
 // 테스트 간 데이터 공유 (serial 모드용)
 // ============================================================================
 let sharedCategoryName = ""; // 대분류 생성 → 상품 등록 시 사용
 let sharedSkuCode = ""; // SKU 생성 → 상품 등록 시 사용 (선택사항)
-
-// ============================================================================
-// 전역 설정
-// ============================================================================
-test.beforeAll(async () => {
-  resetAuthCache();
-
-  if (tokenValid) {
-    const { hours, minutes } = getTokenRemaining();
-    console.log(
-      `\n✅ Admin 상품 메뉴 테스트 시작 (토큰 유효, 남은 시간: ${hours}시간 ${minutes}분)`,
-    );
-  }
-});
-
-test.beforeEach(async ({ page, viewport }) => {
-  // 모바일 뷰포트 Fail (관리자 페이지는 데스크톱 전용)
-  expect(
-    viewport === null || viewport.width >= 1024,
-    "이 테스트는 데스크톱 뷰포트에서만 실행됩니다",
-  ).toBeTruthy();
-
-  // 인증 실패 시 Fail 처리
-  const authStatus = isAuthFailed();
-  expect(authStatus.failed, `인증 실패: ${authStatus.reason}`).toBe(false);
-
-  await setupAuthCookies(page);
-});
 
 // ##############################################################################
 // 1. 대분류 (CAT) - 목록 검증
@@ -317,15 +277,7 @@ test.describe.serial("대분류 생성", () => {
       await categoryCreatePage.navigate();
       await waitForPageStable(page);
 
-      // 500 Server Error 체크 - Fail 처리
-      const serverError = page.locator("text=500, text=Server Error");
-      const hasServerError = await serverError
-        .isVisible({ timeout: 2000 })
-        .catch(() => false);
-      expect(
-        hasServerError,
-        "500 Server Error 발생 - 백엔드 환경 확인 필요",
-      ).toBe(false);
+      await assertNoServerError(page, "대분류 생성 페이지");
 
       // 페이지 로드 확인
       await expect(page).toHaveURL(/\/product\/new\/create/);
@@ -703,18 +655,7 @@ test.describe.serial("SKU 생성", () => {
       await skuCreatePage.navigate();
       await waitForPageStable(page);
 
-      // 500 Server Error 체크 - Fail 처리
-      const serverError = page
-        .getByText("500")
-        .or(page.getByText("Server Error"));
-      const hasServerError = await serverError
-        .first()
-        .isVisible({ timeout: 2000 })
-        .catch(() => false);
-      expect(
-        hasServerError,
-        "500 Server Error 발생 - 백엔드 환경 확인 필요",
-      ).toBe(false);
+      await assertNoServerError(page, "SKU 생성 페이지");
     });
 
     // Step 3: 필수 필드 입력 (POM 메서드 사용)
@@ -844,10 +785,11 @@ test.describe.serial("SKU 생성", () => {
           isFound = true;
           break;
         } catch {
-          // 검색 결과가 없으면 재시도 전 잠시 대기
+          // 검색 결과가 없으면 재시도 전 페이지 안정화 대기
           if (attempt < maxRetries) {
             console.log(`  ⚠️ 검색 결과 없음, 재시도 대기 중...`);
-            await page.waitForTimeout(2000);
+            await page.reload({ waitUntil: "domcontentloaded" });
+            await waitForPageStable(page);
           }
         }
       }
@@ -1215,15 +1157,7 @@ test.describe.serial("상품 등록", () => {
       });
       await waitForPageStable(page);
 
-      // 500 Server Error 체크 - Fail 처리
-      const serverError = page.locator("text=500").first();
-      const hasServerError = await serverError
-        .isVisible({ timeout: 2000 })
-        .catch(() => false);
-      expect(
-        hasServerError,
-        "500 Server Error 발생 - 백엔드 환경 확인 필요",
-      ).toBe(false);
+      await assertNoServerError(page, "상품 등록 페이지");
 
       // 페이지 로드 확인
       const pageTitle = page.locator('h1:has-text("상품 등록")');
@@ -1286,13 +1220,15 @@ test.describe.serial("상품 등록", () => {
 
         await catTab.scrollIntoViewIfNeeded();
         await catTab.click({ force: true });
-        await page.waitForTimeout(500);
+        await page.waitForLoadState("domcontentloaded").catch(() => {});
 
         // "카테고리를 선택해주세요" placeholder 클릭으로 드롭다운 열기
         const placeholder = page.getByText("카테고리를 선택해주세요").first();
         if (await placeholder.isVisible({ timeout: 2000 }).catch(() => false)) {
           await placeholder.click({ force: true });
-          await page.waitForTimeout(500);
+          await expect(placeholder)
+            .toBeVisible({ timeout: 3000 })
+            .catch(() => {});
 
           // 드롭다운이 열리면 "앨범" 옵션 클릭
           // 체크박스 + 텍스트 형태의 옵션 리스트에서 찾기
@@ -1328,7 +1264,7 @@ test.describe.serial("상품 등록", () => {
 
           // 드롭다운 닫기
           await page.keyboard.press("Escape");
-          await page.waitForTimeout(300);
+          await page.waitForLoadState("domcontentloaded").catch(() => {});
         } else {
           console.log(`  ℹ️ ${catName}: 이미 선택됨 — 스킵`);
         }
@@ -1413,7 +1349,7 @@ test.describe.serial("상품 등록", () => {
           .first();
         if (await enTab.isVisible({ timeout: 3000 }).catch(() => false)) {
           await enTab.click({ force: true });
-          await page.waitForTimeout(500);
+          await page.waitForLoadState("domcontentloaded").catch(() => {});
         }
 
         // 에디터 입력
@@ -1426,7 +1362,9 @@ test.describe.serial("상품 등록", () => {
           await editor.evaluate((el: HTMLElement) => {
             el.scrollIntoView({ behavior: "instant", block: "center" });
           });
-          await page.waitForTimeout(300);
+          await editor
+            .waitFor({ state: "visible", timeout: 3000 })
+            .catch(() => {});
           await editor.evaluate((el: HTMLElement) => {
             el.focus();
             el.click();
@@ -1460,7 +1398,7 @@ test.describe.serial("상품 등록", () => {
         return "already-off";
       });
       if (benefitToggled === "toggled-off") {
-        await page.waitForTimeout(500);
+        await page.waitForLoadState("domcontentloaded").catch(() => {});
         console.log("  ✅ 다량구매특전 토글 OFF");
       } else if (benefitToggled === "already-off") {
         console.log("  ℹ️ 다량구매특전 이미 OFF 상태");
