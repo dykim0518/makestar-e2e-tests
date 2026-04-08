@@ -8,6 +8,10 @@ on:
   # 수동 실행도 가능 (테스트용)
   workflow_dispatch:
 
+permissions:
+  actions: write
+  contents: read
+
 jobs:
   dispatch:
     name: Trigger Daily Test Suites
