@@ -17,30 +17,30 @@ import {
 // ============================================================================
 
 /** 메뉴 항목 타입 */
-export interface MenuItem {
+export type MenuItem = {
   name: string;
   texts: readonly string[];
-}
+};
 
 /** 상품 정보 타입 */
-export interface ProductInfo {
+export type ProductInfo = {
   name?: string;
   price?: string;
   hasOptions: boolean;
-}
+};
 
 /** Shop -> 상품 상세 -> 아티스트 페이지 이동 결과 */
-export interface ArtistProfileNavigationResult {
+export type ArtistProfileNavigationResult = {
   success: boolean;
   productIndex?: number;
   detailUrl?: string;
   artistUrl?: string;
   selector?: string;
   reason?: string;
-}
+};
 
 /** Web Vitals 측정 결과 타입 */
-export interface WebVitalsResult {
+export type WebVitalsResult = {
   /** First Contentful Paint (ms) */
   fcp: number;
   /** Largest Contentful Paint (ms) */
@@ -53,7 +53,7 @@ export interface WebVitalsResult {
   load: number;
   /** Cumulative Layout Shift */
   cls: number;
-}
+};
 
 // ============================================================================
 // 텍스트 패턴
@@ -173,11 +173,12 @@ export class MakestarPage extends BasePage {
     });
 
     // 프로필/인증 요소 초기화
+    // 로그인: a[href="/my-page"].icon-style (GNB 프로필 링크)
     // 비로그인: button > SVG icon-profile-line
-    // 로그인: a[href="/my-page"] > img[alt="profile"] (버튼이 아닌 링크)
+    // 주의: header/nav 태그 없음 — Nuxt SPA이므로 div 기반 GNB
     this.profileButton = page
       .locator(
-        'button:has(svg use[href="#icon-profile-line"]), a[href*="my-page"]:has(img[alt="profile"]), a[href*="my-page"]:has(img[alt="Profile"]), button:has(img[alt="profile"]), button:has(img[alt="Profile"])',
+        'a[href="/my-page"][class*="icon-style"], a[href="/my-page"]:has(img[alt="profile"]), button:has(svg use[href="#icon-profile-line"])',
       )
       .first();
     this.googleLoginButton = page
@@ -258,21 +259,29 @@ export class MakestarPage extends BasePage {
     await this.handleModal();
   }
 
-  /** 마이페이지로 이동 (리다이렉트 대응 포함) */
+  /** 마이페이지로 이동 (리다이렉트 대응 포함, 인증 실패 시 즉시 에러) */
   async gotoMyPage(): Promise<void> {
-    // 마이페이지 메인으로 이동 (하위 페이지에 있어도 메인으로 이동)
+    // Step 1: SPA auth 프라이밍 — 홈페이지 먼저 방문하여 클라이언트 auth 상태 초기화
+    if (!this.currentUrl.includes("makestar.com")) {
+      await this.goto(`${this.baseUrl}/`);
+      await this.waitForLoadState("domcontentloaded");
+      await this.waitForNetworkStable(3000).catch(() => {});
+    }
+
+    // Step 2: 마이페이지 메인으로 이동
     await this.goto(`${this.baseUrl}/my-page`);
     await this.waitForLoadState("domcontentloaded");
     await this.waitForNetworkStable(5000).catch(() => {});
     await this.handleModal();
 
-    // 정확히 /my-page 메인인지 확인 (하위 경로 제외)
-    const isMyPageMain = /\/my-page\/?$/.test(this.currentUrl);
-    if (isMyPageMain) return;
+    // 정확히 /my-page에 도달했으면 완료
+    if (this.currentUrl.includes("my-page")) return;
 
-    // CI 환경: SPA 클라이언트 auth 미초기화로 /my-page 리다이렉트됨
-    // 다중 하위 페이지 방문으로 SPA auth 상태 프라이밍
-    console.log("⚠️ 마이페이지 리다이렉트됨, 다중 워밍업 시도...");
+    // Step 3: 리다이렉트됨 — CI 환경에서 SPA auth 미인식 가능성
+    // 하위 페이지 방문으로 auth 상태 프라이밍 시도
+    console.log(
+      `⚠️ 마이페이지 리다이렉트됨 (현재: ${this.currentUrl}), 워밍업 시도...`,
+    );
     const warmupPaths = [
       "/my-page/change-password",
       "/my-page/event-submissions",
@@ -283,25 +292,19 @@ export class MakestarPage extends BasePage {
       await this.waitForNetworkStable(3000).catch(() => {});
     }
 
+    // 워밍업 후에도 my-page 영역이 아니면 인증 실패 확정
     if (!this.page.url().includes("my-page")) {
-      console.log("❌ auth 워밍업 실패 (storageState 쿠키 만료 가능)");
-      return;
+      throw new Error(
+        `마이페이지 인증 실패: storageState 쿠키가 만료되었거나 SPA auth를 인식하지 못합니다. 현재 URL: ${this.page.url()}`,
+      );
     }
-    console.log("✅ auth 워밍업 성공, /my-page 재시도");
 
-    // SPA auth 프라이밍 후 /my-page 재시도
+    // Step 4: 워밍업 성공 → /my-page 메인으로 재시도
+    console.log("✅ auth 워밍업 성공, /my-page 재시도");
     await this.goto(`${this.baseUrl}/my-page`);
     await this.waitForLoadState("domcontentloaded");
     await this.waitForNetworkStable(5000).catch(() => {});
     await this.handleModal();
-
-    // 그래도 실패 시 마지막 하위 경로에 머무르기
-    if (!this.currentUrl.includes("my-page")) {
-      console.log("⚠️ /my-page 재시도 실패, 하위 경로로 복귀");
-      await this.goto(`${this.baseUrl}/my-page/change-password`);
-      await this.waitForLoadState("domcontentloaded");
-      await this.handleModal();
-    }
   }
 
   /** 장바구니 페이지로 이동 */
@@ -320,7 +323,7 @@ export class MakestarPage extends BasePage {
 
     // 마이페이지 접속 실패 시 재시도
     if (!this.currentUrl.includes("my-page")) {
-      console.log("⚠️ 주문내역 페이지 리다이렉트됨, 재시도...");
+      console.warn("⚠️ 주문내역 페이지 리다이렉트됨, 재시도...");
       await this.goto(`${this.baseUrl}/my-page/order-history`);
       await this.waitForLoadState("domcontentloaded");
       await this.waitForNetworkStable(5000).catch(() => {});
@@ -337,7 +340,7 @@ export class MakestarPage extends BasePage {
 
     // 마이페이지 접속 실패 시 재시도
     if (!this.currentUrl.includes("my-page")) {
-      console.log("⚠️ 배송지 관리 페이지 리다이렉트됨, 재시도...");
+      console.warn("⚠️ 배송지 관리 페이지 리다이렉트됨, 재시도...");
       await this.goto(`${this.baseUrl}/my-page/address`);
       await this.waitForLoadState("domcontentloaded");
       await this.waitForNetworkStable(5000).catch(() => {});
@@ -353,7 +356,7 @@ export class MakestarPage extends BasePage {
     await this.handleModal();
 
     if (!this.currentUrl.includes("my-page")) {
-      console.log("⚠️ 팔로우 관리 페이지 리다이렉트됨, 재시도...");
+      console.warn("⚠️ 팔로우 관리 페이지 리다이렉트됨, 재시도...");
       await this.goto(`${this.baseUrl}/my-page/follow`);
       await this.waitForLoadState("domcontentloaded");
       await this.waitForNetworkStable(5000).catch(() => {});
@@ -369,7 +372,7 @@ export class MakestarPage extends BasePage {
     await this.handleModal();
 
     if (!this.currentUrl.includes("my-page")) {
-      console.log("⚠️ 알림 설정 페이지 리다이렉트됨, 재시도...");
+      console.warn("⚠️ 알림 설정 페이지 리다이렉트됨, 재시도...");
       await this.goto(`${this.baseUrl}/my-page/notification`);
       await this.waitForLoadState("domcontentloaded");
       await this.waitForNetworkStable(5000).catch(() => {});
@@ -421,17 +424,16 @@ export class MakestarPage extends BasePage {
       await this._page.keyboard.press("Escape");
       await this._page.waitForTimeout(300);
 
-      // 4) 여전히 있으면 JS로 강제 제거 (try-catch로 context 파괴 방어)
+      // 4) 여전히 있으면 locator 기반으로 개별 제거 (evaluate 사용하지 않아 context 파괴에 안전)
       const stillCount = await overlayLocator.count().catch(() => 0);
       if (stillCount > 0) {
-        await this._page
-          .evaluate(() => {
-            document
-              .querySelectorAll('div.fixed[class*="z-[40]"]')
-              .forEach((el) => el.remove());
-          })
-          .catch(() => {});
-        console.log("⚠️ 오버레이 JS 강제 제거");
+        for (let j = stillCount - 1; j >= 0; j--) {
+          await overlayLocator
+            .nth(j)
+            .evaluate((el) => el.remove())
+            .catch(() => {});
+        }
+        console.warn("⚠️ 오버레이 locator 기반 제거");
       }
     }
   }
@@ -515,58 +517,49 @@ export class MakestarPage extends BasePage {
       };
     }
 
-    // 1. 프로필 버튼 클릭 → 드롭다운 열기
+    // 1. 프로필 버튼 클릭
     await profileBtn.click({ timeout: 5000 });
     console.log("📍 1단계: 프로필 버튼 클릭");
-    // 드롭다운이 나타날 때까지 조건부 대기
-    await this.page
-      .waitForSelector(
-        'a[href*="my-page"], a:has-text("My Page"), a:has-text("마이페이지")',
-        {
-          state: "visible",
-          timeout: 2000,
-        },
-      )
-      .catch(() => {});
 
-    // 프로필 버튼 클릭 후 현재 URL 확인
+    // Case A: 로그인 상태에서 a[href*="my-page"] 직접 클릭 → 즉시 네비게이션
+    // 네비게이션 또는 드롭다운 중 먼저 발생하는 것을 대기
+    await Promise.race([
+      this.page.waitForURL(/my-page/, { timeout: 3000 }),
+      this.page.waitForSelector(
+        'a:has-text("My Page"), a:has-text("마이페이지")',
+        { state: "visible", timeout: 3000 },
+      ),
+    ]).catch(() => {});
+
     let currentUrl = this.page.url();
+    if (currentUrl.includes("my-page")) {
+      console.log("📍 프로필 버튼 클릭으로 직접 마이페이지 도달");
+      return { success: true, url: currentUrl };
+    }
 
-    // Case A: 프로필 버튼 클릭으로 마이페이지 드롭다운이 나타난 경우
-    const myPageLinkSelectors = [
-      'a[href*="my-page"]',
-      'a:has-text("My Page")',
-      'a:has-text("마이페이지")',
-    ];
-
-    for (const selector of myPageLinkSelectors) {
-      const link = this.page.locator(selector).first();
-      if (await link.isVisible({ timeout: 2000 }).catch(() => false)) {
-        await link.click({ timeout: 5000 });
-        console.log(`📍 2단계: 마이페이지 링크 클릭 (${selector})`);
-        await this.waitForLoadState("domcontentloaded");
-        await this.waitForNetworkStable(5000).catch(() => {});
-        currentUrl = this.page.url();
-        if (currentUrl.includes("my-page")) {
-          return { success: true, url: currentUrl };
-        }
-        break;
+    // Case B: 드롭다운이 나타난 경우 → 마이페이지 링크 클릭
+    const myPageLink = this.page
+      .locator('a:has-text("My Page"), a:has-text("마이페이지")')
+      .first();
+    if (await myPageLink.isVisible({ timeout: 1000 }).catch(() => false)) {
+      await myPageLink.click({ timeout: 5000 });
+      console.log("📍 2단계: 드롭다운 마이페이지 링크 클릭");
+      await this.waitForLoadState("domcontentloaded");
+      await this.waitForNetworkStable(5000).catch(() => {});
+      currentUrl = this.page.url();
+      if (currentUrl.includes("my-page")) {
+        return { success: true, url: currentUrl };
       }
     }
 
-    // Case B: 프로필 버튼 클릭이 로그인 페이지로 리다이렉트된 경우 (CI 환경)
-    // SPA 클라이언트가 auth를 인식하지 못하지만, storageState 쿠키로 보호 페이지 직접 접근 가능
-    // gotoMyPage()의 다중 워밍업을 사용하여 마이페이지 도달
+    // Case C: 로그인 페이지로 리다이렉트 (CI 환경, auth 미인식)
+    // gotoMyPage()로 SPA auth 프라이밍 시도
     currentUrl = this.page.url();
-    if (
-      currentUrl.includes("auth.") ||
-      currentUrl.includes("/login") ||
-      !currentUrl.includes("my-page")
-    ) {
-      console.log("⚠️ 마이페이지 미도달, gotoMyPage() 워밍업으로 대체");
-      await this.gotoMyPage();
-      currentUrl = this.page.url();
-    }
+    console.log(
+      `⚠️ 마이페이지 미도달 (현재: ${currentUrl}), gotoMyPage() 워밍업 시도`,
+    );
+    await this.gotoMyPage();
+    currentUrl = this.page.url();
 
     if (currentUrl.includes("my-page")) {
       return { success: true, url: currentUrl };
@@ -750,7 +743,7 @@ export class MakestarPage extends BasePage {
 
       // 여전히 하위 경로라면 메뉴 목록이 없을 수 있음
       if (/\/my-page\/[a-z-]+/.test(this.currentUrl)) {
-        console.log("⚠️ 마이페이지 메인 접근 불가 (SPA auth 문제)");
+        console.warn("⚠️ 마이페이지 메인 접근 불가 (SPA auth 문제)");
       }
     }
 
@@ -833,7 +826,7 @@ export class MakestarPage extends BasePage {
       // 리다이렉트 감지: 로그인 페이지로 이동되었는지 확인
       const currentUrl = this.page.url();
       if (currentUrl.includes("auth.") || currentUrl.includes("/login")) {
-        console.log("⚠️ 로그인 페이지로 리다이렉트됨, URL로 직접 이동");
+        console.warn("⚠️ 로그인 페이지로 리다이렉트됨, URL로 직접 이동");
         await this.gotoMyPage();
         await this.waitForLoadState("domcontentloaded");
         await this.waitForNetworkStable(5000).catch(() => {});
@@ -846,7 +839,7 @@ export class MakestarPage extends BasePage {
       if (finalUrl.includes("my-page")) {
         console.log("✅ 마이페이지 이동 완료 (프로필 버튼 → URL 폴백)");
       } else {
-        console.log(`⚠️ 마이페이지 이동 실패, 현재 URL: ${finalUrl}`);
+        console.warn(`⚠️ 마이페이지 이동 실패, 현재 URL: ${finalUrl}`);
       }
       return;
     }
@@ -868,7 +861,7 @@ export class MakestarPage extends BasePage {
     }
 
     // 최종 폴백: URL 직접 이동
-    console.log("⚠️ 프로필 버튼을 찾을 수 없어 URL로 직접 이동");
+    console.warn("⚠️ 프로필 버튼을 찾을 수 없어 URL로 직접 이동");
     await this.gotoMyPage();
 
     await this.waitForLoadState("domcontentloaded");
@@ -920,7 +913,7 @@ export class MakestarPage extends BasePage {
       }
     }
 
-    console.log(`⚠️ 마이페이지 메뉴를 찾을 수 없음: ${menuTexts.join(", ")}`);
+    console.warn(`⚠️ 마이페이지 메뉴를 찾을 수 없음: ${menuTexts.join(", ")}`);
     return false;
   }
 
@@ -938,7 +931,7 @@ export class MakestarPage extends BasePage {
     const clicked = await this.clickMyPageMenu(menuTexts);
 
     if (!clicked) {
-      console.log("⚠️ 메뉴 클릭 실패, URL로 직접 이동");
+      console.warn("⚠️ 메뉴 클릭 실패, URL로 직접 이동");
       await this.goto(`${this.baseUrl}/my-page/change-password`);
       await this.waitForLoadState("domcontentloaded");
       await this.handleModal();
@@ -959,7 +952,7 @@ export class MakestarPage extends BasePage {
     const clicked = await this.clickMyPageMenu(menuTexts);
 
     if (!clicked) {
-      console.log("⚠️ 메뉴 클릭 실패, URL로 직접 이동");
+      console.warn("⚠️ 메뉴 클릭 실패, URL로 직접 이동");
       await this.goto(`${this.baseUrl}/my-page/event-submissions`);
       await this.waitForLoadState("domcontentloaded");
       await this.handleModal();
@@ -992,7 +985,7 @@ export class MakestarPage extends BasePage {
       console.log(`✅ 로고 발견: ${result.selector}`);
       return true;
     }
-    console.log("⚠️ 로고를 찾을 수 없음");
+    console.warn("⚠️ 로고를 찾을 수 없음");
     return false;
   }
 
@@ -1003,7 +996,7 @@ export class MakestarPage extends BasePage {
       console.log(`✅ 네비게이션 발견: ${result.selector}`);
       return true;
     }
-    console.log("⚠️ 네비게이션을 찾을 수 없음");
+    console.warn("⚠️ 네비게이션을 찾을 수 없음");
     return false;
   }
 
@@ -1059,7 +1052,7 @@ export class MakestarPage extends BasePage {
     // 페이지 오류 상태 확인 및 복구
     const errorButton = this.page.locator('button:has-text("Back to Home")');
     if (await errorButton.isVisible({ timeout: 1000 }).catch(() => false)) {
-      console.log("⚠️ 페이지 오류 발견, 홈으로 복귀 후 재시도");
+      console.warn("⚠️ 페이지 오류 발견, 홈으로 복귀 후 재시도");
       await this.gotoHome();
       await this.handleModal();
     }
@@ -1072,7 +1065,7 @@ export class MakestarPage extends BasePage {
       .isVisible({ timeout: 5000 })
       .catch(() => false);
     if (!isSearchButtonVisible) {
-      console.log("⚠️ 검색 버튼이 보이지 않아 페이지 새로고침");
+      console.warn("⚠️ 검색 버튼이 보이지 않아 페이지 새로고침");
       await this.reload();
       await this.handleModal();
       await this.waitForContentStable(500);
@@ -1089,7 +1082,7 @@ export class MakestarPage extends BasePage {
         return;
       } catch (error) {
         if (attempt < 3) {
-          console.log(`⚠️ 검색 UI 열기 시도 ${attempt} 실패, 재시도...`);
+          console.warn(`⚠️ 검색 UI 열기 시도 ${attempt} 실패, 재시도...`);
           await this.handleModal();
           await this.waitForContentStable(500);
         } else {

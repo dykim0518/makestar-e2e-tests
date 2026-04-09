@@ -71,7 +71,7 @@ export async function performGoogleLogin(): Promise<boolean> {
     }
 
     if (!loginSuccess) {
-      console.log("⚠️ 로그인 시간 초과 또는 실패");
+      console.warn("⚠️ 로그인 시간 초과 또는 실패");
       return false;
     }
 
@@ -92,7 +92,9 @@ export async function performGoogleLogin(): Promise<boolean> {
     }
 
     if (!tokenFound) {
-      console.log("   ⚠️ 토큰 쿠키를 찾지 못했습니다. 페이지 새로고침 시도...");
+      console.warn(
+        "   ⚠️ 토큰 쿠키를 찾지 못했습니다. 페이지 새로고침 시도...",
+      );
       await page.reload({ waitUntil: "networkidle" });
       const refreshedCookies = await context.cookies();
       tokenFound = refreshedCookies.some(
@@ -109,7 +111,7 @@ export async function performGoogleLogin(): Promise<boolean> {
     console.log(`   쿠키 수: ${storageState.cookies.length}`);
 
     if (storageState.cookies.length < MIN_COOKIE_COUNT) {
-      console.log(
+      console.warn(
         "   ⚠️ 쿠키 수가 적습니다. 로그인이 완전하지 않을 수 있습니다.",
       );
     }
@@ -118,7 +120,7 @@ export async function performGoogleLogin(): Promise<boolean> {
     return tokenFound || storageState.cookies.length >= MIN_COOKIE_COUNT;
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
-    console.log(`❌ 로그인 실패: ${msg}`);
+    console.error(`❌ 로그인 실패: ${msg}`);
     return false;
   } finally {
     if (browser) {

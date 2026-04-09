@@ -12,13 +12,13 @@ import * as path from "path";
 // 앨범 생성 옵션 타입
 // ============================================================================
 
-export interface AlbumCreateOptions {
+export type AlbumCreateOptions = {
   title: string;
   artist?: string;
   albumType?: string;
   releaseDate?: string;
   imagePath?: string;
-}
+};
 
 // ============================================================================
 // PocaAlbumCreatePage 클래스

@@ -192,7 +192,7 @@ test.describe("POCAAlbum Admin 콘텐츠 테스트", () => {
       if (rowIndex >= 0) {
         console.log(`✅ 목록에서 팩 발견: 행 ${rowIndex}`);
       } else {
-        console.log(`⚠️ 목록에서 팩 미발견: ${sharedFaveTitle}`);
+        console.warn(`⚠️ 목록에서 팩 미발견: ${sharedFaveTitle}`);
       }
     });
 
@@ -315,7 +315,7 @@ test.describe("POCAAlbum Admin 콘텐츠 테스트", () => {
       if (rowIndex >= 0) {
         console.log(`✅ 목록에서 BENEFIT 발견: 행 ${rowIndex}`);
       } else {
-        console.log(`⚠️ 목록에서 BENEFIT 미발견: ${sharedBenefitTitle}`);
+        console.warn(`⚠️ 목록에서 BENEFIT 미발견: ${sharedBenefitTitle}`);
       }
     });
 
@@ -446,7 +446,7 @@ test.describe("POCAAlbum Admin 콘텐츠 테스트", () => {
       if (rowIndex >= 0) {
         console.log(`✅ 목록에서 알림 발견: 행 ${rowIndex}`);
       } else {
-        console.log(`⚠️ 목록에서 알림 미발견: ${sharedNotifTitle}`);
+        console.warn(`⚠️ 목록에서 알림 미발견: ${sharedNotifTitle}`);
       }
     });
 

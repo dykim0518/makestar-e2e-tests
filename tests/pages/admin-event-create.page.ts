@@ -21,7 +21,7 @@ import * as path from "path";
 // 상품 등록 옵션 타입
 // ============================================================================
 
-export interface EventCreateOptions {
+export type EventCreateOptions = {
   /** 상품명 (한국어) */
   nameKr?: string;
   /** 상품명 (영어) */
@@ -49,7 +49,7 @@ export interface EventCreateOptions {
   descriptionKr?: string;
   /** 상품설명 (영어) */
   descriptionEn?: string;
-}
+};
 
 // ============================================================================
 // 상품 등록 페이지 클래스
@@ -441,7 +441,7 @@ export class EventCreatePage extends AdminBasePage {
       }
     }
 
-    console.log("⚠️ 상품 카테고리 드롭다운을 찾을 수 없음");
+    console.warn("⚠️ 상품 카테고리 드롭다운을 찾을 수 없음");
   }
 
   /**
@@ -551,7 +551,7 @@ export class EventCreatePage extends AdminBasePage {
     });
 
     if (!dateInput.found) {
-      console.log("⚠️ 판매기간 날짜 입력 필드를 찾을 수 없음");
+      console.warn("⚠️ 판매기간 날짜 입력 필드를 찾을 수 없음");
       return;
     }
 
@@ -647,12 +647,12 @@ export class EventCreatePage extends AdminBasePage {
         await this.wait(500);
         console.log(`ℹ️ 판매기간 시작일: ${todayDate}일 선택 완료 (달력)`);
       } else {
-        console.log(`⚠️ 달력 내 ${todayDate}일 셀 미발견`);
+        console.warn(`⚠️ 달력 내 ${todayDate}일 셀 미발견`);
       }
 
       // 시간은 기본값 "오전 00:00" 사용 — 별도 설정 불필요
     } else {
-      console.log("⚠️ 달력이 열리지 않음");
+      console.warn("⚠️ 달력이 열리지 않음");
     }
   }
 
@@ -703,7 +703,7 @@ export class EventCreatePage extends AdminBasePage {
       await optionInput.fill(optionName);
       console.log(`ℹ️ 옵션명(한국어) 입력: ${optionName}`);
     } else {
-      console.log("⚠️ 옵션명 입력 필드를 찾을 수 없음");
+      console.warn("⚠️ 옵션명 입력 필드를 찾을 수 없음");
     }
   }
 
@@ -734,7 +734,7 @@ export class EventCreatePage extends AdminBasePage {
       await optionInput.fill(optionName);
       console.log(`ℹ️ 옵션명(영어) 입력: ${optionName}`);
     } else {
-      console.log("⚠️ 영어 옵션명 입력 필드를 찾을 수 없음");
+      console.warn("⚠️ 영어 옵션명 입력 필드를 찾을 수 없음");
     }
   }
 
@@ -843,7 +843,7 @@ export class EventCreatePage extends AdminBasePage {
           await this.wait(500);
         }
       } else {
-        console.log("⚠️ 가격 설정 팝업이 열리지 않음");
+        console.warn("⚠️ 가격 설정 팝업이 열리지 않음");
       }
     } else {
       console.log(
@@ -917,7 +917,7 @@ export class EventCreatePage extends AdminBasePage {
           await this.wait(500);
         }
       } else {
-        console.log("⚠️ 가격 설정 팝업이 열리지 않음 - 기존 가격 유지");
+        console.warn("⚠️ 가격 설정 팝업이 열리지 않음 - 기존 가격 유지");
       }
     } else {
       // 기존 가격이 있으면 건너뛰기 (복사 등록 모드)
@@ -998,7 +998,7 @@ export class EventCreatePage extends AdminBasePage {
         if (
           await noResultText.isVisible({ timeout: 1000 }).catch(() => false)
         ) {
-          console.log("⚠️ 연결된 품목(SKU)이 없습니다. 팝업 닫기");
+          console.warn("⚠️ 연결된 품목(SKU)이 없습니다. 팝업 닫기");
 
           // 취소 버튼 클릭
           const cancelButton = this.page.getByRole("button", { name: "취소" });
@@ -1038,7 +1038,7 @@ export class EventCreatePage extends AdminBasePage {
         }
       }
     } else {
-      console.log("⚠️ 품목 추가 버튼을 찾을 수 없음");
+      console.warn("⚠️ 품목 추가 버튼을 찾을 수 없음");
     }
 
     return false;
@@ -1174,7 +1174,7 @@ export class EventCreatePage extends AdminBasePage {
           `ℹ️ 상품설명(한국어) textarea 입력: ${description.substring(0, 30)}...`,
         );
       } else {
-        console.log("⚠️ 상품설명 입력 영역을 찾을 수 없음");
+        console.warn("⚠️ 상품설명 입력 영역을 찾을 수 없음");
       }
     }
 
@@ -1226,7 +1226,7 @@ export class EventCreatePage extends AdminBasePage {
           `ℹ️ 상품설명(영어) 입력: ${description.substring(0, 30)}...`,
         );
       } else {
-        console.log("⚠️ 영어 상품설명 입력 영역을 찾을 수 없음");
+        console.warn("⚠️ 영어 상품설명 입력 영역을 찾을 수 없음");
       }
     }
 

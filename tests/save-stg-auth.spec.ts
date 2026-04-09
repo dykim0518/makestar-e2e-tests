@@ -113,7 +113,7 @@ test("STG 로그인 세션 저장 (수동 로그인)", async ({ page, context })
     console.log("");
   } else {
     console.log("");
-    console.log("❌ 로그인 시간 초과");
+    console.error("❌ 로그인 시간 초과");
     console.log(
       "다시 시도: npx playwright test tests/save-stg-auth.spec.ts --headed",
     );
@@ -125,7 +125,7 @@ test("STG 로그인 세션 저장 (수동 로그인)", async ({ page, context })
 test("저장된 STG 세션 확인", async ({ page, context }) => {
   // 기존 세션 파일 확인
   if (!fs.existsSync(STG_AUTH_FILE)) {
-    console.log("❌ stg-auth.json 파일이 없습니다.");
+    console.error("❌ stg-auth.json 파일이 없습니다.");
     console.log(
       '먼저 STG 로그인 세션을 저장하세요: npx playwright test tests/save-stg-auth.spec.ts -g "STG 로그인 세션 저장" --headed',
     );
@@ -166,7 +166,7 @@ test("저장된 STG 세션 확인", async ({ page, context }) => {
       console.log("✅ 로그아웃 버튼 발견 - 로그인 확인됨");
     }
   } else {
-    console.log("⚠️ STG 세션이 만료되었거나 유효하지 않습니다.");
+    console.warn("⚠️ STG 세션이 만료되었거나 유효하지 않습니다.");
     console.log(
       '다시 로그인하세요: npx playwright test tests/save-stg-auth.spec.ts -g "STG 로그인 세션 저장" --headed',
     );

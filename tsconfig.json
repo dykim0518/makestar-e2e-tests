@@ -1,5 +1,6 @@
 {
   "compilerOptions": {
+    "ignoreDeprecations": "6.0",
     "target": "ES2022",
     "module": "commonjs",
     "moduleResolution": "node",
@@ -8,14 +9,16 @@
     "strict": false,
     "allowJs": true,
     "resolveJsonModule": true,
-    "outDir": "dist"
+    "skipLibCheck": true,
+    "types": ["node"],
+    "outDir": "dist",
+    "baseUrl": ".",
+    "paths": {
+      "@tests/*": ["tests/*"],
+      "@pages/*": ["tests/pages/*"],
+      "@helpers/*": ["tests/helpers/*"]
+    }
   },
-  "include": [
-    "tests/**/*.ts",
-    "tests/**/*.js"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist"
-  ]
+  "include": ["tests/**/*.ts", "tests/**/*.js", "playwright.config.ts"],
+  "exclude": ["node_modules", "dist"]
 }

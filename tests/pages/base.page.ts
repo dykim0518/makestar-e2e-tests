@@ -1,6 +1,6 @@
 /**
  * BasePage - 모든 페이지 객체의 기본 클래스
- * 
+ *
  * 공통 기능:
  * - 페이지 네비게이션
  * - 모달/팝업 처리
@@ -8,42 +8,42 @@
  * - 이미지 로딩 검증
  */
 
-import { Page, Locator, expect } from '@playwright/test';
+import { Page, Locator, expect } from "@playwright/test";
 
 // ============================================================================
 // 타입 정의
 // ============================================================================
 
 /** 타임아웃 설정 */
-export interface TimeoutConfig {
+export type TimeoutConfig = {
   readonly micro: number;
   readonly short: number;
   readonly medium: number;
   readonly long: number;
   readonly navigation: number;
   readonly test: number;
-}
+};
 
 /** 이미지 검증 결과 */
-export interface ImageVerificationResult {
+export type ImageVerificationResult = {
   total: number;
   broken: number;
   brokenSrcs: string[];
-}
+};
 
 /** API 모니터링 결과 */
-export interface ApiMonitorResult {
+export type ApiMonitorResult = {
   url: string;
   status: number;
   duration: number;
   ok: boolean;
-}
+};
 
 /** 요소 검색 결과 */
-export interface ElementSearchResult {
+export type ElementSearchResult = {
   element: Locator;
   selector: string;
-}
+};
 
 // ============================================================================
 // 기본 타임아웃 상수
@@ -97,7 +97,7 @@ export abstract class BasePage {
    */
   protected ensurePageOpen(): void {
     if (this.isPageClosed()) {
-      throw new Error('Page is closed. Cannot perform navigation.');
+      throw new Error("Page is closed. Cannot perform navigation.");
     }
   }
 
@@ -108,10 +108,13 @@ export abstract class BasePage {
   /**
    * URL로 이동
    */
-  async goto(url: string, options?: { waitUntil?: 'load' | 'domcontentloaded' | 'networkidle' }): Promise<void> {
+  async goto(
+    url: string,
+    options?: { waitUntil?: "load" | "domcontentloaded" | "networkidle" },
+  ): Promise<void> {
     this.ensurePageOpen();
     await this._page.goto(url, {
-      waitUntil: options?.waitUntil ?? 'domcontentloaded',
+      waitUntil: options?.waitUntil ?? "domcontentloaded",
       timeout: this.timeouts.navigation,
     });
   }
@@ -120,7 +123,10 @@ export abstract class BasePage {
    * 페이지 새로고침
    */
   async reload(): Promise<void> {
-    await this._page.reload({ waitUntil: 'domcontentloaded', timeout: this.timeouts.navigation });
+    await this._page.reload({
+      waitUntil: "domcontentloaded",
+      timeout: this.timeouts.navigation,
+    });
   }
 
   /**
@@ -146,7 +152,7 @@ export abstract class BasePage {
    */
   async findVisibleElement(
     selectors: readonly string[],
-    timeout: number = this.timeouts.short
+    timeout: number = this.timeouts.short,
   ): Promise<ElementSearchResult | null> {
     for (const selector of selectors) {
       try {
@@ -166,7 +172,7 @@ export abstract class BasePage {
    */
   async clickFirstVisibleText(
     texts: readonly string[],
-    timeout: number = this.timeouts.short
+    timeout: number = this.timeouts.short,
   ): Promise<boolean> {
     for (const text of texts) {
       try {
@@ -174,7 +180,9 @@ export abstract class BasePage {
         if (await btn.isVisible({ timeout })) {
           await btn.click({ timeout: this.timeouts.medium, force: true });
           // 클릭 후 버튼(모달)이 사라질 때까지 조건부 대기
-          await btn.waitFor({ state: 'hidden', timeout: this.timeouts.short }).catch(() => {});
+          await btn
+            .waitFor({ state: "hidden", timeout: this.timeouts.short })
+            .catch(() => {});
           console.log(`✅ "${text}" 버튼 클릭`);
           return true;
         }
@@ -191,7 +199,7 @@ export abstract class BasePage {
 
   /**
    * 지정 시간 대기
-   * @deprecated Hard wait는 CI 환경에서 불안정합니다. 
+   * @deprecated Hard wait는 CI 환경에서 불안정합니다.
    *             waitForElement(), waitForContentStable() 등 조건부 대기 메서드를 사용하세요.
    */
   async wait(ms: number): Promise<void> {
@@ -202,9 +210,11 @@ export abstract class BasePage {
    * 로드 상태 대기
    */
   async waitForLoadState(
-    state: 'load' | 'domcontentloaded' | 'networkidle' = 'domcontentloaded'
+    state: "load" | "domcontentloaded" | "networkidle" = "domcontentloaded",
   ): Promise<void> {
-    await this._page.waitForLoadState(state, { timeout: this.timeouts.navigation });
+    await this._page.waitForLoadState(state, {
+      timeout: this.timeouts.navigation,
+    });
   }
 
   /**
@@ -215,9 +225,12 @@ export abstract class BasePage {
    */
   async waitForElement(
     locator: Locator,
-    options: { state?: 'visible' | 'attached' | 'hidden'; timeout?: number } = {}
+    options: {
+      state?: "visible" | "attached" | "hidden";
+      timeout?: number;
+    } = {},
   ): Promise<void> {
-    const { state = 'visible', timeout = this.timeouts.medium } = options;
+    const { state = "visible", timeout = this.timeouts.medium } = options;
     await locator.waitFor({ state, timeout });
   }
 
@@ -229,13 +242,13 @@ export abstract class BasePage {
    */
   async waitForAnyElement(
     selectors: readonly string[],
-    timeout: number = this.timeouts.medium
+    timeout: number = this.timeouts.medium,
   ): Promise<ElementSearchResult | null> {
     // Promise.any(): 첫 번째 성공 promise 반환, 모두 실패 시 AggregateError
     // Promise.race()는 null을 가장 빨리 반환하는 promise가 이겨버리는 버그 있음
     const promises = selectors.map(async (selector) => {
       const element = this._page.locator(selector).first();
-      await element.waitFor({ state: 'visible', timeout });
+      await element.waitFor({ state: "visible", timeout });
       return { element, selector };
     });
 
@@ -251,8 +264,10 @@ export abstract class BasePage {
    * 네트워크 요청이 안정화될 때까지 대기
    * @param timeout 최대 대기 시간 (ms)
    */
-  async waitForNetworkStable(timeout: number = this.timeouts.long): Promise<void> {
-    await this._page.waitForLoadState('networkidle', { timeout });
+  async waitForNetworkStable(
+    timeout: number = this.timeouts.long,
+  ): Promise<void> {
+    await this._page.waitForLoadState("networkidle", { timeout });
   }
 
   /**
@@ -262,21 +277,21 @@ export abstract class BasePage {
    * @param options.stableTime 변경 없이 유지되어야 하는 시간 (ms)
    */
   async waitForContentStable(
-    selectorOrStableTime: string | number = 'body',
-    options: { timeout?: number; stableTime?: number } = {}
+    selectorOrStableTime: string | number = "body",
+    options: { timeout?: number; stableTime?: number } = {},
   ): Promise<void> {
     // 첫 번째 인자가 숫자이면 stableTime으로 처리
-    let selector = 'body';
+    let selector = "body";
     let stableTime = options.stableTime ?? 300;
-    
-    if (typeof selectorOrStableTime === 'number') {
+
+    if (typeof selectorOrStableTime === "number") {
       stableTime = selectorOrStableTime;
     } else {
       selector = selectorOrStableTime;
     }
-    
+
     const timeout = options.timeout ?? this.timeouts.medium;
-    
+
     await this._page.waitForFunction(
       ({ sel, stable }) => {
         return new Promise<boolean>((resolve) => {
@@ -285,10 +300,10 @@ export abstract class BasePage {
             resolve(true);
             return;
           }
-          
+
           let timer: ReturnType<typeof setTimeout>;
           let resolved = false;
-          
+
           const observer = new MutationObserver(() => {
             clearTimeout(timer);
             timer = setTimeout(() => {
@@ -299,13 +314,13 @@ export abstract class BasePage {
               }
             }, stable);
           });
-          
+
           observer.observe(target, {
             childList: true,
             subtree: true,
             attributes: true,
           });
-          
+
           // 초기 시작
           timer = setTimeout(() => {
             if (!resolved) {
@@ -317,7 +332,7 @@ export abstract class BasePage {
         });
       },
       { sel: selector, stable: stableTime },
-      { timeout }
+      { timeout },
     );
   }
 
@@ -328,9 +343,9 @@ export abstract class BasePage {
    */
   async waitForUrlContains(
     pattern: string | RegExp,
-    timeout: number = this.timeouts.long
+    timeout: number = this.timeouts.long,
   ): Promise<void> {
-    if (typeof pattern === 'string') {
+    if (typeof pattern === "string") {
       await this._page.waitForURL(`**/*${pattern}*`, { timeout });
     } else {
       await this._page.waitForURL(pattern, { timeout });
@@ -343,12 +358,22 @@ export abstract class BasePage {
 
   /** 모달 닫기 텍스트 패턴 */
   protected readonly modalDoNotShowTexts: readonly string[] = [
-    'Do not show again', 'do not show again', "Don't show again", 'Do not show',
-    '다시 보지 않기', '다시보지않기', '다시 보지 않음', '오늘 하루 보지 않기',
+    "Do not show again",
+    "do not show again",
+    "Don't show again",
+    "Do not show",
+    "다시 보지 않기",
+    "다시보지않기",
+    "다시 보지 않음",
+    "오늘 하루 보지 않기",
   ];
 
   protected readonly modalCloseTexts: readonly string[] = [
-    '닫기', '확인', 'Close', 'OK', 'close',
+    "닫기",
+    "확인",
+    "Close",
+    "OK",
+    "close",
   ];
 
   /**
@@ -357,7 +382,10 @@ export abstract class BasePage {
   async handleModal(): Promise<void> {
     try {
       // 1단계: "Do not show again" 버튼 찾기 (clickFirstVisibleText가 visibility 확인)
-      const dismissed = await this.clickFirstVisibleText(this.modalDoNotShowTexts, 1000);
+      const dismissed = await this.clickFirstVisibleText(
+        this.modalDoNotShowTexts,
+        1000,
+      );
 
       // 2단계: 모달이 여전히 있으면 닫기 버튼 클릭
       if (!dismissed) {
@@ -372,14 +400,17 @@ export abstract class BasePage {
    * 모든 모달 닫기 (여러 개의 모달이 연속으로 나올 때)
    */
   async closeAllModals(): Promise<void> {
-    const allCloseTexts = [...this.modalDoNotShowTexts, ...this.modalCloseTexts];
+    const allCloseTexts = [
+      ...this.modalDoNotShowTexts,
+      ...this.modalCloseTexts,
+    ];
     for (const text of allCloseTexts) {
       try {
         const btn = this._page.getByText(text, { exact: false }).first();
         if (await btn.isVisible({ timeout: 1000 })) {
           await btn.click({ force: true });
           // 모달이 닫힐 때까지 조건부 대기
-          await btn.waitFor({ state: 'hidden', timeout: 1000 }).catch(() => {});
+          await btn.waitFor({ state: "hidden", timeout: 1000 }).catch(() => {});
         }
       } catch {
         continue;
@@ -398,12 +429,12 @@ export abstract class BasePage {
    */
   async verifyImagesLoaded(): Promise<ImageVerificationResult> {
     return await this._page.evaluate(() => {
-      const images = Array.from(document.querySelectorAll('img'));
+      const images = Array.from(document.querySelectorAll("img"));
       const brokenImages: string[] = [];
 
       for (const img of images) {
         if (img.complete && img.naturalWidth === 0) {
-          if (img.src && !img.src.startsWith('data:') && img.src !== '') {
+          if (img.src && !img.src.startsWith("data:") && img.src !== "") {
             brokenImages.push(img.src.substring(0, 100));
           }
         }
@@ -427,12 +458,12 @@ export abstract class BasePage {
   async monitorApiResponses(
     urlPatterns: RegExp[],
     action: () => Promise<void>,
-    timeoutThreshold: number = 5000
+    timeoutThreshold: number = 5000,
   ): Promise<{ responses: ApiMonitorResult[]; errors: string[] }> {
     const responses: ApiMonitorResult[] = [];
     const errors: string[] = [];
 
-    const responseHandler = (response: any) => {
+    const responseHandler = (response: import("@playwright/test").Response) => {
       const url = response.url();
       const matchedPattern = urlPatterns.find((pattern) => pattern.test(url));
 
@@ -452,17 +483,19 @@ export abstract class BasePage {
         }
 
         if (duration > timeoutThreshold) {
-          errors.push(`SLOW (${Math.round(duration)}ms) - ${url.substring(0, 60)}`);
+          errors.push(
+            `SLOW (${Math.round(duration)}ms) - ${url.substring(0, 60)}`,
+          );
         }
       }
     };
 
-    this._page.on('response', responseHandler);
+    this._page.on("response", responseHandler);
 
     try {
       await action();
     } finally {
-      this._page.removeListener('response', responseHandler);
+      this._page.removeListener("response", responseHandler);
     }
 
     return { responses, errors };
@@ -475,14 +508,20 @@ export abstract class BasePage {
   /**
    * URL 패턴 검증
    */
-  async expectUrlMatches(pattern: RegExp, timeout: number = this.timeouts.long): Promise<void> {
+  async expectUrlMatches(
+    pattern: RegExp,
+    timeout: number = this.timeouts.long,
+  ): Promise<void> {
     await expect(this.page).toHaveURL(pattern, { timeout });
   }
 
   /**
    * 요소 가시성 검증
    */
-  async expectVisible(locator: Locator, timeout: number = this.timeouts.medium): Promise<void> {
+  async expectVisible(
+    locator: Locator,
+    timeout: number = this.timeouts.medium,
+  ): Promise<void> {
     await expect(locator).toBeVisible({ timeout });
   }
 

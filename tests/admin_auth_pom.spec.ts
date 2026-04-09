@@ -46,7 +46,7 @@ test.beforeAll(async () => {
     const { hours, minutes } = getTokenRemaining();
     console.log(`\n✅ 토큰 유효 (남은 시간: ${hours}시간 ${minutes}분)`);
   } else {
-    console.log("\n⚠️ 토큰이 만료되었습니다. 자동 로그인을 시도합니다...");
+    console.warn("\n⚠️ 토큰이 만료되었습니다. 자동 로그인을 시도합니다...");
 
     // 자동 로그인 실행
     const loginSuccess = await performGoogleLogin();
@@ -61,8 +61,8 @@ test.beforeAll(async () => {
         );
       }
     } else {
-      console.log("\n❌ 자동 로그인 실패!");
-      console.log("   테스트를 다시 실행해주세요.\n");
+      console.error("\n❌ 자동 로그인 실패!");
+      console.error("   테스트를 다시 실행해주세요.\n");
     }
   }
 });
@@ -107,7 +107,7 @@ test.describe.serial("인증 검증", () => {
 
     // 인증 실패 시 자동 로그인 시도
     if (!authResult.success) {
-      console.log(`\n⚠️ 첫 번째 인증 실패: ${authResult.reason}`);
+      console.warn(`\n⚠️ 첫 번째 인증 실패: ${authResult.reason}`);
       console.log("🔑 자동 로그인을 시도합니다...\n");
 
       // 자동 로그인 실행
@@ -127,8 +127,8 @@ test.describe.serial("인증 검증", () => {
         // 두 번째 인증 시도
         authResult = await verifyAuthentication(page);
       } else {
-        console.log("\n❌ 자동 로그인 실패!");
-        console.log("   브라우저에서 로그인을 완료하지 못했습니다.\n");
+        console.error("\n❌ 자동 로그인 실패!");
+        console.error("   브라우저에서 로그인을 완료하지 못했습니다.\n");
       }
     }
 
@@ -139,10 +139,10 @@ test.describe.serial("인증 검증", () => {
       // 인증 실패 상태를 파일에 기록 (다른 worker들도 확인 가능)
       markAuthFailed(failReason);
 
-      console.log(`\n❌ 최종 인증 실패: ${failReason}`);
+      console.error(`\n❌ 최종 인증 실패: ${failReason}`);
       console.log("\n🔧 수동 해결 방법:");
       console.log("   node auto-refresh-token.js --setup");
-      console.log("\n⚠️ 이후 모든 테스트는 스킵됩니다.\n");
+      console.warn("\n⚠️ 이후 모든 테스트는 스킵됩니다.\n");
 
       throw new Error(`인증 실패: ${failReason}`);
     }

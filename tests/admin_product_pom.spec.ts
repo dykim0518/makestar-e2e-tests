@@ -727,7 +727,7 @@ test.describe.serial("SKU 생성", () => {
       const createdSkuCode = skuCodeMatch ? skuCodeMatch[1] : null;
 
       if (!createdSkuCode) {
-        console.log("⚠️ SKU 코드를 추출할 수 없음");
+        console.warn("⚠️ SKU 코드를 추출할 수 없음");
         expect(createdSkuCode).not.toBeNull();
         return;
       }
@@ -787,7 +787,7 @@ test.describe.serial("SKU 생성", () => {
         } catch {
           // 검색 결과가 없으면 재시도 전 페이지 안정화 대기
           if (attempt < maxRetries) {
-            console.log(`  ⚠️ 검색 결과 없음, 재시도 대기 중...`);
+            console.warn(`  ⚠️ 검색 결과 없음, 재시도 대기 중...`);
             await page.reload({ waitUntil: "domcontentloaded" });
             await waitForPageStable(page);
           }
@@ -1106,7 +1106,7 @@ test.describe.serial("상품 등록", () => {
       }
 
       // 품목 없음 → "품목 생성" 버튼 클릭하여 모달 열기
-      console.log("⚠️ 품목 없음 → 품목 생성 시작");
+      console.warn("⚠️ 품목 없음 → 품목 생성 시작");
       await page.getByRole("button", { name: "품목 생성" }).click();
       await waitForPageStable(page);
 
@@ -1259,7 +1259,7 @@ test.describe.serial("상품 등록", () => {
           if (albumSelected) {
             console.log(`  ✅ ${catName} "앨범" 선택 완료`);
           } else {
-            console.log(`  ⚠️ ${catName}: "앨범" 옵션 미발견`);
+            console.warn(`  ⚠️ ${catName}: "앨범" 옵션 미발견`);
           }
 
           // 드롭다운 닫기
@@ -1281,7 +1281,7 @@ test.describe.serial("상품 등록", () => {
       if (!itemAdded) {
         // 품목이 없으면 대분류에 연결된 SKU가 없는 경우
         // 품목(SKU)은 필수 필드이므로, 없으면 테스트 진행 불가
-        console.log("⚠️ 연결된 품목(SKU)이 없어 품목 추가 실패");
+        console.warn("⚠️ 연결된 품목(SKU)이 없어 품목 추가 실패");
         console.log(
           "ℹ️ 상품 등록을 위해서는 해당 대분류에 SKU가 연결되어 있어야 합니다.",
         );
@@ -1317,7 +1317,7 @@ test.describe.serial("상품 등록", () => {
         await targetCheckbox.click();
         console.log("ℹ️ 판매량 기준 체크박스 클릭 완료");
       } else {
-        console.log("⚠️ 판매량 기준 체크박스를 찾을 수 없음");
+        console.warn("⚠️ 판매량 기준 체크박스를 찾을 수 없음");
       }
 
       // 3-6: 옵션명 입력 (필수) - 한국어/영어
@@ -1372,7 +1372,7 @@ test.describe.serial("상품 등록", () => {
           await page.keyboard.type(`Automation test product. (${timestamp})`);
           console.log("  ✅ 상품설명(영어) 입력 완료");
         } else {
-          console.log("  ⚠️ 영어 상품설명 에디터 미발견");
+          console.warn("  ⚠️ 영어 상품설명 에디터 미발견");
         }
       }
 
@@ -1403,7 +1403,7 @@ test.describe.serial("상품 등록", () => {
       } else if (benefitToggled === "already-off") {
         console.log("  ℹ️ 다량구매특전 이미 OFF 상태");
       } else {
-        console.log(`  ⚠️ 다량구매특전 토글 처리 실패: ${benefitToggled}`);
+        console.warn(`  ⚠️ 다량구매특전 토글 처리 실패: ${benefitToggled}`);
       }
     });
 
@@ -1476,7 +1476,7 @@ test.describe.serial("상품 등록", () => {
           .first();
         if (await errorToast.isVisible({ timeout: 1000 }).catch(() => false)) {
           const errorText = await errorToast.textContent();
-          console.log(`  ⚠️ 알림 메시지: ${errorText}`);
+          console.warn(`  ⚠️ 알림 메시지: ${errorText}`);
 
           // 에러가 있으면 필수 필드 확인
           if (
@@ -1560,7 +1560,7 @@ test.describe.serial("상품 등록", () => {
         } catch (e) {
           // 리다이렉트 실패 - 현재 페이지 상태 확인
           const currentUrl = page.url();
-          console.log(`  ⚠️ 리다이렉트 실패. 현재 URL: ${currentUrl}`);
+          console.warn(`  ⚠️ 리다이렉트 실패. 현재 URL: ${currentUrl}`);
 
           // API 응답 로그 출력
           console.log(`  📡 캡처된 API 응답: ${apiResponses.length}개`);
@@ -1578,7 +1578,7 @@ test.describe.serial("상품 등록", () => {
           // 에러 메시지가 있는지 확인
           const pageText = (await page.locator("body").textContent()) || "";
           if (pageText.includes("필수")) {
-            console.log("  ❌ 필수 필드 오류가 있는 것 같습니다");
+            console.error("  ❌ 필수 필드 오류가 있는 것 같습니다");
           }
 
           // API 호출이 없었으면 프론트엔드 유효성 검증 실패
@@ -1597,7 +1597,9 @@ test.describe.serial("상품 등록", () => {
           throw e;
         }
       } else {
-        console.log("  ⚠️ 버튼이 비활성화 상태입니다. 필수 필드를 확인하세요.");
+        console.warn(
+          "  ⚠️ 버튼이 비활성화 상태입니다. 필수 필드를 확인하세요.",
+        );
         // 테스트 실패 처리
         throw new Error("등록 버튼이 비활성화 상태입니다");
       }

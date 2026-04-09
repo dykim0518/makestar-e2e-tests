@@ -122,7 +122,7 @@ export class PocaDashboardPage extends AdminBasePage {
           waitUntil: "domcontentloaded",
           timeout: this.timeouts.navigation,
         });
-      } catch (e: any) {
+      } catch (e: unknown) {
         if (attempt < retryCount) {
           console.warn(
             `⚠️ 페이지 로드 실패 (시도 ${attempt + 1}/${retryCount + 1}) - 재시도`,
@@ -436,7 +436,9 @@ export class PocaDashboardPage extends AdminBasePage {
     await this.clickSidebarMenu(menuName);
     // SPA 라우팅 대기
     await this.page.waitForLoadState("domcontentloaded").catch(() => {});
-    await this.page.waitForTimeout(500);
+    await this.page
+      .waitForLoadState("networkidle", { timeout: 3000 })
+      .catch(() => {});
 
     const url = this.page.url();
     const errorCount = await this.page

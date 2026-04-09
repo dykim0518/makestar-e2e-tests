@@ -110,8 +110,10 @@ test.describe.serial("주문관리 목록", () => {
         await orderPage.assertRowsMatchStatus(appliedSnapshot, 10);
         verified = true;
         break;
-      } catch (error: any) {
-        errors.push(`${tab}: ${error?.message ?? String(error)}`);
+      } catch (error: unknown) {
+        errors.push(
+          `${tab}: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
     }
 
@@ -254,9 +256,9 @@ test.describe.serial("주문관리 목록", () => {
         }
 
         validatedPairs += 1;
-      } catch (error: any) {
+      } catch (error: unknown) {
         failedPairs.push(
-          `${leftKey}+${rightKey}: ${error?.message ?? String(error)}`,
+          `${leftKey}+${rightKey}: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
     }
@@ -501,8 +503,10 @@ test.describe.serial("발주/입고 목록", () => {
         }
 
         validatedTabs.push(tab);
-      } catch (error: any) {
-        failures.push(`${tab}: ${error?.message ?? String(error)}`);
+      } catch (error: unknown) {
+        failures.push(
+          `${tab}: ${error instanceof Error ? error.message : String(error)}`,
+        );
       } finally {
         await purchasePage.resetFiltersAndWait();
       }

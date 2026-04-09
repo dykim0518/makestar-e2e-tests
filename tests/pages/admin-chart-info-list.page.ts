@@ -2,16 +2,16 @@
  * 차트 집계 목록 페이지 객체
  */
 
-import { Page, Locator, expect } from '@playwright/test';
-import { AdminBasePage, ADMIN_TIMEOUTS } from './admin-base.page';
+import { Page, Locator, expect } from "@playwright/test";
+import { AdminBasePage, ADMIN_TIMEOUTS } from "./admin-base.page";
 
-export interface ChartResultMetrics {
+export type ChartResultMetrics = {
   rowCount: number;
   summaryCount: number | null;
   hasNoResultMessage: boolean;
   hasZeroSummary: boolean;
   noResultState: boolean;
-}
+};
 
 export class ChartInfoListPage extends AdminBasePage {
   readonly submitSearchButton: Locator;
@@ -21,9 +21,16 @@ export class ChartInfoListPage extends AdminBasePage {
   constructor(page: Page) {
     super(page, ADMIN_TIMEOUTS);
 
-    this.submitSearchButton = page.getByRole('button', { name: '조회하기', exact: true });
-    this.searchResetButton = page.getByRole('button', { name: /검색\s*초기화/i });
-    this.resultSummary = page.getByText(/전체\s*[\d,]+\s*건|차트\s*집계/i).first();
+    this.submitSearchButton = page.getByRole("button", {
+      name: "조회하기",
+      exact: true,
+    });
+    this.searchResetButton = page.getByRole("button", {
+      name: /검색\s*초기화/i,
+    });
+    this.resultSummary = page
+      .getByText(/전체\s*[\d,]+\s*건|차트\s*집계/i)
+      .first();
   }
 
   getPageUrl(): string {
@@ -31,19 +38,19 @@ export class ChartInfoListPage extends AdminBasePage {
   }
 
   getHeadingText(): string {
-    return '차트 집계/관리';
+    return "차트 집계/관리";
   }
 
   getBreadcrumbPath(): string[] {
-    return ['상품관리', '차트 집계/관리'];
+    return ["상품관리", "차트 집계/관리"];
   }
 
   /**
    * 조회 버튼을 클릭하고 결과 영역이 안정화될 때까지 대기합니다.
    */
   async clickSearchAndWait(): Promise<void> {
-    await this.page.keyboard.press('Escape').catch(() => {});
-    await this.page.keyboard.press('Escape').catch(() => {});
+    await this.page.keyboard.press("Escape").catch(() => {});
+    await this.page.keyboard.press("Escape").catch(() => {});
     await this.submitSearchButton.click({ force: true });
     await this.waitForTableOrNoResult();
   }
@@ -52,12 +59,16 @@ export class ChartInfoListPage extends AdminBasePage {
    * 검색 조건을 초기화하고 결과 영역이 안정화될 때까지 대기합니다.
    */
   async resetFiltersAndWait(): Promise<void> {
-    await this.page.keyboard.press('Escape').catch(() => {});
-    await this.page.keyboard.press('Escape').catch(() => {});
+    await this.page.keyboard.press("Escape").catch(() => {});
+    await this.page.keyboard.press("Escape").catch(() => {});
 
-    const canReset = await this.searchResetButton.isVisible({ timeout: this.timeouts.short }).catch(() => false);
+    const canReset = await this.searchResetButton
+      .isVisible({ timeout: this.timeouts.short })
+      .catch(() => false);
     if (canReset) {
-      const enabled = await this.searchResetButton.isEnabled().catch(() => false);
+      const enabled = await this.searchResetButton
+        .isEnabled()
+        .catch(() => false);
       if (enabled) {
         await this.searchResetButton.click({ force: true });
       }
@@ -69,34 +80,54 @@ export class ChartInfoListPage extends AdminBasePage {
   /**
    * 목록/요약/no-result 중 하나가 보일 때까지 대기합니다.
    */
-  async waitForTableOrNoResult(timeout: number = this.timeouts.navigation): Promise<void> {
+  async waitForTableOrNoResult(
+    timeout: number = this.timeouts.navigation,
+  ): Promise<void> {
     await Promise.race([
-      this.resultSummary.waitFor({ state: 'visible', timeout }).catch(() => null),
-      this.noResultMessage.waitFor({ state: 'visible', timeout }).catch(() => null),
-      this.page.locator('table tbody tr:visible').first().waitFor({ state: 'visible', timeout }).catch(() => null),
+      this.resultSummary
+        .waitFor({ state: "visible", timeout })
+        .catch(() => null),
+      this.noResultMessage
+        .waitFor({ state: "visible", timeout })
+        .catch(() => null),
+      this.page
+        .locator("table tbody tr:visible")
+        .first()
+        .waitFor({ state: "visible", timeout })
+        .catch(() => null),
     ]);
 
-    await this.waitForContentStable('main', {
+    await this.waitForContentStable("main", {
       timeout: Math.min(timeout, this.timeouts.long),
       stableTime: 300,
     }).catch(() => {});
 
     await this.page.waitForFunction(
       () => {
-        const normalize = (value: string) => value.replace(/\s+/g, ' ').trim();
-        const text = (document.body.innerText || '').replace(/\s+/g, ' ');
-        const hasNoResult = text.includes('검색결과가 없습니다');
+        const normalize = (value: string) => value.replace(/\s+/g, " ").trim();
+        const text = (document.body.innerText || "").replace(/\s+/g, " ");
+        const hasNoResult = text.includes("검색결과가 없습니다");
         const hasSummary = /전체\s*[\d,]+\s*건/.test(text);
         const hasHeading = /차트\s*집계/.test(text);
 
-        const tableRows = Array.from(document.querySelectorAll('table tbody tr'));
+        const tableRows = Array.from(
+          document.querySelectorAll("table tbody tr"),
+        );
         const meaningfulTableRowCount = tableRows.filter((row) => {
-          const rowText = normalize((row as HTMLElement).innerText || '');
-          return rowText.length > 0 && !rowText.includes('검색결과가 없습니다');
+          const rowText = normalize((row as HTMLElement).innerText || "");
+          return rowText.length > 0 && !rowText.includes("검색결과가 없습니다");
         }).length;
 
-        const chartNodeCount = document.querySelectorAll('canvas, svg, [class*="chart"], [class*="Chart"]').length;
-        return hasHeading && (hasNoResult || hasSummary || meaningfulTableRowCount > 0 || chartNodeCount > 0);
+        const chartNodeCount = document.querySelectorAll(
+          'canvas, svg, [class*="chart"], [class*="Chart"]',
+        ).length;
+        return (
+          hasHeading &&
+          (hasNoResult ||
+            hasSummary ||
+            meaningfulTableRowCount > 0 ||
+            chartNodeCount > 0)
+        );
       },
       undefined,
       { timeout },
@@ -108,12 +139,12 @@ export class ChartInfoListPage extends AdminBasePage {
    */
   async getRowCount(): Promise<number> {
     const tableRowCount = await this.page
-      .locator('table tbody tr:visible')
+      .locator("table tbody tr:visible")
       .evaluateAll((rows) => {
-        const normalize = (value: string) => value.replace(/\s+/g, ' ').trim();
+        const normalize = (value: string) => value.replace(/\s+/g, " ").trim();
         return rows.filter((row) => {
-          const text = normalize((row as HTMLElement).innerText || '');
-          return text.length > 0 && !text.includes('검색결과가 없습니다');
+          const text = normalize((row as HTMLElement).innerText || "");
+          return text.length > 0 && !text.includes("검색결과가 없습니다");
         }).length;
       })
       .catch(() => 0);
@@ -124,11 +155,11 @@ export class ChartInfoListPage extends AdminBasePage {
     const roleRowCount = await this.page
       .locator('[role="row"]:visible')
       .evaluateAll((rows) => {
-        const normalize = (value: string) => value.replace(/\s+/g, ' ').trim();
+        const normalize = (value: string) => value.replace(/\s+/g, " ").trim();
         let count = 0;
         for (let i = 1; i < rows.length; i += 1) {
-          const text = normalize((rows[i] as HTMLElement).innerText || '');
-          if (text.length > 0 && !text.includes('검색결과가 없습니다')) {
+          const text = normalize((rows[i] as HTMLElement).innerText || "");
+          if (text.length > 0 && !text.includes("검색결과가 없습니다")) {
             count += 1;
           }
         }
@@ -144,9 +175,12 @@ export class ChartInfoListPage extends AdminBasePage {
   async getResultMetrics(): Promise<ChartResultMetrics> {
     const rowCount = await this.getRowCount();
     const summaryCount = await this.getSummaryTotalCount();
-    const hasNoResultMessage = await this.noResultMessage.isVisible().catch(() => false);
+    const hasNoResultMessage = await this.noResultMessage
+      .isVisible()
+      .catch(() => false);
     const hasZeroSummary = summaryCount === 0;
-    const noResultState = hasNoResultMessage || (rowCount === 0 && hasZeroSummary);
+    const noResultState =
+      hasNoResultMessage || (rowCount === 0 && hasZeroSummary);
 
     return {
       rowCount,
@@ -161,13 +195,18 @@ export class ChartInfoListPage extends AdminBasePage {
    * 결과 요약의 전체 건수를 추출합니다.
    */
   async getSummaryTotalCount(): Promise<number | null> {
-    const summaryText = this.normalize(await this.page.locator('main').innerText().catch(() => ''));
+    const summaryText = this.normalize(
+      await this.page
+        .locator("main")
+        .innerText()
+        .catch(() => ""),
+    );
     const match = summaryText.match(/전체\s*([\d,]+)\s*건/);
     if (!match || !match[1]) {
       return null;
     }
 
-    const parsed = Number(match[1].replace(/,/g, ''));
+    const parsed = Number(match[1].replace(/,/g, ""));
     return Number.isFinite(parsed) ? parsed : null;
   }
 
@@ -176,11 +215,11 @@ export class ChartInfoListPage extends AdminBasePage {
    */
   async getPerPageLimit(defaultLimit: number = 10): Promise<number> {
     const perPageText = await this.page
-      .locator('text=/\\d+\\s*\\/\\s*page/i')
+      .locator("text=/\\d+\\s*\\/\\s*page/i")
       .first()
       .textContent()
-      .catch(() => '');
-    const normalized = this.normalize(perPageText || '');
+      .catch(() => "");
+    const normalized = this.normalize(perPageText || "");
     const match = normalized.match(/(\d+)\s*\/\s*page/i);
     if (!match || !match[1]) {
       return defaultLimit;
@@ -210,7 +249,10 @@ export class ChartInfoListPage extends AdminBasePage {
       return false;
     }
 
-    await this.nextPageButton.click({ force: true, timeout: this.timeouts.medium });
+    await this.nextPageButton.click({
+      force: true,
+      timeout: this.timeouts.medium,
+    });
     await this.waitForTableOrNoResult(15000);
     return true;
   }
@@ -219,16 +261,23 @@ export class ChartInfoListPage extends AdminBasePage {
    * 안전하게 이전 페이지로 이동합니다.
    */
   async goToPreviousPageSafely(): Promise<boolean> {
-    const visible = await this.previousPageButton.isVisible().catch(() => false);
+    const visible = await this.previousPageButton
+      .isVisible()
+      .catch(() => false);
     if (!visible) {
       return false;
     }
-    const enabled = await this.previousPageButton.isEnabled().catch(() => false);
+    const enabled = await this.previousPageButton
+      .isEnabled()
+      .catch(() => false);
     if (!enabled) {
       return false;
     }
 
-    await this.previousPageButton.click({ force: true, timeout: this.timeouts.medium });
+    await this.previousPageButton.click({
+      force: true,
+      timeout: this.timeouts.medium,
+    });
     await this.waitForTableOrNoResult(15000);
     return true;
   }
@@ -238,7 +287,7 @@ export class ChartInfoListPage extends AdminBasePage {
    */
   async getFirstRowFingerprint(): Promise<string> {
     const rows = await this.getRowTexts(1);
-    return rows[0] ?? '';
+    return rows[0] ?? "";
   }
 
   /**
@@ -249,14 +298,14 @@ export class ChartInfoListPage extends AdminBasePage {
       .evaluate(() => {
         try {
           const url = new URL(window.location.href);
-          const pageParam = Number(url.searchParams.get('page') || '');
+          const pageParam = Number(url.searchParams.get("page") || "");
           return Number.isFinite(pageParam) && pageParam > 0 ? pageParam : null;
         } catch {
           return null;
         }
       })
       .catch(() => null as number | null);
-    if (typeof urlPage === 'number') {
+    if (typeof urlPage === "number") {
       return urlPage;
     }
 
@@ -267,27 +316,35 @@ export class ChartInfoListPage extends AdminBasePage {
           return null;
         }
 
-        const normalize = (value: string) => value.replace(/\s+/g, ' ').trim();
+        const normalize = (value: string) => value.replace(/\s+/g, " ").trim();
         const parseNumber = (value: string): number | null => {
           const parsed = Number(value);
           return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
         };
 
-        const ariaCurrent = nav.querySelector('[aria-current="page"]') as HTMLElement | null;
+        const ariaCurrent = nav.querySelector(
+          '[aria-current="page"]',
+        ) as HTMLElement | null;
         if (ariaCurrent) {
-          return parseNumber(normalize(ariaCurrent.innerText || ariaCurrent.textContent || ''));
+          return parseNumber(
+            normalize(ariaCurrent.innerText || ariaCurrent.textContent || ""),
+          );
         }
 
-        const active = nav.querySelector('.active, .selected, [data-active="true"]') as HTMLElement | null;
+        const active = nav.querySelector(
+          '.active, .selected, [data-active="true"]',
+        ) as HTMLElement | null;
         if (active) {
-          return parseNumber(normalize(active.innerText || active.textContent || ''));
+          return parseNumber(
+            normalize(active.innerText || active.textContent || ""),
+          );
         }
 
         return null;
       })
       .catch(() => null as number | null);
 
-    return typeof navPage === 'number' ? navPage : defaultPage;
+    return typeof navPage === "number" ? navPage : defaultPage;
   }
 
   /**
@@ -312,7 +369,7 @@ export class ChartInfoListPage extends AdminBasePage {
   async setKeyword(keyword: string): Promise<void> {
     const keywordInput = await this.resolveKeywordInput();
     if (!keywordInput) {
-      throw new Error('차트 집계 검색 키워드 입력창을 찾지 못했습니다.');
+      throw new Error("차트 집계 검색 키워드 입력창을 찾지 못했습니다.");
     }
     await keywordInput.fill(keyword);
   }
@@ -323,49 +380,64 @@ export class ChartInfoListPage extends AdminBasePage {
   async getCurrentKeywordValue(): Promise<string> {
     const keywordInput = await this.resolveKeywordInput();
     if (!keywordInput) {
-      throw new Error('차트 집계 검색 키워드 입력창을 찾지 못했습니다.');
+      throw new Error("차트 집계 검색 키워드 입력창을 찾지 못했습니다.");
     }
 
     const value = await keywordInput
       .evaluate((el) => {
-        if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
-          return el.value || '';
+        if (
+          el instanceof HTMLInputElement ||
+          el instanceof HTMLTextAreaElement
+        ) {
+          return el.value || "";
         }
-        return (el as HTMLElement).innerText || el.textContent || '';
+        return (el as HTMLElement).innerText || el.textContent || "";
       })
-      .catch(() => '');
+      .catch(() => "");
 
     return this.normalize(value);
   }
 
   private async resolveKeywordInput(): Promise<Locator | null> {
     return await this.findFirstVisible([
-      this.page.getByRole('textbox', { name: /검색어|키워드|차트|아티스트|상품명|코드|id/i }).first(),
-      this.page.getByPlaceholder(/검색어|키워드|차트|아티스트|상품명|코드|id/i).first(),
+      this.page
+        .getByRole("textbox", {
+          name: /검색어|키워드|차트|아티스트|상품명|코드|id/i,
+        })
+        .first(),
+      this.page
+        .getByPlaceholder(/검색어|키워드|차트|아티스트|상품명|코드|id/i)
+        .first(),
       this.page.locator('main input[type="text"]:visible').first(),
     ]);
   }
 
   private async getRowTexts(limit: number = 10): Promise<string[]> {
     const tableRowTexts = await this.page
-      .locator('table tbody tr:visible')
+      .locator("table tbody tr:visible")
       .evaluateAll((rows, sampleLimit) => {
-        const normalize = (value: string) => value.replace(/\s+/g, ' ').trim();
+        const normalize = (value: string) => value.replace(/\s+/g, " ").trim();
         return rows
-          .map((row) => normalize((row as HTMLElement).innerText || ''))
-          .filter((text) => text.length > 0 && !text.includes('검색결과가 없습니다'))
+          .map((row) => normalize((row as HTMLElement).innerText || ""))
+          .filter(
+            (text) => text.length > 0 && !text.includes("검색결과가 없습니다"),
+          )
           .slice(0, sampleLimit as number);
       }, limit)
       .catch(() => [] as string[]);
 
-    return tableRowTexts.map((text) => this.normalize(text)).filter((text) => text.length > 0);
+    return tableRowTexts
+      .map((text) => this.normalize(text))
+      .filter((text) => text.length > 0);
   }
 
   private normalize(value: string): string {
-    return value.replace(/\s+/g, ' ').trim();
+    return value.replace(/\s+/g, " ").trim();
   }
 
-  private async findFirstVisible(candidates: Locator[]): Promise<Locator | null> {
+  private async findFirstVisible(
+    candidates: Locator[],
+  ): Promise<Locator | null> {
     for (const candidate of candidates) {
       try {
         const target = candidate.first();

@@ -12,30 +12,30 @@ import { BasePage, DEFAULT_TIMEOUTS, TimeoutConfig } from "./base.page";
 // ============================================================================
 
 /** 검색 조건 타입 */
-export interface SearchCriteria {
+export type SearchCriteria = {
   field: string;
   value: string;
-}
+};
 
 /** 테이블 행 데이터 타입 */
-export interface TableRowData {
+export type TableRowData = {
   [key: string]: string;
-}
+};
 
 /** 페이지네이션 정보 */
-export interface PaginationInfo {
+export type PaginationInfo = {
   currentPage: number;
   totalPages: number;
   hasNext: boolean;
   hasPrevious: boolean;
-}
+};
 
 /** 결과 메트릭스 (주문 spec 표준 패턴) */
-export interface ResultMetrics {
+export type ResultMetrics = {
   rowCount: number;
   hasNoResultMessage: boolean;
   noResultState: boolean;
-}
+};
 
 // ============================================================================
 // Admin 타임아웃 설정

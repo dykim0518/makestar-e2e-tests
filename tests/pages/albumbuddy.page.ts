@@ -14,18 +14,18 @@ import * as path from "path";
 // ============================================================================
 
 /** 페이지 정보 타입 */
-export interface PageInfo {
+export type PageInfo = {
   url: string;
   pattern: RegExp;
   title?: string;
-}
+};
 
 /** 성능 측정 결과 */
-export interface PerformanceResult {
+export type PerformanceResult = {
   url: string;
   loadTime: number;
   passed: boolean;
-}
+};
 
 // ============================================================================
 // AlbumBuddy 상수
@@ -151,7 +151,7 @@ export class AlbumBuddyPage extends BasePage {
 
       const now = Date.now() / 1000;
       const validCookies = cookies.filter(
-        (c: any) => !c.expires || c.expires > now,
+        (c: { expires?: number }) => !c.expires || c.expires > now,
       );
       return validCookies.length > 0;
     } catch {

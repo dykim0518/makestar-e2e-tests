@@ -1,14 +1,7 @@
-// @ts-check
 import { defineConfig, devices } from "@playwright/test";
 import * as fs from "fs";
 
-/**
- * Read environment variables from file.
- * https://github.com/motdotla/dotenv
- */
-// import dotenv from 'dotenv';
-// import path from 'path';
-// dotenv.config({ path: path.resolve(__dirname, '.env') });
+type StoredCookie = { name: string; value: string; expires?: number };
 
 // auth.json 파일이 있고 유효한지 확인
 const authFile = "./auth.json";
@@ -31,14 +24,14 @@ if (fs.existsSync(authFile)) {
     const authData = JSON.parse(fs.readFileSync(authFile, "utf-8"));
     // mock 데이터가 아닌 실제 세션인지 확인
     const hasMockData = authData.cookies?.some(
-      (c) =>
+      (c: StoredCookie) =>
         c.value?.includes("mock_session") || c.value?.includes("mock_token"),
     );
 
     // refresh_token JWT가 유효한지 확인
     let hasValidRefreshToken = false;
     const refreshCookie = authData.cookies?.find(
-      (c) => c.name === "refresh_token",
+      (c: StoredCookie) => c.name === "refresh_token",
     );
     if (refreshCookie?.value) {
       try {
@@ -50,7 +43,9 @@ if (fs.existsSync(authFile)) {
         if (hasValidRefreshToken) {
           console.log(`✅ auth.json refresh_token 유효`);
         }
-      } catch {}
+      } catch {
+        // JWT 파싱 실패 — 토큰 형식 이상
+      }
     }
 
     hasValidAuthFile =
@@ -79,8 +74,8 @@ export default defineConfig({
   fullyParallel: true,
   /* Fail the build on CI if you accidentally left test.only in the source code. */
   forbidOnly: !!process.env.CI,
-  /* Retry on CI only - 로컬에서도 2회 재시도로 인증 이슈 대응 */
-  retries: process.env.CI ? 2 : 2,
+  /* Retry on CI only - 로컬에서는 Flaky 즉시 식별을 위해 재시도 없음 */
+  retries: process.env.CI ? 2 : 0,
   /* 로컬에서 워커 수 제한 (인증 경쟁 방지를 위해 2로 감소) */
   workers: process.env.CI ? 1 : 2,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */

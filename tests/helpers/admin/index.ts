@@ -42,21 +42,3 @@ export const TIMEOUTS = {
   NETWORK_IDLE: 10000,
   DEFAULT: 5000,
 } as const;
-
-// 공통 셀렉터 패턴
-export const COMMON_SELECTORS = {
-  table: "table",
-  tableRows: "table tbody tr",
-  tableHeaders: "table thead th",
-  noResultMessage: ':text("검색결과가 없습니다")',
-  pagination: {
-    nav: 'nav[aria-label="Pagination"]',
-    previousButton: 'button:has-text("Previous")',
-    nextButton: 'button:has-text("Next")',
-    pageButton: (num: number) => `button:has-text("${num}")`,
-    perPageSelect: ':text("10 / page")',
-  },
-  breadcrumb: 'nav[aria-label="Breadcrumb"]',
-  searchButton: 'button:has-text("조회하기")',
-  resetButton: 'button:has-text("검색 초기화")',
-} as const;

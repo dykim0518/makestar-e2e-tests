@@ -238,7 +238,7 @@ test.describe("GNB 네비게이션", () => {
     test.setTimeout(TEST_TIMEOUT);
 
     if (makestar.isPageClosed()) {
-      console.log("⚠️ 페이지가 닫혀 있어 새로 초기화합니다.");
+      console.warn("⚠️ 페이지가 닫혀 있어 새로 초기화합니다.");
       makestar = new MakestarPage(page);
       await makestar.gotoHome();
     }
@@ -459,7 +459,7 @@ test.describe.serial("네비게이션 검증", () => {
       `📍 네비게이션 결과: success=${result.success}, url=${result.url}`,
     );
     if (!result.success) {
-      console.log(`⚠️ 실패 원인: ${result.reason}`);
+      console.warn(`⚠️ 실패 원인: ${result.reason}`);
     }
 
     // 프로필 버튼 클릭으로 마이페이지 도달해야 PASS
@@ -712,7 +712,7 @@ test.describe.serial("마이페이지/회원 기능", () => {
     const menuResult = await makestar.clickMyPageMenuStrict(menuTexts, hrefs);
 
     if (!menuResult.success) {
-      console.log("⚠️ 메뉴 클릭 불가, URL 직접 이동으로 폴백");
+      console.warn("⚠️ 메뉴 클릭 불가, URL 직접 이동으로 폴백");
       await makestar.goto(`${makestar.baseUrl}/my-page/event-submissions`);
     }
     await makestar.handleModal();
@@ -787,7 +787,7 @@ test.describe("상품/장바구니 기능", () => {
       console.log("✅ 옵션 변경 후 가격 표시 확인됨");
     } else {
       // 옵션이 없으면 테스트 의도에 맞지 않으므로 명시적 경고와 함께 검증
-      console.log("⚠️ 옵션이 1개 이하 - 가격 변동 검증 불가 (데이터 상태)");
+      console.warn("⚠️ 옵션이 1개 이하 - 가격 변동 검증 불가 (데이터 상태)");
       expect(options.length).toBeGreaterThanOrEqual(0); // 최소한의 검증
     }
   });
@@ -897,7 +897,7 @@ test.describe("상품/장바구니 기능", () => {
           .textContent()
           .catch(() => "");
         if (cardText && /sold out|품절/i.test(cardText)) {
-          console.log(`   ⚠️ 상품 ${i + 1}: 품절 - 건너뜀`);
+          console.warn(`   ⚠️ 상품 ${i + 1}: 품절 - 건너뜀`);
           continue;
         }
 
@@ -910,7 +910,7 @@ test.describe("상품/장바구니 기능", () => {
         // 상품 상세 페이지 도달 확인
         const currentUrl = makestar.currentUrl;
         if (!/\/product\/\d+/i.test(currentUrl)) {
-          console.log(`   ⚠️ 상품 ${i + 1}: 상세 페이지 아님 (${currentUrl})`);
+          console.warn(`   ⚠️ 상품 ${i + 1}: 상세 페이지 아님 (${currentUrl})`);
           await makestar.clickLogoToHome();
           await makestar.navigateToShop();
           await makestar.waitForPageContent();
@@ -1370,7 +1370,7 @@ test.describe("응답성/성능 모니터링", () => {
 
       if (slowRequests.length > 0) {
         console.log("");
-        console.log("   ⚠️ 느린 API 요청:");
+        console.warn("   ⚠️ 느린 API 요청:");
         slowRequests.slice(0, 5).forEach((r) => {
           console.log(`      - ${r.url.substring(0, 60)}... (${r.duration}ms)`);
         });
@@ -1378,7 +1378,7 @@ test.describe("응답성/성능 모니터링", () => {
 
       if (failedRequests.length > 0) {
         console.log("");
-        console.log("   ❌ 실패한 API 요청:");
+        console.error("   ❌ 실패한 API 요청:");
         failedRequests.slice(0, 5).forEach((r) => {
           console.log(
             `      - ${r.url.substring(0, 60)}... (HTTP ${r.status})`,

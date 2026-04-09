@@ -2,26 +2,30 @@
  * 주문관리 목록 페이지 객체
  */
 
-import { Page, Locator, expect } from '@playwright/test';
-import { AdminBasePage, ADMIN_TIMEOUTS } from './admin-base.page';
+import { Page, Locator, expect } from "@playwright/test";
+import { AdminBasePage, ADMIN_TIMEOUTS } from "./admin-base.page";
 
-export type OrderTabKey = 'all' | 'b2c' | 'b2b' | 'project';
-export type OrderStatusKey = 'orderStatus' | 'paymentStatus' | 'deliveryStatus' | 'stockAllocationStatus';
+export type OrderTabKey = "all" | "b2c" | "b2b" | "project";
+export type OrderStatusKey =
+  | "orderStatus"
+  | "paymentStatus"
+  | "deliveryStatus"
+  | "stockAllocationStatus";
 
-export interface OrderStatusSnapshot {
+export type OrderStatusSnapshot = {
   orderStatus: string;
   paymentStatus: string;
   deliveryStatus: string;
   stockAllocationStatus: string;
-}
+};
 
-export interface OrderResultMetrics {
+export type OrderResultMetrics = {
   rowCount: number;
   summaryCount: number | null;
   hasNoResultMessage: boolean;
   hasZeroSummary: boolean;
   noResultState: boolean;
-}
+};
 
 /**
  * TODO(env): 상태 필터 순서가 변경되면 fallback 인덱스를 조정하세요.
@@ -42,9 +46,17 @@ export class OrderListPage extends AdminBasePage {
   constructor(page: Page) {
     super(page, ADMIN_TIMEOUTS);
 
-    this.submitSearchButton = page.getByRole('button', { name: '조회하기', exact: true });
-    this.searchResetButton = page.getByRole('button', { name: '검색 초기화', exact: true });
-    this.resultSummary = page.getByText(/상품 주문내역|프로젝트별 주문내역/i).first();
+    this.submitSearchButton = page.getByRole("button", {
+      name: "조회하기",
+      exact: true,
+    });
+    this.searchResetButton = page.getByRole("button", {
+      name: "검색 초기화",
+      exact: true,
+    });
+    this.resultSummary = page
+      .getByText(/상품 주문내역|프로젝트별 주문내역/i)
+      .first();
   }
 
   getPageUrl(): string {
@@ -52,26 +64,32 @@ export class OrderListPage extends AdminBasePage {
   }
 
   getHeadingText(): string {
-    return '주문관리';
+    return "주문관리";
   }
 
   getBreadcrumbPath(): string[] {
-    return ['주문/배송', '주문관리'];
+    return ["주문/배송", "주문관리"];
   }
 
   async clickSearchAndWait(): Promise<void> {
-    await this.page.keyboard.press('Escape').catch(() => {});
-    await this.page.keyboard.press('Escape').catch(() => {});
+    await this.page.keyboard.press("Escape").catch(() => {});
+    await this.page.keyboard.press("Escape").catch(() => {});
     await this.submitSearchButton.click({ force: true });
     await this.waitForTableOrNoResult();
   }
 
   async clickResetButton(): Promise<void> {
-    await this.page.keyboard.press('Escape').catch(() => {});
-    await this.page.keyboard.press('Escape').catch(() => {});
+    await this.page.keyboard.press("Escape").catch(() => {});
+    await this.page.keyboard.press("Escape").catch(() => {});
 
-    if (await this.searchResetButton.isVisible({ timeout: this.timeouts.short }).catch(() => false)) {
-      const enabled = await this.searchResetButton.isEnabled().catch(() => false);
+    if (
+      await this.searchResetButton
+        .isVisible({ timeout: this.timeouts.short })
+        .catch(() => false)
+    ) {
+      const enabled = await this.searchResetButton
+        .isEnabled()
+        .catch(() => false);
       if (enabled) {
         await this.searchResetButton.click({ force: true });
       }
@@ -79,47 +97,71 @@ export class OrderListPage extends AdminBasePage {
     await this.waitForTableOrNoResult();
   }
 
-  async waitForTableOrNoResult(timeout: number = this.timeouts.navigation): Promise<void> {
+  async waitForTableOrNoResult(
+    timeout: number = this.timeouts.navigation,
+  ): Promise<void> {
     await Promise.race([
-      this.resultSummary.waitFor({ state: 'visible', timeout }).catch(() => null),
-      this.noResultMessage.waitFor({ state: 'visible', timeout }).catch(() => null),
+      this.resultSummary
+        .waitFor({ state: "visible", timeout })
+        .catch(() => null),
+      this.noResultMessage
+        .waitFor({ state: "visible", timeout })
+        .catch(() => null),
     ]);
 
     await this.page.waitForFunction(
       () => {
-        const text = (document.body.innerText || '').replace(/\s+/g, ' ');
-        const hasNoResult = text.includes('검색결과가 없습니다');
-        const hasList = text.includes('상품 주문내역') || text.includes('프로젝트별 주문내역');
-        const checkboxCount = document.querySelectorAll('input[type="checkbox"]').length;
-        const hasTable = document.querySelectorAll('table').length > 0;
+        const text = (document.body.innerText || "").replace(/\s+/g, " ");
+        const hasNoResult = text.includes("검색결과가 없습니다");
+        const hasList =
+          text.includes("상품 주문내역") ||
+          text.includes("프로젝트별 주문내역");
+        const checkboxCount = document.querySelectorAll(
+          'input[type="checkbox"]',
+        ).length;
+        const hasTable = document.querySelectorAll("table").length > 0;
         return hasNoResult || (hasList && (checkboxCount >= 1 || hasTable));
       },
       undefined,
-      { timeout }
+      { timeout },
     );
   }
 
   async getRowCount(): Promise<number> {
-    const totalCheckboxCount = await this.page.locator('input[type="checkbox"]').count();
+    const totalCheckboxCount = await this.page
+      .locator('input[type="checkbox"]')
+      .count();
     const checkboxRowCount = Math.max(totalCheckboxCount - 1, 0);
     if (checkboxRowCount > 0) {
       return checkboxRowCount;
     }
 
-    const tableRowCount = await this.page.locator('table tbody tr:visible').count();
+    const tableRowCount = await this.page
+      .locator("table tbody tr:visible")
+      .count();
     if (tableRowCount > 0) {
       return tableRowCount;
     }
 
-    const roleRowCount = await this.page.locator('[role="row"]:visible').count();
+    const roleRowCount = await this.page
+      .locator('[role="row"]:visible')
+      .count();
     return Math.max(roleRowCount - 1, 0);
   }
 
   async assertTabsVisible(): Promise<void> {
-    await expect(await this.resolveTab('all')).toBeVisible({ timeout: this.timeouts.long });
-    await expect(await this.resolveTab('b2c')).toBeVisible({ timeout: this.timeouts.long });
-    await expect(await this.resolveTab('b2b')).toBeVisible({ timeout: this.timeouts.long });
-    await expect(await this.resolveTab('project')).toBeVisible({ timeout: this.timeouts.long });
+    await expect(await this.resolveTab("all")).toBeVisible({
+      timeout: this.timeouts.long,
+    });
+    await expect(await this.resolveTab("b2c")).toBeVisible({
+      timeout: this.timeouts.long,
+    });
+    await expect(await this.resolveTab("b2b")).toBeVisible({
+      timeout: this.timeouts.long,
+    });
+    await expect(await this.resolveTab("project")).toBeVisible({
+      timeout: this.timeouts.long,
+    });
   }
 
   async switchTab(tab: OrderTabKey): Promise<void> {
@@ -131,22 +173,29 @@ export class OrderListPage extends AdminBasePage {
 
   async isProjectFilterVisible(): Promise<boolean> {
     const projectFilter = await this.findFirstVisible([
-      this.page.getByRole('combobox', { name: /프로젝트|project/i }).first(),
+      this.page.getByRole("combobox", { name: /프로젝트|project/i }).first(),
       this.page.getByLabel(/프로젝트|project/i).first(),
-      this.page.locator('p, span, div').filter({ hasText: /프로젝트|project/i }).first(),
+      this.page
+        .locator("p, span, div")
+        .filter({ hasText: /프로젝트|project/i })
+        .first(),
     ]);
     return projectFilter !== null;
   }
 
   async searchByKeyword(keyword: string): Promise<void> {
     const keywordInput = await this.findFirstVisible([
-      this.page.getByRole('textbox', { name: /주문번호|주문 번호|검색어|keyword/i }).first(),
+      this.page
+        .getByRole("textbox", { name: /주문번호|주문 번호|검색어|keyword/i })
+        .first(),
       this.page.getByPlaceholder(/주문번호|주문 번호|검색어|검색/i).first(),
-      this.page.getByPlaceholder('주문번호를 입력해주세요').first(),
+      this.page.getByPlaceholder("주문번호를 입력해주세요").first(),
     ]);
 
     if (!keywordInput) {
-      throw new Error('키워드 검색 입력창을 찾지 못했습니다. TODO(env): 주문번호 입력창 셀렉터를 확인하세요.');
+      throw new Error(
+        "키워드 검색 입력창을 찾지 못했습니다. TODO(env): 주문번호 입력창 셀렉터를 확인하세요.",
+      );
     }
 
     await keywordInput.fill(keyword);
@@ -159,10 +208,19 @@ export class OrderListPage extends AdminBasePage {
 
   async getFilterableStatusSnapshot(): Promise<OrderStatusSnapshot> {
     const rowText = await this.getFirstRowText();
-    const orderStatus = await this.resolveStatusValue('orderStatus', rowText);
-    const paymentStatus = await this.resolveStatusValue('paymentStatus', rowText);
-    const deliveryStatus = await this.resolveStatusValue('deliveryStatus', rowText);
-    const stockAllocationStatus = await this.resolveStatusValue('stockAllocationStatus', rowText);
+    const orderStatus = await this.resolveStatusValue("orderStatus", rowText);
+    const paymentStatus = await this.resolveStatusValue(
+      "paymentStatus",
+      rowText,
+    );
+    const deliveryStatus = await this.resolveStatusValue(
+      "deliveryStatus",
+      rowText,
+    );
+    const stockAllocationStatus = await this.resolveStatusValue(
+      "stockAllocationStatus",
+      rowText,
+    );
 
     return {
       orderStatus,
@@ -174,7 +232,7 @@ export class OrderListPage extends AdminBasePage {
 
   private async resolveStatusValue(
     key: keyof typeof STATUS_FILTER_FALLBACK_INDEX,
-    rowText: string
+    rowText: string,
   ): Promise<string> {
     const selectedValue = await this.getCurrentSelectedValue(key);
     if (this.isMeaningfulValue(selectedValue)) {
@@ -183,65 +241,115 @@ export class OrderListPage extends AdminBasePage {
     return await this.pickStatusFromRowText(key, rowText);
   }
 
-  async applyCombinedStatusFilters(snapshot: OrderStatusSnapshot): Promise<void> {
-    await this.selectStatusOption('deliveryStatus', snapshot.deliveryStatus);
-    await this.selectStatusOption('stockAllocationStatus', snapshot.stockAllocationStatus);
-    await this.selectStatusOption('orderStatus', snapshot.orderStatus);
-    await this.selectStatusOption('paymentStatus', snapshot.paymentStatus);
+  async applyCombinedStatusFilters(
+    snapshot: OrderStatusSnapshot,
+  ): Promise<void> {
+    await this.selectStatusOption("deliveryStatus", snapshot.deliveryStatus);
+    await this.selectStatusOption(
+      "stockAllocationStatus",
+      snapshot.stockAllocationStatus,
+    );
+    await this.selectStatusOption("orderStatus", snapshot.orderStatus);
+    await this.selectStatusOption("paymentStatus", snapshot.paymentStatus);
   }
 
   async applyFirstAvailableCombinedStatusFilters(): Promise<OrderStatusSnapshot> {
     await this.resetFiltersAndWait();
 
-    const orderOptions = await this.getStatusOptions('orderStatus');
-    const paymentOptions = await this.getStatusOptions('paymentStatus');
-    const deliveryOptions = await this.getStatusOptions('deliveryStatus');
-    const stockOptions = await this.getStatusOptions('stockAllocationStatus');
+    const orderOptions = await this.getStatusOptions("orderStatus");
+    const paymentOptions = await this.getStatusOptions("paymentStatus");
+    const deliveryOptions = await this.getStatusOptions("deliveryStatus");
+    const stockOptions = await this.getStatusOptions("stockAllocationStatus");
 
-    const orderStatus = await this.resolveFirstStatusTarget('orderStatus', orderOptions);
-    const paymentStatus = await this.resolveFirstStatusTarget('paymentStatus', paymentOptions);
-    const deliveryStatus = await this.resolveFirstStatusTarget('deliveryStatus', deliveryOptions);
-    const stockAllocationStatus = await this.resolveOptionalFirstStatusTarget('stockAllocationStatus', stockOptions);
+    const orderStatus = await this.resolveFirstStatusTarget(
+      "orderStatus",
+      orderOptions,
+    );
+    const paymentStatus = await this.resolveFirstStatusTarget(
+      "paymentStatus",
+      paymentOptions,
+    );
+    const deliveryStatus = await this.resolveFirstStatusTarget(
+      "deliveryStatus",
+      deliveryOptions,
+    );
+    const stockAllocationStatus = await this.resolveOptionalFirstStatusTarget(
+      "stockAllocationStatus",
+      stockOptions,
+    );
 
     if (orderOptions.length > 0) {
-      await this.selectStatusOption('orderStatus', orderStatus);
+      await this.selectStatusOption("orderStatus", orderStatus);
     }
     if (paymentOptions.length > 0) {
-      await this.selectStatusOption('paymentStatus', paymentStatus);
+      await this.selectStatusOption("paymentStatus", paymentStatus);
     }
     if (deliveryOptions.length > 0) {
-      await this.selectStatusOption('deliveryStatus', deliveryStatus);
+      await this.selectStatusOption("deliveryStatus", deliveryStatus);
     }
-    if (stockOptions.length > 0 && this.isMeaningfulValue(stockAllocationStatus)) {
-      await this.selectStatusOption('stockAllocationStatus', stockAllocationStatus);
+    if (
+      stockOptions.length > 0 &&
+      this.isMeaningfulValue(stockAllocationStatus)
+    ) {
+      await this.selectStatusOption(
+        "stockAllocationStatus",
+        stockAllocationStatus,
+      );
     }
 
     return {
-      orderStatus: (await this.getCurrentSelectedValue('orderStatus').catch(() => orderStatus)) || orderStatus,
-      paymentStatus: (await this.getCurrentSelectedValue('paymentStatus').catch(() => paymentStatus)) || paymentStatus,
-      deliveryStatus: (await this.getCurrentSelectedValue('deliveryStatus').catch(() => deliveryStatus)) || deliveryStatus,
+      orderStatus:
+        (await this.getCurrentSelectedValue("orderStatus").catch(
+          () => orderStatus,
+        )) || orderStatus,
+      paymentStatus:
+        (await this.getCurrentSelectedValue("paymentStatus").catch(
+          () => paymentStatus,
+        )) || paymentStatus,
+      deliveryStatus:
+        (await this.getCurrentSelectedValue("deliveryStatus").catch(
+          () => deliveryStatus,
+        )) || deliveryStatus,
       stockAllocationStatus:
-        (await this.getCurrentSelectedValue('stockAllocationStatus').catch(() => stockAllocationStatus)) || stockAllocationStatus,
+        (await this.getCurrentSelectedValue("stockAllocationStatus").catch(
+          () => stockAllocationStatus,
+        )) || stockAllocationStatus,
     };
   }
 
-  async applyViableCombinedStatusFilters(maxCandidatesPerKey: number = 6): Promise<OrderStatusSnapshot> {
+  async applyViableCombinedStatusFilters(
+    maxCandidatesPerKey: number = 6,
+  ): Promise<OrderStatusSnapshot> {
     await this.resetFiltersAndWait();
 
     const fallbackSnapshot: OrderStatusSnapshot = {
-      orderStatus: '',
-      paymentStatus: '',
-      deliveryStatus: '',
-      stockAllocationStatus: '',
+      orderStatus: "",
+      paymentStatus: "",
+      deliveryStatus: "",
+      stockAllocationStatus: "",
     };
-    const preferredSnapshot = await this.getFilterableStatusSnapshot().catch(() => fallbackSnapshot);
+    const preferredSnapshot = await this.getFilterableStatusSnapshot().catch(
+      () => fallbackSnapshot,
+    );
     await this.clearAllStatusFilters();
 
-    const orderStatus = await this.selectViableStatusForKey('orderStatus', preferredSnapshot.orderStatus, maxCandidatesPerKey);
-    const paymentStatus = await this.selectViableStatusForKey('paymentStatus', preferredSnapshot.paymentStatus, maxCandidatesPerKey);
-    const deliveryStatus = await this.selectViableStatusForKey('deliveryStatus', preferredSnapshot.deliveryStatus, maxCandidatesPerKey);
+    const orderStatus = await this.selectViableStatusForKey(
+      "orderStatus",
+      preferredSnapshot.orderStatus,
+      maxCandidatesPerKey,
+    );
+    const paymentStatus = await this.selectViableStatusForKey(
+      "paymentStatus",
+      preferredSnapshot.paymentStatus,
+      maxCandidatesPerKey,
+    );
+    const deliveryStatus = await this.selectViableStatusForKey(
+      "deliveryStatus",
+      preferredSnapshot.deliveryStatus,
+      maxCandidatesPerKey,
+    );
     const stockAllocationStatus = await this.selectViableStatusForKey(
-      'stockAllocationStatus',
+      "stockAllocationStatus",
       preferredSnapshot.stockAllocationStatus,
       maxCandidatesPerKey,
     );
@@ -256,44 +364,84 @@ export class OrderListPage extends AdminBasePage {
 
   async getSelectedStatusSnapshot(): Promise<OrderStatusSnapshot> {
     const snapshot = {
-      orderStatus: await this.getCurrentSelectedValue('orderStatus'),
-      paymentStatus: await this.getCurrentSelectedValue('paymentStatus'),
-      deliveryStatus: await this.getCurrentSelectedValue('deliveryStatus'),
-      stockAllocationStatus: await this.getCurrentSelectedValue('stockAllocationStatus'),
+      orderStatus: await this.getCurrentSelectedValue("orderStatus"),
+      paymentStatus: await this.getCurrentSelectedValue("paymentStatus"),
+      deliveryStatus: await this.getCurrentSelectedValue("deliveryStatus"),
+      stockAllocationStatus: await this.getCurrentSelectedValue(
+        "stockAllocationStatus",
+      ),
     };
 
-    expect(this.isMeaningfulValue(snapshot.orderStatus), '주문상태 필터 값이 비어 있습니다.').toBeTruthy();
-    expect(this.isMeaningfulValue(snapshot.paymentStatus), '결제상태 필터 값이 비어 있습니다.').toBeTruthy();
-    expect(this.isMeaningfulValue(snapshot.deliveryStatus), '배송상태 필터 값이 비어 있습니다.').toBeTruthy();
-    expect(this.isMeaningfulValue(snapshot.stockAllocationStatus), '재고할당 필터 값이 비어 있습니다.').toBeTruthy();
+    expect(
+      this.isMeaningfulValue(snapshot.orderStatus),
+      "주문상태 필터 값이 비어 있습니다.",
+    ).toBeTruthy();
+    expect(
+      this.isMeaningfulValue(snapshot.paymentStatus),
+      "결제상태 필터 값이 비어 있습니다.",
+    ).toBeTruthy();
+    expect(
+      this.isMeaningfulValue(snapshot.deliveryStatus),
+      "배송상태 필터 값이 비어 있습니다.",
+    ).toBeTruthy();
+    expect(
+      this.isMeaningfulValue(snapshot.stockAllocationStatus),
+      "재고할당 필터 값이 비어 있습니다.",
+    ).toBeTruthy();
 
     return snapshot;
   }
 
-  async assertRowsMatchStatus(snapshot: OrderStatusSnapshot, sampleLimit: number = 10): Promise<void> {
+  async assertRowsMatchStatus(
+    snapshot: OrderStatusSnapshot,
+    sampleLimit: number = 10,
+  ): Promise<void> {
     const rowTexts = await this.getRowTexts(sampleLimit);
-    expect(rowTexts.length, '상태 조합 검색 결과가 없습니다.').toBeGreaterThan(0);
+    expect(rowTexts.length, "상태 조합 검색 결과가 없습니다.").toBeGreaterThan(
+      0,
+    );
 
-    expect(this.isMeaningfulValue(snapshot.orderStatus), '주문상태 검증 값이 비어 있습니다.').toBeTruthy();
-    expect(this.isMeaningfulValue(snapshot.paymentStatus), '결제상태 검증 값이 비어 있습니다.').toBeTruthy();
-    expect(this.isMeaningfulValue(snapshot.deliveryStatus), '배송상태 검증 값이 비어 있습니다.').toBeTruthy();
+    expect(
+      this.isMeaningfulValue(snapshot.orderStatus),
+      "주문상태 검증 값이 비어 있습니다.",
+    ).toBeTruthy();
+    expect(
+      this.isMeaningfulValue(snapshot.paymentStatus),
+      "결제상태 검증 값이 비어 있습니다.",
+    ).toBeTruthy();
+    expect(
+      this.isMeaningfulValue(snapshot.deliveryStatus),
+      "배송상태 검증 값이 비어 있습니다.",
+    ).toBeTruthy();
 
     for (const rowText of rowTexts) {
       expect(
-        this.rowContainsStatus('orderStatus', rowText, snapshot.orderStatus),
+        this.rowContainsStatus("orderStatus", rowText, snapshot.orderStatus),
         `주문상태 불일치: 기대=${snapshot.orderStatus}, 행=${rowText}`,
       ).toBeTruthy();
       expect(
-        this.rowContainsStatus('paymentStatus', rowText, snapshot.paymentStatus),
+        this.rowContainsStatus(
+          "paymentStatus",
+          rowText,
+          snapshot.paymentStatus,
+        ),
         `결제상태 불일치: 기대=${snapshot.paymentStatus}, 행=${rowText}`,
       ).toBeTruthy();
       expect(
-        this.rowContainsStatus('deliveryStatus', rowText, snapshot.deliveryStatus),
+        this.rowContainsStatus(
+          "deliveryStatus",
+          rowText,
+          snapshot.deliveryStatus,
+        ),
         `배송상태 불일치: 기대=${snapshot.deliveryStatus}, 행=${rowText}`,
       ).toBeTruthy();
       if (this.isMeaningfulValue(snapshot.stockAllocationStatus)) {
         expect(
-          this.rowContainsStatus('stockAllocationStatus', rowText, snapshot.stockAllocationStatus),
+          this.rowContainsStatus(
+            "stockAllocationStatus",
+            rowText,
+            snapshot.stockAllocationStatus,
+          ),
           `재고할당 상태 불일치: 기대=${snapshot.stockAllocationStatus}, 행=${rowText}`,
         ).toBeTruthy();
       }
@@ -301,7 +449,9 @@ export class OrderListPage extends AdminBasePage {
   }
 
   async hasNoResultOrEmptyTable(): Promise<boolean> {
-    const hasNoResult = await this.noResultMessage.isVisible().catch(() => false);
+    const hasNoResult = await this.noResultMessage
+      .isVisible()
+      .catch(() => false);
     if (hasNoResult) {
       return true;
     }
@@ -310,13 +460,15 @@ export class OrderListPage extends AdminBasePage {
   }
 
   async getSummaryTotalCount(): Promise<number | null> {
-    const summaryText = this.normalize(await this.resultSummary.textContent().catch(() => ''));
+    const summaryText = this.normalize(
+      await this.resultSummary.textContent().catch(() => ""),
+    );
     const match = summaryText.match(/전체\s*([\d,]+)\s*건/);
     if (!match || !match[1]) {
       return null;
     }
 
-    const parsed = Number(match[1].replace(/,/g, ''));
+    const parsed = Number(match[1].replace(/,/g, ""));
     return Number.isFinite(parsed) ? parsed : null;
   }
 
@@ -342,9 +494,12 @@ export class OrderListPage extends AdminBasePage {
   /**
    * 지정한 상태 필터 값을 선택합니다.
    */
-  async selectStatusOptionByValue(key: OrderStatusKey, value: string): Promise<string> {
+  async selectStatusOptionByValue(
+    key: OrderStatusKey,
+    value: string,
+  ): Promise<string> {
     await this.selectStatusOption(key, value);
-    const selected = await this.getCurrentSelectedValue(key).catch(() => '');
+    const selected = await this.getCurrentSelectedValue(key).catch(() => "");
     return this.isMeaningfulValue(selected) ? selected : this.normalize(value);
   }
 
@@ -352,29 +507,39 @@ export class OrderListPage extends AdminBasePage {
    * 지정한 상태 필터의 첫 번째 유효 옵션을 선택합니다.
    * preferDifferentFrom이 있으면 가능한 경우 다른 옵션을 우선 선택합니다.
    */
-  async selectFirstStatusOption(key: OrderStatusKey, preferDifferentFrom: string = ''): Promise<string> {
+  async selectFirstStatusOption(
+    key: OrderStatusKey,
+    preferDifferentFrom: string = "",
+  ): Promise<string> {
     const options = await this.getStatusOptions(key);
     expect(options.length, `${key} 상태 옵션이 없습니다.`).toBeGreaterThan(0);
 
     let selectedTarget = options[0];
     if (this.isMeaningfulValue(preferDifferentFrom)) {
-      const differentOption = options.find((option) => !this.isStatusEquivalent(key, option, preferDifferentFrom));
+      const differentOption = options.find(
+        (option) => !this.isStatusEquivalent(key, option, preferDifferentFrom),
+      );
       if (differentOption) {
         selectedTarget = differentOption;
       }
     }
 
     await this.selectStatusOption(key, selectedTarget);
-    const selected = await this.getCurrentSelectedValue(key).catch(() => '');
+    const selected = await this.getCurrentSelectedValue(key).catch(() => "");
     return this.isMeaningfulValue(selected) ? selected : selectedTarget;
   }
 
   /**
    * 기준값과 다른 상태 옵션 1개를 반환합니다.
    */
-  async getDifferentStatusOption(key: OrderStatusKey, baseValue: string): Promise<string | null> {
+  async getDifferentStatusOption(
+    key: OrderStatusKey,
+    baseValue: string,
+  ): Promise<string | null> {
     const options = await this.getStatusOptions(key);
-    const different = options.find((option) => !this.isStatusEquivalent(key, option, baseValue));
+    const different = options.find(
+      (option) => !this.isStatusEquivalent(key, option, baseValue),
+    );
     return different ?? null;
   }
 
@@ -383,10 +548,10 @@ export class OrderListPage extends AdminBasePage {
    */
   async assertRowsMatchPartialStatus(
     filters: Partial<Record<OrderStatusKey, string>>,
-    sampleLimit: number = 10
+    sampleLimit: number = 10,
   ): Promise<void> {
     const rowTexts = await this.getRowTexts(sampleLimit);
-    expect(rowTexts.length, '필터 검색 결과가 없습니다.').toBeGreaterThan(0);
+    expect(rowTexts.length, "필터 검색 결과가 없습니다.").toBeGreaterThan(0);
 
     for (const rowText of rowTexts) {
       const pairs = Object.entries(filters) as Array<[OrderStatusKey, string]>;
@@ -406,7 +571,9 @@ export class OrderListPage extends AdminBasePage {
    * 검색 결과가 없는 상태인지 확인합니다.
    */
   async hasNoResultState(): Promise<boolean> {
-    const hasNoResultMessage = await this.noResultMessage.isVisible().catch(() => false);
+    const hasNoResultMessage = await this.noResultMessage
+      .isVisible()
+      .catch(() => false);
     if (hasNoResultMessage) {
       return true;
     }
@@ -422,9 +589,12 @@ export class OrderListPage extends AdminBasePage {
   async getResultMetrics(): Promise<OrderResultMetrics> {
     const rowCount = await this.getRowCount();
     const summaryCount = await this.getSummaryTotalCount();
-    const hasNoResultMessage = await this.noResultMessage.isVisible().catch(() => false);
+    const hasNoResultMessage = await this.noResultMessage
+      .isVisible()
+      .catch(() => false);
     const hasZeroSummary = summaryCount === 0;
-    const noResultState = hasNoResultMessage || (rowCount === 0 && hasZeroSummary);
+    const noResultState =
+      hasNoResultMessage || (rowCount === 0 && hasZeroSummary);
 
     return {
       rowCount,
@@ -440,11 +610,11 @@ export class OrderListPage extends AdminBasePage {
    */
   async getPerPageLimit(defaultLimit: number = 10): Promise<number> {
     const perPageText = await this.page
-      .locator('text=/\\d+\\s*\\/\\s*page/i')
+      .locator("text=/\\d+\\s*\\/\\s*page/i")
       .first()
       .textContent()
-      .catch(() => '');
-    const normalized = this.normalize(perPageText || '');
+      .catch(() => "");
+    const normalized = this.normalize(perPageText || "");
     const match = normalized.match(/(\d+)\s*\/\s*page/i);
     if (!match || !match[1]) {
       return defaultLimit;
@@ -475,7 +645,10 @@ export class OrderListPage extends AdminBasePage {
       return false;
     }
 
-    await this.nextPageButton.click({ force: true, timeout: this.timeouts.medium });
+    await this.nextPageButton.click({
+      force: true,
+      timeout: this.timeouts.medium,
+    });
     await this.waitForTableOrNoResult(15000);
     return true;
   }
@@ -484,16 +657,23 @@ export class OrderListPage extends AdminBasePage {
    * 이전 페이지로 이동합니다. (짧은 timeout + 강제 클릭)
    */
   async goToPreviousPageSafely(): Promise<boolean> {
-    const visible = await this.previousPageButton.isVisible().catch(() => false);
+    const visible = await this.previousPageButton
+      .isVisible()
+      .catch(() => false);
     if (!visible) {
       return false;
     }
-    const enabled = await this.previousPageButton.isEnabled().catch(() => false);
+    const enabled = await this.previousPageButton
+      .isEnabled()
+      .catch(() => false);
     if (!enabled) {
       return false;
     }
 
-    await this.previousPageButton.click({ force: true, timeout: this.timeouts.medium });
+    await this.previousPageButton.click({
+      force: true,
+      timeout: this.timeouts.medium,
+    });
     await this.waitForTableOrNoResult(15000);
     return true;
   }
@@ -503,16 +683,18 @@ export class OrderListPage extends AdminBasePage {
    */
   async getFirstRowFingerprint(): Promise<string> {
     const rows = await this.getRowTexts(1);
-    return rows[0] ?? '';
+    return rows[0] ?? "";
   }
 
   private async pickStatusFromRowText(
     key: keyof typeof STATUS_FILTER_FALLBACK_INDEX,
-    rowText: string
+    rowText: string,
   ): Promise<string> {
     const options = await this.getStatusOptions(key);
     const normalizedRow = this.normalize(rowText);
-    const matched = options.find((option) => normalizedRow.includes(this.normalize(option)));
+    const matched = options.find((option) =>
+      normalizedRow.includes(this.normalize(option)),
+    );
 
     if (matched) {
       return matched;
@@ -535,9 +717,14 @@ export class OrderListPage extends AdminBasePage {
     throw new Error(`행 데이터와 매칭되는 상태 옵션을 찾지 못했습니다: ${key}`);
   }
 
-  private async getStatusOptions(key: keyof typeof STATUS_FILTER_FALLBACK_INDEX): Promise<string[]> {
+  private async getStatusOptions(
+    key: keyof typeof STATUS_FILTER_FALLBACK_INDEX,
+  ): Promise<string[]> {
     const fallbackIndex = STATUS_FILTER_FALLBACK_INDEX[key];
-    const trigger = await this.findStatusFilterTrigger(this.getStatusLabelRegex(key), fallbackIndex);
+    const trigger = await this.findStatusFilterTrigger(
+      this.getStatusLabelRegex(key),
+      fallbackIndex,
+    );
 
     if (!trigger) {
       throw new Error(`상태 필터를 찾지 못했습니다: ${key}`);
@@ -546,56 +733,72 @@ export class OrderListPage extends AdminBasePage {
     await trigger.scrollIntoViewIfNeeded().catch(() => {});
     await trigger.click({ force: true });
 
-    const optionCandidates = await this.collectVisibleStatusOptionTexts(trigger);
+    const optionCandidates =
+      await this.collectVisibleStatusOptionTexts(trigger);
 
-    await this.page.keyboard.press('Escape').catch(() => {});
+    await this.page.keyboard.press("Escape").catch(() => {});
     return optionCandidates;
   }
 
-  private async getCurrentSelectedValue(key: keyof typeof STATUS_FILTER_FALLBACK_INDEX): Promise<string> {
+  private async getCurrentSelectedValue(
+    key: keyof typeof STATUS_FILTER_FALLBACK_INDEX,
+  ): Promise<string> {
     const fallbackIndex = STATUS_FILTER_FALLBACK_INDEX[key];
-    const trigger = await this.findStatusFilterTrigger(this.getStatusLabelRegex(key), fallbackIndex);
+    const trigger = await this.findStatusFilterTrigger(
+      this.getStatusLabelRegex(key),
+      fallbackIndex,
+    );
     if (!trigger) {
       throw new Error(`선택된 상태 값을 읽을 수 없습니다: ${key}`);
     }
 
-    const selectedValue = await trigger.evaluate((el) => {
-      const normalize = (value: string) => value.replace(/\s+/g, ' ').trim();
-      const container = el as HTMLElement;
-      const listbox = container.querySelector('[role="listbox"]');
+    const selectedValue = await trigger
+      .evaluate((el) => {
+        const normalize = (value: string) => value.replace(/\s+/g, " ").trim();
+        const container = el as HTMLElement;
+        const listbox = container.querySelector('[role="listbox"]');
 
-      const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
-      const tokens: string[] = [];
+        const walker = document.createTreeWalker(
+          container,
+          NodeFilter.SHOW_TEXT,
+        );
+        const tokens: string[] = [];
 
-      while (walker.nextNode()) {
-        const node = walker.currentNode as Text;
-        const parent = node.parentElement;
-        if (!parent) continue;
-        if (listbox && listbox.contains(parent)) continue;
+        while (walker.nextNode()) {
+          const node = walker.currentNode as Text;
+          const parent = node.parentElement;
+          if (!parent) continue;
+          if (listbox && listbox.contains(parent)) continue;
 
-        const token = normalize(node.textContent || '');
-        if (!token) continue;
-        if (/^-?searchbox$/i.test(token)) continue;
-        tokens.push(token);
-      }
+          const token = normalize(node.textContent || "");
+          if (!token) continue;
+          if (/^-?searchbox$/i.test(token)) continue;
+          tokens.push(token);
+        }
 
-      const meaningful = tokens.filter((token) => !/^선택$/i.test(token));
-      return meaningful[0] || '';
-    }).catch(() => '');
+        const meaningful = tokens.filter((token) => !/^선택$/i.test(token));
+        return meaningful[0] || "";
+      })
+      .catch(() => "");
 
     return this.normalize(selectedValue);
   }
 
   private async selectStatusOption(
     key: keyof typeof STATUS_FILTER_FALLBACK_INDEX,
-    optionText: string
+    optionText: string,
   ): Promise<void> {
     if (!this.isMeaningfulValue(optionText)) {
-      throw new Error(`의미 없는 상태값으로 필터를 적용할 수 없습니다: ${key}=${optionText}`);
+      throw new Error(
+        `의미 없는 상태값으로 필터를 적용할 수 없습니다: ${key}=${optionText}`,
+      );
     }
 
     const fallbackIndex = STATUS_FILTER_FALLBACK_INDEX[key];
-    const trigger = await this.findStatusFilterTrigger(this.getStatusLabelRegex(key), fallbackIndex);
+    const trigger = await this.findStatusFilterTrigger(
+      this.getStatusLabelRegex(key),
+      fallbackIndex,
+    );
 
     if (!trigger) {
       throw new Error(`상태 필터를 찾지 못했습니다: ${key}`);
@@ -604,33 +807,64 @@ export class OrderListPage extends AdminBasePage {
     await trigger.scrollIntoViewIfNeeded().catch(() => {});
     await trigger.click({ force: true });
 
-    const currentText = this.normalize(await trigger.textContent().catch(() => ''));
+    const currentText = this.normalize(
+      await trigger.textContent().catch(() => ""),
+    );
     if (this.isStatusEquivalent(key, currentText, optionText)) {
-      await this.page.keyboard.press('Escape').catch(() => {});
+      await this.page.keyboard.press("Escape").catch(() => {});
       return;
     }
 
     const visibleOptions = await this.collectVisibleStatusOptionTexts(trigger);
-    const resolvedOptionText = this.resolveStatusOptionText(key, optionText, visibleOptions);
+    const resolvedOptionText = this.resolveStatusOptionText(
+      key,
+      optionText,
+      visibleOptions,
+    );
     if (!this.isMeaningfulValue(resolvedOptionText)) {
-      await this.page.keyboard.press('Escape').catch(() => {});
+      await this.page.keyboard.press("Escape").catch(() => {});
       throw new Error(`상태 옵션 목록이 비어 있습니다: ${key}`);
     }
 
     const option = await this.findFirstVisible([
-      trigger.locator('[role="option"]:visible, li[role="option"]:visible').filter({ hasText: resolvedOptionText }).first(),
-      trigger.locator('.multiselect__option:visible').filter({ hasText: resolvedOptionText }).first(),
-      this.page.getByRole('option', { name: new RegExp(`^${this.escapeRegExp(resolvedOptionText)}$`) }).first(),
-      this.page.getByRole('option', { name: new RegExp(this.escapeRegExp(resolvedOptionText)) }).first(),
-      this.page.locator('.multiselect__option:visible').filter({ hasText: resolvedOptionText }).first(),
-      this.page.locator('[role="option"]:visible, li[role="option"]:visible').filter({ hasText: resolvedOptionText }).first(),
+      trigger
+        .locator('[role="option"]:visible, li[role="option"]:visible')
+        .filter({ hasText: resolvedOptionText })
+        .first(),
+      trigger
+        .locator(".multiselect__option:visible")
+        .filter({ hasText: resolvedOptionText })
+        .first(),
+      this.page
+        .getByRole("option", {
+          name: new RegExp(`^${this.escapeRegExp(resolvedOptionText)}$`),
+        })
+        .first(),
+      this.page
+        .getByRole("option", {
+          name: new RegExp(this.escapeRegExp(resolvedOptionText)),
+        })
+        .first(),
+      this.page
+        .locator(".multiselect__option:visible")
+        .filter({ hasText: resolvedOptionText })
+        .first(),
+      this.page
+        .locator('[role="option"]:visible, li[role="option"]:visible')
+        .filter({ hasText: resolvedOptionText })
+        .first(),
     ]);
 
     if (option) {
       await option.scrollIntoViewIfNeeded().catch(() => {});
-      const clickedByLocator = await option.click({ force: true }).then(() => true).catch(() => false);
+      const clickedByLocator = await option
+        .click({ force: true })
+        .then(() => true)
+        .catch(() => false);
       if (!clickedByLocator) {
-        const handle = await option.elementHandle({ timeout: this.timeouts.short }).catch(() => null);
+        const handle = await option
+          .elementHandle({ timeout: this.timeouts.short })
+          .catch(() => null);
         if (handle) {
           await handle.evaluate((el) => {
             (el as HTMLElement).click();
@@ -639,45 +873,73 @@ export class OrderListPage extends AdminBasePage {
         }
       }
 
-      const selectedByClick = await this.waitForStatusSelection(key, trigger, resolvedOptionText);
+      const selectedByClick = await this.waitForStatusSelection(
+        key,
+        trigger,
+        resolvedOptionText,
+      );
       if (selectedByClick) {
-        await this.page.keyboard.press('Escape').catch(() => {});
+        await this.page.keyboard.press("Escape").catch(() => {});
         return;
       }
     }
 
     // 우선순위 2: combobox 내부 searchbox에 값 입력 후 Enter
     const searchInput = await this.findFirstVisible([
-      trigger.locator('input').first(),
+      trigger.locator("input").first(),
       this.page.locator('input[placeholder="선택"]:visible').first(),
       this.page.locator('input[role="textbox"]:visible').first(),
     ]);
 
     if (searchInput) {
       await searchInput.fill(resolvedOptionText).catch(() => {});
-      await searchInput.press('Enter').catch(() => {});
+      await searchInput.press("Enter").catch(() => {});
 
-      const selectedByInput = await this.waitForStatusSelection(key, trigger, resolvedOptionText);
+      const selectedByInput = await this.waitForStatusSelection(
+        key,
+        trigger,
+        resolvedOptionText,
+      );
 
       if (selectedByInput) {
-        await this.page.keyboard.press('Escape').catch(() => {});
+        await this.page.keyboard.press("Escape").catch(() => {});
         return;
       }
     }
 
-    const fallbackOptionText = this.resolveFallbackStatusOption(visibleOptions, resolvedOptionText);
+    const fallbackOptionText = this.resolveFallbackStatusOption(
+      visibleOptions,
+      resolvedOptionText,
+    );
     if (this.isMeaningfulValue(fallbackOptionText)) {
       const fallbackOption = await this.findFirstVisible([
-        trigger.locator('[role="option"]:visible, li[role="option"]:visible').filter({ hasText: fallbackOptionText }).first(),
-        trigger.locator('.multiselect__option:visible').filter({ hasText: fallbackOptionText }).first(),
-        this.page.getByRole('option', { name: new RegExp(`^${this.escapeRegExp(fallbackOptionText)}$`) }).first(),
-        this.page.locator('.multiselect__option:visible').filter({ hasText: fallbackOptionText }).first(),
+        trigger
+          .locator('[role="option"]:visible, li[role="option"]:visible')
+          .filter({ hasText: fallbackOptionText })
+          .first(),
+        trigger
+          .locator(".multiselect__option:visible")
+          .filter({ hasText: fallbackOptionText })
+          .first(),
+        this.page
+          .getByRole("option", {
+            name: new RegExp(`^${this.escapeRegExp(fallbackOptionText)}$`),
+          })
+          .first(),
+        this.page
+          .locator(".multiselect__option:visible")
+          .filter({ hasText: fallbackOptionText })
+          .first(),
       ]);
       if (fallbackOption) {
         await fallbackOption.click({ force: true }).catch(() => {});
-        const selectedFallback = await this.waitForStatusSelection(key, trigger, fallbackOptionText);
+        const selectedFallback = await this.waitForStatusSelection(
+          key,
+          trigger,
+          fallbackOptionText,
+        );
         if (selectedFallback) {
-          await this.page.keyboard.press('Escape').catch(() => {});
+          await this.page.keyboard.press("Escape").catch(() => {});
           return;
         }
       }
@@ -686,41 +948,56 @@ export class OrderListPage extends AdminBasePage {
     await trigger.click({ force: true }).catch(() => {});
     const firstMeaningfulOption = await this.findFirstVisible([
       this.page
-        .locator('.multiselect__option:visible, [role="option"]:visible, li[role="option"]:visible')
+        .locator(
+          '.multiselect__option:visible, [role="option"]:visible, li[role="option"]:visible',
+        )
         .filter({ hasNotText: /^선택$/ })
         .first(),
     ]);
     if (firstMeaningfulOption) {
       await firstMeaningfulOption.click({ force: true }).catch(() => {});
-      const selectedAnyMeaningful = await this.waitForAnyMeaningfulStatusSelection(key);
+      const selectedAnyMeaningful =
+        await this.waitForAnyMeaningfulStatusSelection(key);
       if (selectedAnyMeaningful) {
-        await this.page.keyboard.press('Escape').catch(() => {});
+        await this.page.keyboard.press("Escape").catch(() => {});
         return;
       }
     }
 
-    await this.page.keyboard.press('Escape').catch(() => {});
-    throw new Error(`상태 옵션을 찾지 못했습니다: ${optionText} (resolved=${resolvedOptionText})`);
+    await this.page.keyboard.press("Escape").catch(() => {});
+    throw new Error(
+      `상태 옵션을 찾지 못했습니다: ${optionText} (resolved=${resolvedOptionText})`,
+    );
   }
 
-  private async findStatusFilterTrigger(labelRegex: RegExp, fallbackIndex: number): Promise<Locator | null> {
+  private async findStatusFilterTrigger(
+    labelRegex: RegExp,
+    fallbackIndex: number,
+  ): Promise<Locator | null> {
     return await this.findFirstVisible([
-      this.page.getByRole('combobox', { name: labelRegex }).first(),
+      this.page.getByRole("combobox", { name: labelRegex }).first(),
       this.page.getByLabel(labelRegex).first(),
-      this.page.locator('p').filter({ hasText: labelRegex }).locator('xpath=..').locator('[role="combobox"]').first(),
+      this.page
+        .locator("p")
+        .filter({ hasText: labelRegex })
+        .locator("xpath=..")
+        .locator('[role="combobox"]')
+        .first(),
       this.page.locator('[role="combobox"]').nth(fallbackIndex),
     ]);
   }
 
-  private getStatusLabelRegex(key: keyof typeof STATUS_FILTER_FALLBACK_INDEX): RegExp {
+  private getStatusLabelRegex(
+    key: keyof typeof STATUS_FILTER_FALLBACK_INDEX,
+  ): RegExp {
     switch (key) {
-      case 'orderStatus':
+      case "orderStatus":
         return /주문\s*상태|order\s*status/i;
-      case 'paymentStatus':
+      case "paymentStatus":
         return /결제\s*상태|payment\s*status/i;
-      case 'deliveryStatus':
+      case "deliveryStatus":
         return /배송\s*상태|delivery\s*status/i;
-      case 'stockAllocationStatus':
+      case "stockAllocationStatus":
         return /재고\s*할당|할당\s*상태|allocation|stock/i;
       default:
         return /상태/i;
@@ -729,25 +1006,33 @@ export class OrderListPage extends AdminBasePage {
 
   private async getFirstRowText(): Promise<string> {
     const rowTexts = await this.getRowTexts(1);
-    expect(rowTexts.length, '주문 목록 행 데이터를 찾지 못했습니다.').toBeGreaterThan(0);
+    expect(
+      rowTexts.length,
+      "주문 목록 행 데이터를 찾지 못했습니다.",
+    ).toBeGreaterThan(0);
     return rowTexts[0];
   }
 
   private async getRowTexts(limit: number = 10): Promise<string[]> {
     const checkboxBasedTexts = await this.page.evaluate((sampleLimit) => {
-      const normalize = (value: string) => value.replace(/\s+/g, ' ').trim();
-      const checkboxes = Array.from(document.querySelectorAll('input[type="checkbox"]'));
+      const normalize = (value: string) => value.replace(/\s+/g, " ").trim();
+      const checkboxes = Array.from(
+        document.querySelectorAll('input[type="checkbox"]'),
+      );
       const rowTexts: string[] = [];
 
       for (let i = 1; i < checkboxes.length; i++) {
         const checkbox = checkboxes[i] as HTMLElement;
         let current: HTMLElement | null = checkbox;
-        let captured = '';
+        let captured = "";
 
         while (current) {
-          const text = normalize(current.innerText || '');
-          const ownCheckboxCount = current.querySelectorAll('input[type="checkbox"]').length;
-          const looksLikeHeader = text.includes('주문 번호') && text.includes('결제 상태');
+          const text = normalize(current.innerText || "");
+          const ownCheckboxCount = current.querySelectorAll(
+            'input[type="checkbox"]',
+          ).length;
+          const looksLikeHeader =
+            text.includes("주문 번호") && text.includes("결제 상태");
 
           if (!looksLikeHeader && ownCheckboxCount === 1 && text.length > 20) {
             captured = text;
@@ -767,22 +1052,26 @@ export class OrderListPage extends AdminBasePage {
       return rowTexts;
     }, limit);
 
-    const normalizedCheckboxTexts = checkboxBasedTexts.map((text) => this.normalize(text)).filter((text) => text.length > 20);
+    const normalizedCheckboxTexts = checkboxBasedTexts
+      .map((text) => this.normalize(text))
+      .filter((text) => text.length > 20);
     if (normalizedCheckboxTexts.length > 0) {
       return normalizedCheckboxTexts;
     }
 
     const tableRowTexts = await this.page
-      .locator('table tbody tr:visible')
+      .locator("table tbody tr:visible")
       .evaluateAll((rows, sampleLimit) => {
-        const normalize = (value: string) => value.replace(/\s+/g, ' ').trim();
+        const normalize = (value: string) => value.replace(/\s+/g, " ").trim();
         return rows
-          .map((row) => normalize((row as HTMLElement).innerText || ''))
+          .map((row) => normalize((row as HTMLElement).innerText || ""))
           .filter((text) => text.length > 20)
           .slice(0, sampleLimit as number);
       }, limit)
       .catch(() => [] as string[]);
-    const normalizedTableTexts = tableRowTexts.map((text) => this.normalize(text)).filter((text) => text.length > 20);
+    const normalizedTableTexts = tableRowTexts
+      .map((text) => this.normalize(text))
+      .filter((text) => text.length > 20);
     if (normalizedTableTexts.length > 0) {
       return normalizedTableTexts;
     }
@@ -790,10 +1079,10 @@ export class OrderListPage extends AdminBasePage {
     const roleRowTexts = await this.page
       .locator('[role="row"]:visible')
       .evaluateAll((rows, sampleLimit) => {
-        const normalize = (value: string) => value.replace(/\s+/g, ' ').trim();
+        const normalize = (value: string) => value.replace(/\s+/g, " ").trim();
         const texts: string[] = [];
         for (let i = 1; i < rows.length; i++) {
-          const text = normalize((rows[i] as HTMLElement).innerText || '');
+          const text = normalize((rows[i] as HTMLElement).innerText || "");
           if (text.length > 20) {
             texts.push(text);
           }
@@ -805,24 +1094,33 @@ export class OrderListPage extends AdminBasePage {
       }, limit)
       .catch(() => [] as string[]);
 
-    return roleRowTexts.map((text) => this.normalize(text)).filter((text) => text.length > 20);
+    return roleRowTexts
+      .map((text) => this.normalize(text))
+      .filter((text) => text.length > 20);
   }
 
   private async resolveTab(tab: OrderTabKey): Promise<Locator> {
     const label = this.getTabLabel(tab);
     const exactRegex = new RegExp(`^\\s*${this.escapeRegExp(label)}\\s*$`);
     const tabContainer = this.page
-      .locator('h1, h2')
+      .locator("h1, h2")
       .filter({ hasText: /주문관리|Order/i })
       .first()
-      .locator('xpath=following-sibling::*[1]');
+      .locator("xpath=following-sibling::*[1]");
 
     const resolved = await this.findFirstVisible([
       tabContainer.getByText(label, { exact: true }).first(),
-      tabContainer.locator('div, button, a, span, p').filter({ hasText: exactRegex }).first(),
-      this.page.getByRole('tab', { name: label, exact: true }).first(),
-      this.page.getByRole('button', { name: label, exact: true }).first(),
-      this.page.locator('main').locator('div, button, a, span, p').filter({ hasText: exactRegex }).first(),
+      tabContainer
+        .locator("div, button, a, span, p")
+        .filter({ hasText: exactRegex })
+        .first(),
+      this.page.getByRole("tab", { name: label, exact: true }).first(),
+      this.page.getByRole("button", { name: label, exact: true }).first(),
+      this.page
+        .locator("main")
+        .locator("div, button, a, span, p")
+        .filter({ hasText: exactRegex })
+        .first(),
     ]);
 
     if (!resolved) {
@@ -834,81 +1132,93 @@ export class OrderListPage extends AdminBasePage {
 
   private getTabLabel(tab: OrderTabKey): string {
     switch (tab) {
-      case 'all':
-        return '전체';
-      case 'b2c':
-        return 'B2C주문';
-      case 'b2b':
-        return 'B2B주문';
-      case 'project':
-        return '프로젝트별 주문';
+      case "all":
+        return "전체";
+      case "b2c":
+        return "B2C주문";
+      case "b2b":
+        return "B2B주문";
+      case "project":
+        return "프로젝트별 주문";
       default:
-        return '전체';
+        return "전체";
     }
   }
 
   private normalize(value: string): string {
-    return value.replace(/\s+/g, ' ').trim();
+    return value.replace(/\s+/g, " ").trim();
   }
 
   private normalizeLoose(value: string): string {
-    return this.normalize(value).replace(/[\s/()_\-]/g, '').toLowerCase();
+    return this.normalize(value)
+      .replace(/[\s/()_\-]/g, "")
+      .toLowerCase();
   }
 
   private isMeaningfulValue(value: string): boolean {
     const normalized = this.normalize(value);
     if (normalized.length === 0) return false;
-    if (normalized === '-' || normalized === '--') return false;
+    if (normalized === "-" || normalized === "--") return false;
     if (/^선택$|^선택안함$|^전체$|^all$/i.test(normalized)) return false;
     return true;
   }
 
   private escapeRegExp(value: string): string {
-    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
 
-  private inferStatusByKeyword(key: keyof typeof STATUS_FILTER_FALLBACK_INDEX, rowText: string): string {
-    const candidatesByKey: Record<keyof typeof STATUS_FILTER_FALLBACK_INDEX, string[]> = {
+  private inferStatusByKeyword(
+    key: keyof typeof STATUS_FILTER_FALLBACK_INDEX,
+    rowText: string,
+  ): string {
+    const candidatesByKey: Record<
+      keyof typeof STATUS_FILTER_FALLBACK_INDEX,
+      string[]
+    > = {
       orderStatus: [
-        '결제완료',
-        '입금확인',
-        '주문접수',
-        '주문취소',
-        '환불완료',
-        '결제실패',
+        "결제완료",
+        "입금확인",
+        "주문접수",
+        "주문취소",
+        "환불완료",
+        "결제실패",
       ],
       paymentStatus: [
-        '결제성공',
-        '결제실패',
-        '결제대기',
-        '입금대기',
-        '환불완료',
+        "결제성공",
+        "결제실패",
+        "결제대기",
+        "입금대기",
+        "환불완료",
       ],
       deliveryStatus: [
-        '배송전',
-        '배송준비',
-        '배송요청',
-        '배송중',
-        '배송완료',
-        '출고확정',
+        "배송전",
+        "배송준비",
+        "배송요청",
+        "배송중",
+        "배송완료",
+        "출고확정",
       ],
       stockAllocationStatus: [
-        '미처리',
-        '할당완료',
-        '부분할당',
-        '할당실패',
-        '재고부족',
+        "미처리",
+        "할당완료",
+        "부분할당",
+        "할당실패",
+        "재고부족",
       ],
     };
 
     const candidates = candidatesByKey[key] || [];
-    return candidates.find((candidate) => rowText.includes(candidate)) || '';
+    return candidates.find((candidate) => rowText.includes(candidate)) || "";
   }
 
-  private async collectVisibleStatusOptionTexts(scope?: Locator): Promise<string[]> {
-    const root = scope ?? this.page.locator('body');
+  private async collectVisibleStatusOptionTexts(
+    scope?: Locator,
+  ): Promise<string[]> {
+    const root = scope ?? this.page.locator("body");
     const scopedOptionCandidates = await root
-      .locator('.multiselect__option:visible, [role="option"]:visible, li[role="option"]:visible')
+      .locator(
+        '.multiselect__option:visible, [role="option"]:visible, li[role="option"]:visible',
+      )
       .allTextContents();
     const scopedCleaned = scopedOptionCandidates
       .map((option) => this.normalize(option))
@@ -919,7 +1229,9 @@ export class OrderListPage extends AdminBasePage {
     }
 
     const fallbackOptionCandidates = await this.page
-      .locator('.multiselect__option:visible, [role="option"]:visible, li[role="option"]:visible')
+      .locator(
+        '.multiselect__option:visible, [role="option"]:visible, li[role="option"]:visible',
+      )
       .allTextContents();
     const fallbackCleaned = fallbackOptionCandidates
       .map((option) => this.normalize(option))
@@ -929,22 +1241,20 @@ export class OrderListPage extends AdminBasePage {
     return Array.from(new Set(fallbackCleaned));
   }
 
-  private getStatusAliasGroups(key: keyof typeof STATUS_FILTER_FALLBACK_INDEX): string[][] {
-    if (key === 'paymentStatus' || key === 'orderStatus') {
+  private getStatusAliasGroups(
+    key: keyof typeof STATUS_FILTER_FALLBACK_INDEX,
+  ): string[][] {
+    if (key === "paymentStatus" || key === "orderStatus") {
       return [
-        ['결제완료', '결제성공'],
-        ['입금완료', '입금확인'],
+        ["결제완료", "결제성공"],
+        ["입금완료", "입금확인"],
       ];
     }
-    if (key === 'deliveryStatus') {
-      return [
-        ['배송준비', '발송준비중'],
-      ];
+    if (key === "deliveryStatus") {
+      return [["배송준비", "발송준비중"]];
     }
-    if (key === 'stockAllocationStatus') {
-      return [
-        ['할당완료', '재고할당완료'],
-      ];
+    if (key === "stockAllocationStatus") {
+      return [["할당완료", "재고할당완료"]];
     }
     return [];
   }
@@ -952,11 +1262,14 @@ export class OrderListPage extends AdminBasePage {
   private isStatusEquivalent(
     key: keyof typeof STATUS_FILTER_FALLBACK_INDEX,
     left: string,
-    right: string
+    right: string,
   ): boolean {
     const leftNormalized = this.normalize(left);
     const rightNormalized = this.normalize(right);
-    if (!this.isMeaningfulValue(leftNormalized) || !this.isMeaningfulValue(rightNormalized)) {
+    if (
+      !this.isMeaningfulValue(leftNormalized) ||
+      !this.isMeaningfulValue(rightNormalized)
+    ) {
       return false;
     }
     if (leftNormalized === rightNormalized) {
@@ -969,21 +1282,27 @@ export class OrderListPage extends AdminBasePage {
       return true;
     }
 
-    const aliasGroups = this.getStatusAliasGroups(key).map((group) => group.map((label) => this.normalizeLoose(label)));
-    return aliasGroups.some((group) => group.includes(leftLoose) && group.includes(rightLoose));
+    const aliasGroups = this.getStatusAliasGroups(key).map((group) =>
+      group.map((label) => this.normalizeLoose(label)),
+    );
+    return aliasGroups.some(
+      (group) => group.includes(leftLoose) && group.includes(rightLoose),
+    );
   }
 
   private resolveStatusOptionText(
     key: keyof typeof STATUS_FILTER_FALLBACK_INDEX,
     requestedOption: string,
-    visibleOptions: string[]
+    visibleOptions: string[],
   ): string {
     const normalizedRequest = this.normalize(requestedOption);
     if (!this.isMeaningfulValue(normalizedRequest)) {
-      return '';
+      return "";
     }
 
-    const semanticMatch = visibleOptions.find((option) => this.isStatusEquivalent(key, option, normalizedRequest));
+    const semanticMatch = visibleOptions.find((option) =>
+      this.isStatusEquivalent(key, option, normalizedRequest),
+    );
     if (semanticMatch) {
       return semanticMatch;
     }
@@ -991,25 +1310,33 @@ export class OrderListPage extends AdminBasePage {
     const requestLoose = this.normalizeLoose(normalizedRequest);
     const partialMatch = visibleOptions.find((option) => {
       const optionLoose = this.normalizeLoose(option);
-      return optionLoose.includes(requestLoose) || requestLoose.includes(optionLoose);
+      return (
+        optionLoose.includes(requestLoose) || requestLoose.includes(optionLoose)
+      );
     });
     if (partialMatch) {
       return partialMatch;
     }
 
     const inferred = this.inferStatusByKeyword(key, normalizedRequest);
-    const inferredMatch = visibleOptions.find((option) => this.isStatusEquivalent(key, option, inferred));
+    const inferredMatch = visibleOptions.find((option) =>
+      this.isStatusEquivalent(key, option, inferred),
+    );
     if (inferredMatch) {
       return inferredMatch;
     }
 
-    return visibleOptions[0] || '';
+    return visibleOptions[0] || "";
   }
 
-  private resolveFallbackStatusOption(visibleOptions: string[], preferredOption: string): string {
-    if (!visibleOptions.length) return '';
+  private resolveFallbackStatusOption(
+    visibleOptions: string[],
+    preferredOption: string,
+  ): string {
+    if (!visibleOptions.length) return "";
     const preferredIndex = visibleOptions.findIndex(
-      (option) => this.normalizeLoose(option) === this.normalizeLoose(preferredOption),
+      (option) =>
+        this.normalizeLoose(option) === this.normalizeLoose(preferredOption),
     );
     if (preferredIndex >= 0 && preferredIndex < visibleOptions.length - 1) {
       return visibleOptions[preferredIndex + 1];
@@ -1020,23 +1347,29 @@ export class OrderListPage extends AdminBasePage {
   private async waitForStatusSelection(
     key: keyof typeof STATUS_FILTER_FALLBACK_INDEX,
     trigger: Locator,
-    expectedOption: string
+    expectedOption: string,
   ): Promise<boolean> {
-    const isVisibleOnTrigger = await trigger.isVisible({ timeout: this.timeouts.short }).catch(() => false);
+    const isVisibleOnTrigger = await trigger
+      .isVisible({ timeout: this.timeouts.short })
+      .catch(() => false);
     if (!isVisibleOnTrigger) return false;
 
     try {
       await expect
         .poll(
           async () => {
-            const selectedText = this.normalize(await trigger.textContent().catch(() => ''));
+            const selectedText = this.normalize(
+              await trigger.textContent().catch(() => ""),
+            );
             if (this.isStatusEquivalent(key, selectedText, expectedOption)) {
               return true;
             }
-            const currentValue = await this.getCurrentSelectedValue(key).catch(() => '');
+            const currentValue = await this.getCurrentSelectedValue(key).catch(
+              () => "",
+            );
             return this.isStatusEquivalent(key, currentValue, expectedOption);
           },
-          { timeout: this.timeouts.short }
+          { timeout: this.timeouts.short },
         )
         .toBe(true);
       return true;
@@ -1046,16 +1379,18 @@ export class OrderListPage extends AdminBasePage {
   }
 
   private async waitForAnyMeaningfulStatusSelection(
-    key: keyof typeof STATUS_FILTER_FALLBACK_INDEX
+    key: keyof typeof STATUS_FILTER_FALLBACK_INDEX,
   ): Promise<boolean> {
     try {
       await expect
         .poll(
           async () => {
-            const currentValue = await this.getCurrentSelectedValue(key).catch(() => '');
+            const currentValue = await this.getCurrentSelectedValue(key).catch(
+              () => "",
+            );
             return this.isMeaningfulValue(currentValue);
           },
-          { timeout: this.timeouts.short }
+          { timeout: this.timeouts.short },
         )
         .toBe(true);
       return true;
@@ -1067,7 +1402,7 @@ export class OrderListPage extends AdminBasePage {
   private rowContainsStatus(
     key: keyof typeof STATUS_FILTER_FALLBACK_INDEX,
     rowText: string,
-    expectedStatus: string
+    expectedStatus: string,
   ): boolean {
     const normalizedRow = this.normalize(rowText);
     const expectedNormalized = this.normalize(expectedStatus);
@@ -1081,11 +1416,15 @@ export class OrderListPage extends AdminBasePage {
 
     const aliases = this.getStatusAliasGroups(key);
     for (const group of aliases) {
-      const groupHasExpected = group.some((alias) => this.isStatusEquivalent(key, alias, expectedNormalized));
+      const groupHasExpected = group.some((alias) =>
+        this.isStatusEquivalent(key, alias, expectedNormalized),
+      );
       if (!groupHasExpected) {
         continue;
       }
-      if (group.some((alias) => normalizedRow.includes(this.normalize(alias)))) {
+      if (
+        group.some((alias) => normalizedRow.includes(this.normalize(alias)))
+      ) {
         return true;
       }
     }
@@ -1096,14 +1435,21 @@ export class OrderListPage extends AdminBasePage {
   private async selectViableStatusForKey(
     key: keyof typeof STATUS_FILTER_FALLBACK_INDEX,
     preferredOption: string,
-    maxCandidatesPerKey: number
+    maxCandidatesPerKey: number,
   ): Promise<string> {
     const options = await this.getStatusOptions(key);
     const candidates = Array.from(
-      new Set([preferredOption, ...options].map((value) => this.normalize(value)).filter((value) => this.isMeaningfulValue(value))),
+      new Set(
+        [preferredOption, ...options]
+          .map((value) => this.normalize(value))
+          .filter((value) => this.isMeaningfulValue(value)),
+      ),
     ).slice(0, maxCandidatesPerKey);
 
-    expect(candidates.length, `적용 가능한 상태 옵션이 없습니다: ${key}`).toBeGreaterThan(0);
+    expect(
+      candidates.length,
+      `적용 가능한 상태 옵션이 없습니다: ${key}`,
+    ).toBeGreaterThan(0);
 
     for (const candidate of candidates) {
       await this.selectStatusOption(key, candidate);
@@ -1111,23 +1457,29 @@ export class OrderListPage extends AdminBasePage {
 
       const rowCount = await this.getRowCount();
       if (rowCount > 0) {
-        const currentValue = await this.getCurrentSelectedValue(key).catch(() => candidate);
+        const currentValue = await this.getCurrentSelectedValue(key).catch(
+          () => candidate,
+        );
         return this.isMeaningfulValue(currentValue) ? currentValue : candidate;
       }
     }
 
-    throw new Error(`유효한 검색 결과를 만드는 상태 옵션을 찾지 못했습니다: ${key}`);
+    throw new Error(
+      `유효한 검색 결과를 만드는 상태 옵션을 찾지 못했습니다: ${key}`,
+    );
   }
 
   private async resolveFirstStatusTarget(
     key: keyof typeof STATUS_FILTER_FALLBACK_INDEX,
-    options: string[]
+    options: string[],
   ): Promise<string> {
     if (options.length > 0) {
       return options[0];
     }
 
-    const currentValue = await this.getCurrentSelectedValue(key).catch(() => '');
+    const currentValue = await this.getCurrentSelectedValue(key).catch(
+      () => "",
+    );
     if (this.isMeaningfulValue(currentValue)) {
       return currentValue;
     }
@@ -1137,22 +1489,24 @@ export class OrderListPage extends AdminBasePage {
 
   private async resolveOptionalFirstStatusTarget(
     key: keyof typeof STATUS_FILTER_FALLBACK_INDEX,
-    options: string[]
+    options: string[],
   ): Promise<string> {
     if (options.length > 0) {
       return options[0];
     }
 
-    const currentValue = await this.getCurrentSelectedValue(key).catch(() => '');
-    return this.isMeaningfulValue(currentValue) ? currentValue : '';
+    const currentValue = await this.getCurrentSelectedValue(key).catch(
+      () => "",
+    );
+    return this.isMeaningfulValue(currentValue) ? currentValue : "";
   }
 
   private async clearAllStatusFilters(): Promise<void> {
     const keys: Array<keyof typeof STATUS_FILTER_FALLBACK_INDEX> = [
-      'orderStatus',
-      'paymentStatus',
-      'deliveryStatus',
-      'stockAllocationStatus',
+      "orderStatus",
+      "paymentStatus",
+      "deliveryStatus",
+      "stockAllocationStatus",
     ];
 
     for (const key of keys) {
@@ -1161,41 +1515,53 @@ export class OrderListPage extends AdminBasePage {
     await this.clickSearchAndWait();
   }
 
-  private async clearStatusFilter(key: keyof typeof STATUS_FILTER_FALLBACK_INDEX): Promise<void> {
+  private async clearStatusFilter(
+    key: keyof typeof STATUS_FILTER_FALLBACK_INDEX,
+  ): Promise<void> {
     const fallbackIndex = STATUS_FILTER_FALLBACK_INDEX[key];
-    const trigger = await this.findStatusFilterTrigger(this.getStatusLabelRegex(key), fallbackIndex);
+    const trigger = await this.findStatusFilterTrigger(
+      this.getStatusLabelRegex(key),
+      fallbackIndex,
+    );
     if (!trigger) {
       throw new Error(`상태 필터를 초기화할 수 없습니다: ${key}`);
     }
 
-    const currentValue = await this.getCurrentSelectedValue(key).catch(() => '');
+    const currentValue = await this.getCurrentSelectedValue(key).catch(
+      () => "",
+    );
     if (!this.isMeaningfulValue(currentValue)) {
       return;
     }
 
     await trigger.click({ force: true });
     const defaultOption = await this.findFirstVisible([
-      this.page.getByRole('option', { name: /^\s*선택\s*$/ }).first(),
-      this.page.locator('.multiselect__option:visible, [role="option"]:visible').filter({ hasText: /^\s*선택\s*$/ }).first(),
+      this.page.getByRole("option", { name: /^\s*선택\s*$/ }).first(),
+      this.page
+        .locator('.multiselect__option:visible, [role="option"]:visible')
+        .filter({ hasText: /^\s*선택\s*$/ })
+        .first(),
     ]);
 
     if (defaultOption) {
       await defaultOption.click({ force: true }).catch(() => {});
     } else {
       const searchInput = await this.findFirstVisible([
-        trigger.locator('input').first(),
+        trigger.locator("input").first(),
         this.page.locator('input[placeholder="선택"]:visible').first(),
       ]);
       if (searchInput) {
-        await searchInput.fill('').catch(() => {});
+        await searchInput.fill("").catch(() => {});
       }
     }
 
-    await this.page.keyboard.press('Escape').catch(() => {});
-    await this.getCurrentSelectedValue(key).catch(() => '');
+    await this.page.keyboard.press("Escape").catch(() => {});
+    await this.getCurrentSelectedValue(key).catch(() => "");
   }
 
-  private async findFirstVisible(candidates: Locator[]): Promise<Locator | null> {
+  private async findFirstVisible(
+    candidates: Locator[],
+  ): Promise<Locator | null> {
     for (const candidate of candidates) {
       try {
         const target = candidate.first();

@@ -10,6 +10,8 @@ import * as fs from "fs";
 import * as path from "path";
 import { setupAuthCookies, resetAuthCache } from "./auth-helper";
 
+type StoredCookie = { name: string; value: string; expires?: number };
+
 // ============================================================================
 // 인증 실패 상태 파일 (worker 간 공유용)
 // ============================================================================
@@ -35,7 +37,11 @@ export function isAuthFailed(): { failed: boolean; reason: string | null } {
       // 오래된 파일 삭제
       fs.unlinkSync(AUTH_FAIL_FILE);
     }
-  } catch {}
+  } catch (e) {
+    console.warn(
+      `[auth] 인증 실패 상태 파일 읽기 오류: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
   return { failed: false, reason: null };
 }
 
@@ -52,7 +58,11 @@ export function markAuthFailed(reason: string): void {
         timestamp: Date.now(),
       }),
     );
-  } catch {}
+  } catch (e) {
+    console.warn(
+      `[auth] 인증 실패 상태 기록 오류: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
 }
 
 /**
@@ -61,7 +71,11 @@ export function markAuthFailed(reason: string): void {
 export function clearAuthFailed(): void {
   try {
     fs.unlinkSync(AUTH_FAIL_FILE);
-  } catch {}
+  } catch (e) {
+    console.warn(
+      `[auth] 인증 실패 상태 초기화 오류: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
 }
 
 // ============================================================================
@@ -86,12 +100,18 @@ export function isTokenValidSync(): boolean {
     if (expiresAt - bufferTime > now) {
       return true;
     }
-  } catch {}
+  } catch (e) {
+    console.warn(
+      `[auth] admin-tokens.json 읽기 실패: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
 
   // 2. auth.json의 refresh_token 쿠키 확인
   try {
     const auth = JSON.parse(fs.readFileSync(authFile, "utf-8"));
-    const rtCookie = auth.cookies?.find((c: any) => c.name === "refresh_token");
+    const rtCookie = auth.cookies?.find(
+      (c: StoredCookie) => c.name === "refresh_token",
+    );
     if (rtCookie?.value) {
       const payload = JSON.parse(
         Buffer.from(rtCookie.value.split(".")[1], "base64").toString(),
@@ -101,7 +121,11 @@ export function isTokenValidSync(): boolean {
         return true;
       }
     }
-  } catch {}
+  } catch (e) {
+    console.warn(
+      `[auth] auth.json refresh_token 검증 실패: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
 
   return false;
 }
@@ -124,11 +148,17 @@ export function getTokenRemaining(): { hours: number; minutes: number } {
   try {
     const tokens = JSON.parse(fs.readFileSync(tokensFile, "utf-8"));
     expiresAt = new Date(tokens.expiresAt).getTime();
-  } catch {}
+  } catch (err) {
+    console.warn(
+      `[auth] admin-tokens.json 읽기 실패 (getTokenRemaining): ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
 
   try {
     const auth = JSON.parse(fs.readFileSync(authFile, "utf-8"));
-    const rtCookie = auth.cookies?.find((c: any) => c.name === "refresh_token");
+    const rtCookie = auth.cookies?.find(
+      (c: StoredCookie) => c.name === "refresh_token",
+    );
     if (rtCookie?.value) {
       const payload = JSON.parse(
         Buffer.from(rtCookie.value.split(".")[1], "base64").toString(),
@@ -138,7 +168,11 @@ export function getTokenRemaining(): { hours: number; minutes: number } {
         expiresAt = rtExpires;
       }
     }
-  } catch {}
+  } catch (err) {
+    console.warn(
+      `[auth] auth.json 파싱 실패 (getTokenRemaining): ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
 
   const remaining = expiresAt - now;
   if (remaining <= 0) return { hours: 0, minutes: 0 };
@@ -174,7 +208,7 @@ export async function waitForPageStable(
       .first()
       .waitFor({ state: "visible", timeout: 10000 });
   } catch (e) {
-    console.log("⚠️ 페이지 로드 타임아웃, 계속 진행합니다.");
+    console.warn("⚠️ 페이지 로드 타임아웃, 계속 진행합니다.");
   }
 }
 

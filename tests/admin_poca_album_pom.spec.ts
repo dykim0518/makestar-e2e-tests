@@ -299,7 +299,7 @@ test.describe("POCAAlbum Admin 앨범 테스트", () => {
       const rowIndex = await albumListPage.findRowByText(sharedAlbumTitle);
 
       if (rowIndex < 0) {
-        console.log("⚠️ 목록에서 앨범을 찾을 수 없어 상세 진입 건너뜀");
+        console.warn("⚠️ 목록에서 앨범을 찾을 수 없어 상세 진입 건너뜀");
         return;
       }
 
@@ -372,7 +372,7 @@ test.describe("POCAAlbum Admin 앨범 테스트", () => {
               await albumTypeSelect.selectOption({ label: ytOption.text });
               console.log(`  ✅ 유튜브 타입 선택: ${ytOption.text}`);
             } else {
-              console.log("  ⚠️ 유튜브 타입 옵션 없음 - 기본 타입으로 진행");
+              console.warn("  ⚠️ 유튜브 타입 옵션 없음 - 기본 타입으로 진행");
             }
           } else {
             // combobox
@@ -389,13 +389,13 @@ test.describe("POCAAlbum Admin 앨범 테스트", () => {
               await ytOpt.click();
               console.log("  ✅ 유튜브 타입 선택 (combobox)");
             } else {
-              console.log("  ⚠️ 유튜브 타입 옵션 없음 - 기본 타입으로 진행");
+              console.warn("  ⚠️ 유튜브 타입 옵션 없음 - 기본 타입으로 진행");
               // 드롭다운 닫기
               await page.keyboard.press("Escape");
             }
           }
         } else {
-          console.log("  ⚠️ 앨범 타입 필드 미발견");
+          console.warn("  ⚠️ 앨범 타입 필드 미발견");
         }
 
         // 발매일 입력
@@ -404,7 +404,7 @@ test.describe("POCAAlbum Admin 앨범 테스트", () => {
         // 이미지 업로드
         await albumCreatePage
           .uploadImage("fixtures/ta_sample.png")
-          .catch(() => console.log("  ⚠️ 이미지 업로드 실패"));
+          .catch(() => console.warn("  ⚠️ 이미지 업로드 실패"));
       });
 
       // 등록 시도
@@ -441,7 +441,7 @@ test.describe("POCAAlbum Admin 앨범 테스트", () => {
       const rowIndex = await albumListPage.findRowByText(sharedAlbumTitle);
 
       if (rowIndex < 0) {
-        console.log("⚠️ 목록에서 앨범을 찾을 수 없어 수정 건너뜀");
+        console.warn("⚠️ 목록에서 앨범을 찾을 수 없어 수정 건너뜀");
         return;
       }
 
@@ -459,7 +459,9 @@ test.describe("POCAAlbum Admin 앨범 테스트", () => {
         .catch(() => false);
 
       if (!isTitleVisible) {
-        console.log("⚠️ 제목 필드를 찾을 수 없음 - 수정 페이지 구조 확인 필요");
+        console.warn(
+          "⚠️ 제목 필드를 찾을 수 없음 - 수정 페이지 구조 확인 필요",
+        );
         return;
       }
 
@@ -479,7 +481,7 @@ test.describe("POCAAlbum Admin 앨범 테스트", () => {
         .catch(() => false);
 
       if (!isSaveVisible) {
-        console.log("⚠️ 저장 버튼을 찾을 수 없음 - UI 구조 확인 필요");
+        console.warn("⚠️ 저장 버튼을 찾을 수 없음 - UI 구조 확인 필요");
         return;
       }
 

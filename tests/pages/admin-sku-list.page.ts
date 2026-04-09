@@ -2,21 +2,21 @@
  * SKU 목록 페이지 객체
  */
 
-import { Page, Locator } from '@playwright/test';
-import { AdminBasePage, ADMIN_TIMEOUTS } from './admin-base.page';
+import { Page, Locator } from "@playwright/test";
+import { AdminBasePage, ADMIN_TIMEOUTS } from "./admin-base.page";
 
 // ============================================================================
 // SKU 검색 조건 타입
 // ============================================================================
 
-export interface SKUSearchOptions {
+export type SKUSearchOptions = {
   skuCode?: string;
   productCode?: string;
   vendor?: string;
   distributor?: string;
   category?: string;
   safetyStockRisk?: boolean;
-}
+};
 
 // ============================================================================
 // SKU 목록 페이지 클래스
@@ -26,7 +26,7 @@ export class SKUListPage extends AdminBasePage {
   // --------------------------------------------------------------------------
   // 로케이터 정의
   // --------------------------------------------------------------------------
-  
+
   // 검색 필드
   readonly skuCodeInput: Locator;
   readonly productCodeInput: Locator;
@@ -34,7 +34,7 @@ export class SKUListPage extends AdminBasePage {
   readonly distributorCombobox: Locator;
   readonly categoryDropdown: Locator;
   readonly safetyStockCheckbox: Locator;
-  
+
   // 액션 버튼
   readonly createSKUButton: Locator;
   readonly createBonusSKUButton: Locator;
@@ -45,21 +45,36 @@ export class SKUListPage extends AdminBasePage {
 
   constructor(page: Page) {
     super(page, ADMIN_TIMEOUTS);
-    
+
     // 검색 필드 초기화
-    this.skuCodeInput = page.locator('input[placeholder="SKU코드 /상품명 입력"]');
-    this.productCodeInput = page.locator('input[placeholder="제품/유통코드 입력"]');
-    this.vendorCombobox = page.locator('input[placeholder="발주처를 선택해주세요"]');
-    this.distributorCombobox = page.locator('input[placeholder="유통사를 선택해주세요"]');
-    this.categoryDropdown = page.locator('text=카테고리를 선택해주세요');
-    this.safetyStockCheckbox = page.locator('text=안전재고 위험');
-    
+    this.skuCodeInput = page.locator(
+      'input[placeholder="SKU코드 /상품명 입력"]',
+    );
+    this.productCodeInput = page.locator(
+      'input[placeholder="제품/유통코드 입력"]',
+    );
+    this.vendorCombobox = page.locator(
+      'input[placeholder="발주처를 선택해주세요"]',
+    );
+    this.distributorCombobox = page.locator(
+      'input[placeholder="유통사를 선택해주세요"]',
+    );
+    this.categoryDropdown = page.locator("text=카테고리를 선택해주세요");
+    this.safetyStockCheckbox = page.locator("text=안전재고 위험");
+
     // 액션 버튼 초기화
-    this.createSKUButton = page.getByRole('button', { name: 'SKU 생성', exact: true });
-    this.createBonusSKUButton = page.locator('button:has-text("특전 SKU 생성")');
+    this.createSKUButton = page.getByRole("button", {
+      name: "SKU 생성",
+      exact: true,
+    });
+    this.createBonusSKUButton = page.locator(
+      'button:has-text("특전 SKU 생성")',
+    );
     this.linkCategoryButton = page.locator('button:has-text("대분류 연결")');
     this.bulkEditButton = page.locator('button:has-text("일괄 수정")');
-    this.categoryManageButton = page.locator('button:has-text("카테고리 관리")');
+    this.categoryManageButton = page.locator(
+      'button:has-text("카테고리 관리")',
+    );
     this.excelUploadButton = page.locator('button:has-text("SKU 엑셀 업로드")');
   }
 
@@ -72,7 +87,7 @@ export class SKUListPage extends AdminBasePage {
   }
 
   getHeadingText(): string {
-    return 'SKU 목록';
+    return "SKU 목록";
   }
 
   // --------------------------------------------------------------------------
@@ -116,7 +131,7 @@ export class SKUListPage extends AdminBasePage {
     if (options.safetyStockRisk) {
       await this.safetyStockCheckbox.click();
     }
-    
+
     await this.clickSearchAndWait();
   }
 
@@ -136,7 +151,7 @@ export class SKUListPage extends AdminBasePage {
    */
   async goToCreateSKU(): Promise<void> {
     await this.createSKUButton.click();
-    await this.waitForLoadState('domcontentloaded');
+    await this.waitForLoadState("domcontentloaded");
   }
 
   /**
@@ -144,7 +159,7 @@ export class SKUListPage extends AdminBasePage {
    */
   async goToCreateBonusSKU(): Promise<void> {
     await this.createBonusSKUButton.click();
-    await this.waitForLoadState('domcontentloaded');
+    await this.waitForLoadState("domcontentloaded");
   }
 
   /**
@@ -168,7 +183,7 @@ export class SKUListPage extends AdminBasePage {
    */
   async goToCategoryManage(): Promise<void> {
     await this.categoryManageButton.click();
-    await this.waitForLoadState('domcontentloaded');
+    await this.waitForLoadState("domcontentloaded");
   }
 
   // --------------------------------------------------------------------------
@@ -180,9 +195,20 @@ export class SKUListPage extends AdminBasePage {
    */
   getExpectedHeaders(): string[] {
     return [
-      'SKU코드', 'SKU상품명', '카테고리', '가용재고', '안전재고',
-      '박스당 수량', '발주처/유통사', '제품코드', '유통코드',
-      '과세여부', '매입가', '작성일', '작성자', '사용여부'
+      "SKU코드",
+      "SKU상품명",
+      "카테고리",
+      "가용재고",
+      "안전재고",
+      "박스당 수량",
+      "발주처/유통사",
+      "제품코드",
+      "유통코드",
+      "과세여부",
+      "매입가",
+      "작성일",
+      "작성자",
+      "사용여부",
     ];
   }
 
@@ -190,7 +216,7 @@ export class SKUListPage extends AdminBasePage {
    * 브레드크럼 예상 경로
    */
   getBreadcrumbPath(): string[] {
-    return ['상품관리', 'SKU 목록'];
+    return ["상품관리", "SKU 목록"];
   }
 
   /**

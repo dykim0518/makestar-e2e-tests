@@ -190,7 +190,7 @@ test.describe("POCAAlbum Admin Shop 테스트", () => {
       // 첫 번째 행 클릭 → 상세 진입
       const rowCount = await shopListPage.getRowCount();
       if (rowCount === 0) {
-        console.log("⚠️ 삭제할 상품을 찾을 수 없음");
+        console.warn("⚠️ 삭제할 상품을 찾을 수 없음");
         return;
       }
 

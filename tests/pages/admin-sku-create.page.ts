@@ -1,8 +1,8 @@
 /**
  * SKU 생성 페이지 객체
- * 
+ *
  * URL: https://stage-new-admin.makeuni2026.com/sku/create
- * 
+ *
  * SKU 생성 폼 구조:
  * - 기본정보: 유통 코드, 제품 코드
  * - 가격: 매입가, 소비자가
@@ -16,14 +16,14 @@
  * - 상품사양: 중량, 가로, 세로, 높이, 부피
  */
 
-import { Page, Locator, expect } from '@playwright/test';
-import { AdminBasePage, ADMIN_TIMEOUTS } from './admin-base.page';
+import { Page, Locator, expect } from "@playwright/test";
+import { AdminBasePage, ADMIN_TIMEOUTS } from "./admin-base.page";
 
 // ============================================================================
 // SKU 생성 옵션 타입
 // ============================================================================
 
-export interface SkuCreateOptions {
+export type SkuCreateOptions = {
   /** 유통 코드 */
   distributionCode?: string;
   /** 제품 코드 */
@@ -70,7 +70,7 @@ export interface SkuCreateOptions {
   height?: string;
   /** 부피 (mm³) */
   volume?: string;
-}
+};
 
 // ============================================================================
 // SKU 생성 페이지 클래스
@@ -80,48 +80,48 @@ export class SkuCreatePage extends AdminBasePage {
   // --------------------------------------------------------------------------
   // 로케이터 정의
   // --------------------------------------------------------------------------
-  
+
   // 기본정보
   readonly distributionCodeInput: Locator;
   readonly productCodeInput: Locator;
-  
+
   // 가격
   readonly purchasePriceInput: Locator;
   readonly consumerPriceInput: Locator;
-  
+
   // 메인 타이틀명 / 버전명 (placeholder가 동일하므로 인덱스로 구분)
   readonly mainTitleInputs: Locator;
   readonly versionInputs: Locator;
-  
+
   // SKU 상품명
   readonly skuProductNameInput: Locator;
-  
+
   // 카테고리
   readonly categoryInput: Locator;
-  
+
   // 발주처/유통사/아티스트 (multiselect)
   readonly vendorMultiselect: Locator;
   readonly distributorMultiselect: Locator;
   readonly artistMultiselect: Locator;
-  
+
   // 날짜 필드
   readonly releaseDateInput: Locator;
   readonly firstWeekDeadlineInput: Locator;
   readonly orderDeadlineInput: Locator;
-  
+
   // 라디오 버튼
   readonly taxableRadio: Locator;
   readonly nonTaxableRadio: Locator;
   readonly activeRadio: Locator;
   readonly inactiveRadio: Locator;
-  
+
   // 상품사양
   readonly weightInput: Locator;
   readonly widthInput: Locator;
   readonly depthInput: Locator;
   readonly heightInput: Locator;
   readonly volumeInput: Locator;
-  
+
   // 액션 버튼
   readonly createButton: Locator;
   readonly cancelButton: Locator;
@@ -129,53 +129,65 @@ export class SkuCreatePage extends AdminBasePage {
 
   constructor(page: Page) {
     super(page, ADMIN_TIMEOUTS);
-    
+
     // 기본정보
-    this.distributionCodeInput = page.getByPlaceholder('유통 코드를 입력해주세요');
-    this.productCodeInput = page.getByPlaceholder('제품 코드를 입력해주세요');
-    
+    this.distributionCodeInput =
+      page.getByPlaceholder("유통 코드를 입력해주세요");
+    this.productCodeInput = page.getByPlaceholder("제품 코드를 입력해주세요");
+
     // 가격
-    this.purchasePriceInput = page.getByPlaceholder('매입가를 입력해주세요');
-    this.consumerPriceInput = page.getByPlaceholder('소비자가를 입력해주세요');
-    
+    this.purchasePriceInput = page.getByPlaceholder("매입가를 입력해주세요");
+    this.consumerPriceInput = page.getByPlaceholder("소비자가를 입력해주세요");
+
     // 메인 타이틀명 / 버전명 (내용을 입력해주세요 placeholder 사용)
-    this.mainTitleInputs = page.getByPlaceholder('내용을 입력해주세요');
-    this.versionInputs = page.getByPlaceholder('내용을 입력해주세요');
-    
+    this.mainTitleInputs = page.getByPlaceholder("내용을 입력해주세요");
+    this.versionInputs = page.getByPlaceholder("내용을 입력해주세요");
+
     // SKU 상품명
-    this.skuProductNameInput = page.getByPlaceholder('SKU 상품명을 입력해주세요');
-    
+    this.skuProductNameInput =
+      page.getByPlaceholder("SKU 상품명을 입력해주세요");
+
     // 카테고리
-    this.categoryInput = page.getByPlaceholder('카테고리를 선택해주세요');
-    
+    this.categoryInput = page.getByPlaceholder("카테고리를 선택해주세요");
+
     // Multiselect 컴포넌트들 - combobox role 기반으로 찾기
     // 페이지 구조: generic > paragraph("발주처") + combobox (placeholder 포함)
-    this.vendorMultiselect = page.getByRole('combobox').filter({ has: page.getByPlaceholder('발주처를 선택해주세요') });
-    this.distributorMultiselect = page.getByRole('combobox').filter({ has: page.getByPlaceholder('유통사를 선택해주세요') });
-    this.artistMultiselect = page.getByRole('combobox').filter({ has: page.getByPlaceholder('아티스트를 선택해주세요') });
-    
+    this.vendorMultiselect = page
+      .getByRole("combobox")
+      .filter({ has: page.getByPlaceholder("발주처를 선택해주세요") });
+    this.distributorMultiselect = page
+      .getByRole("combobox")
+      .filter({ has: page.getByPlaceholder("유통사를 선택해주세요") });
+    this.artistMultiselect = page
+      .getByRole("combobox")
+      .filter({ has: page.getByPlaceholder("아티스트를 선택해주세요") });
+
     // 날짜 필드 (placeholder 기반으로 찾기)
-    this.releaseDateInput = page.getByPlaceholder('발매일을 선택해주세요');
-    this.firstWeekDeadlineInput = page.getByPlaceholder('초동 마감일을 선택해주세요');
-    this.orderDeadlineInput = page.getByPlaceholder('발주 마감일을 선택해주세요');
-    
+    this.releaseDateInput = page.getByPlaceholder("발매일을 선택해주세요");
+    this.firstWeekDeadlineInput =
+      page.getByPlaceholder("초동 마감일을 선택해주세요");
+    this.orderDeadlineInput =
+      page.getByPlaceholder("발주 마감일을 선택해주세요");
+
     // 라디오 버튼
-    this.taxableRadio = page.getByText('과세', { exact: true });
-    this.nonTaxableRadio = page.getByText('비과세', { exact: true });
-    this.activeRadio = page.getByText('사용', { exact: true });
-    this.inactiveRadio = page.getByText('미사용', { exact: true });
-    
+    this.taxableRadio = page.getByText("과세", { exact: true });
+    this.nonTaxableRadio = page.getByText("비과세", { exact: true });
+    this.activeRadio = page.getByText("사용", { exact: true });
+    this.inactiveRadio = page.getByText("미사용", { exact: true });
+
     // 상품사양
-    this.weightInput = page.getByPlaceholder('중량');
-    this.widthInput = page.getByPlaceholder('가로');
-    this.depthInput = page.getByPlaceholder('세로');
-    this.heightInput = page.getByPlaceholder('높이');
-    this.volumeInput = page.getByPlaceholder('부피');
-    
+    this.weightInput = page.getByPlaceholder("중량");
+    this.widthInput = page.getByPlaceholder("가로");
+    this.depthInput = page.getByPlaceholder("세로");
+    this.heightInput = page.getByPlaceholder("높이");
+    this.volumeInput = page.getByPlaceholder("부피");
+
     // 액션 버튼
-    this.createButton = page.getByRole('button', { name: 'SKU 생성하기' });
-    this.cancelButton = page.getByRole('button', { name: '취소하기' });
-    this.addSubSkuButton = page.getByRole('button', { name: '하위 SKU 추가하기' });
+    this.createButton = page.getByRole("button", { name: "SKU 생성하기" });
+    this.cancelButton = page.getByRole("button", { name: "취소하기" });
+    this.addSubSkuButton = page.getByRole("button", {
+      name: "하위 SKU 추가하기",
+    });
   }
 
   // --------------------------------------------------------------------------
@@ -187,7 +199,7 @@ export class SkuCreatePage extends AdminBasePage {
   }
 
   getHeadingText(): string {
-    return 'SKU 등록';
+    return "SKU 등록";
   }
 
   // --------------------------------------------------------------------------
@@ -198,9 +210,11 @@ export class SkuCreatePage extends AdminBasePage {
    * 로딩 오버레이가 사라질 때까지 대기
    */
   async waitForOverlayToDisappear(): Promise<void> {
-    const overlay = this.page.locator('div[class*="fixed"][class*="bg-"][class*="z-"]').first();
+    const overlay = this.page
+      .locator('div[class*="fixed"][class*="bg-"][class*="z-"]')
+      .first();
     try {
-      await overlay.waitFor({ state: 'hidden', timeout: 5000 });
+      await overlay.waitFor({ state: "hidden", timeout: 5000 });
     } catch {
       // 오버레이가 없으면 무시
     }
@@ -210,14 +224,20 @@ export class SkuCreatePage extends AdminBasePage {
    * 열려있는 모달 닫기 (ESC 키 사용)
    */
   async closeModalIfVisible(): Promise<void> {
-    const modalTitles = ['새로운 발주처 등록', '새로운 유통사 등록', '새로운 아티스트 등록'];
-    
+    const modalTitles = [
+      "새로운 발주처 등록",
+      "새로운 유통사 등록",
+      "새로운 아티스트 등록",
+    ];
+
     for (const title of modalTitles) {
       const modalTitle = this.page.getByText(title);
-      const isModalVisible = await modalTitle.isVisible({ timeout: 500 }).catch(() => false);
-      
+      const isModalVisible = await modalTitle
+        .isVisible({ timeout: 500 })
+        .catch(() => false);
+
       if (isModalVisible) {
-        await this.page.keyboard.press('Escape');
+        await this.page.keyboard.press("Escape");
         await this.wait(300);
         console.log(`ℹ️ 모달 닫힘: ${title}`);
         return;
@@ -233,7 +253,10 @@ export class SkuCreatePage extends AdminBasePage {
    * 유통 코드 입력
    */
   async fillDistributionCode(code: string): Promise<void> {
-    await this.distributionCodeInput.waitFor({ state: 'visible', timeout: this.timeouts.medium });
+    await this.distributionCodeInput.waitFor({
+      state: "visible",
+      timeout: this.timeouts.medium,
+    });
     await this.distributionCodeInput.fill(code);
   }
 
@@ -263,9 +286,9 @@ export class SkuCreatePage extends AdminBasePage {
    */
   async fillMainTitle(titleKr: string, titleEn?: string): Promise<void> {
     // 메인 타이틀명 섹션의 입력 필드들
-    const inputs = this.page.getByPlaceholder('내용을 입력해주세요');
+    const inputs = this.page.getByPlaceholder("내용을 입력해주세요");
     await inputs.first().fill(titleKr);
-    
+
     if (titleEn) {
       await inputs.nth(1).fill(titleEn);
     }
@@ -275,8 +298,8 @@ export class SkuCreatePage extends AdminBasePage {
    * 버전명 입력 (한국어/영어)
    */
   async fillVersion(versionKr?: string, versionEn?: string): Promise<void> {
-    const inputs = this.page.getByPlaceholder('내용을 입력해주세요');
-    
+    const inputs = this.page.getByPlaceholder("내용을 입력해주세요");
+
     if (versionKr) {
       await inputs.nth(2).fill(versionKr);
     }
@@ -290,27 +313,30 @@ export class SkuCreatePage extends AdminBasePage {
    */
   async fillReleaseDate(date: string): Promise<void> {
     // placeholder 기반으로 발매일 입력 필드 찾기
-    const releaseDateField = this.page.getByPlaceholder('발매일을 선택해주세요');
-    
+    const releaseDateField =
+      this.page.getByPlaceholder("발매일을 선택해주세요");
+
     // 필드가 없으면 다른 방법 시도
-    if (await releaseDateField.isVisible({ timeout: 2000 }).catch(() => false)) {
+    if (
+      await releaseDateField.isVisible({ timeout: 2000 }).catch(() => false)
+    ) {
       await releaseDateField.fill(date);
-      await releaseDateField.press('Tab'); // blur 이벤트 발생
+      await releaseDateField.press("Tab"); // blur 이벤트 발생
       console.log(`ℹ️ 발매일 입력: ${date}`);
     } else {
       // 테이블 행 기반으로 찾기
       const releaseDateRow = this.page.locator('tr:has(th:has-text("발매일"))');
-      const dateInput = releaseDateRow.locator('input').first();
-      
+      const dateInput = releaseDateRow.locator("input").first();
+
       if (await dateInput.isVisible({ timeout: 2000 }).catch(() => false)) {
         await dateInput.fill(date);
-        await dateInput.press('Tab');
+        await dateInput.press("Tab");
         console.log(`ℹ️ 발매일 입력 (대체): ${date}`);
       } else {
-        console.log('⚠️ 발매일 입력 필드를 찾을 수 없음');
+        console.warn("⚠️ 발매일 입력 필드를 찾을 수 없음");
       }
     }
-    
+
     await this.wait(300);
   }
 
@@ -326,13 +352,18 @@ export class SkuCreatePage extends AdminBasePage {
    * @param parentCategory 상위 카테고리명 (예: "음반")
    * @param childCategory 하위 카테고리명 (예: "LP", "CD")
    */
-  async selectCategory(parentCategory: string, childCategory: string): Promise<void> {
+  async selectCategory(
+    parentCategory: string,
+    childCategory: string,
+  ): Promise<void> {
     // 1. 카테고리 관리 버튼 클릭하여 모달 열기
-    const categoryBtn = this.page.getByRole('button', { name: '카테고리 관리' });
+    const categoryBtn = this.page.getByRole("button", {
+      name: "카테고리 관리",
+    });
     await categoryBtn.click();
     await this.wait(1000);
     console.log(`ℹ️ 카테고리 모달 열림`);
-    
+
     // 2. 상위 카테고리 클릭 (확장)
     const parentOption = this.page.getByText(parentCategory, { exact: true });
     if (await parentOption.isVisible({ timeout: 3000 }).catch(() => false)) {
@@ -340,11 +371,11 @@ export class SkuCreatePage extends AdminBasePage {
       await this.wait(500);
       console.log(`ℹ️ 상위 카테고리 확장: ${parentCategory}`);
     } else {
-      console.log(`⚠️ 상위 카테고리를 찾을 수 없음: ${parentCategory}`);
-      await this.page.keyboard.press('Escape');
+      console.warn(`⚠️ 상위 카테고리를 찾을 수 없음: ${parentCategory}`);
+      await this.page.keyboard.press("Escape");
       return;
     }
-    
+
     // 3. 하위 카테고리 클릭 (선택)
     const childOption = this.page.getByText(childCategory, { exact: true });
     if (await childOption.isVisible({ timeout: 3000 }).catch(() => false)) {
@@ -352,53 +383,57 @@ export class SkuCreatePage extends AdminBasePage {
       await this.wait(500);
       console.log(`ℹ️ 하위 카테고리 선택: ${childCategory}`);
     } else {
-      console.log(`⚠️ 하위 카테고리를 찾을 수 없음: ${childCategory}`);
-      await this.page.keyboard.press('Escape');
+      console.warn(`⚠️ 하위 카테고리를 찾을 수 없음: ${childCategory}`);
+      await this.page.keyboard.press("Escape");
       return;
     }
-    
+
     // 4. 선택하기 버튼 클릭
-    const selectBtn = this.page.getByRole('button', { name: '선택하기' });
-    const isDisabled = await selectBtn.getAttribute('disabled');
-    
+    const selectBtn = this.page.getByRole("button", { name: "선택하기" });
+    const isDisabled = await selectBtn.getAttribute("disabled");
+
     if (isDisabled === null) {
       await selectBtn.click();
       await this.wait(500);
-      console.log(`ℹ️ 카테고리 선택 완료: ${parentCategory} > ${childCategory}`);
+      console.log(
+        `ℹ️ 카테고리 선택 완료: ${parentCategory} > ${childCategory}`,
+      );
     } else {
-      console.log(`⚠️ 선택하기 버튼이 비활성화 상태`);
-      await this.page.keyboard.press('Escape');
+      console.warn(`⚠️ 선택하기 버튼이 비활성화 상태`);
+      await this.page.keyboard.press("Escape");
     }
   }
-  
+
   /**
    * 카테고리 선택 (단일 파라미터 - 하위 없는 카테고리용)
    * @param category 카테고리명
    */
   async selectSingleCategory(category: string): Promise<void> {
     // 1. 카테고리 관리 버튼 클릭
-    const categoryBtn = this.page.getByRole('button', { name: '카테고리 관리' });
+    const categoryBtn = this.page.getByRole("button", {
+      name: "카테고리 관리",
+    });
     await categoryBtn.click();
     await this.wait(1000);
-    
+
     // 2. 카테고리 클릭
     const option = this.page.getByText(category, { exact: true });
     if (await option.isVisible({ timeout: 3000 }).catch(() => false)) {
       await option.click();
       await this.wait(500);
     }
-    
+
     // 3. 선택하기 버튼 클릭
-    const selectBtn = this.page.getByRole('button', { name: '선택하기' });
-    const isDisabled = await selectBtn.getAttribute('disabled');
-    
+    const selectBtn = this.page.getByRole("button", { name: "선택하기" });
+    const isDisabled = await selectBtn.getAttribute("disabled");
+
     if (isDisabled === null) {
       await selectBtn.click();
       await this.wait(500);
       console.log(`ℹ️ 카테고리 선택 완료: ${category}`);
     } else {
-      console.log(`⚠️ 선택하기 버튼이 비활성화 상태`);
-      await this.page.keyboard.press('Escape');
+      console.warn(`⚠️ 선택하기 버튼이 비활성화 상태`);
+      await this.page.keyboard.press("Escape");
     }
   }
 
@@ -407,73 +442,97 @@ export class SkuCreatePage extends AdminBasePage {
    * 새로운 UI 구조: combobox > textbox (검색) + 드롭다운 옵션
    */
   private async selectFromMultiselect(
-    multiselect: Locator, 
-    searchTerm: string, 
+    multiselect: Locator,
+    searchTerm: string,
     fieldName: string,
-    excludePatterns: RegExp
+    excludePatterns: RegExp,
   ): Promise<void> {
     await this.waitForOverlayToDisappear();
-    
+
     // combobox 클릭하여 드롭다운 열기
     await multiselect.click();
     await this.wait(500);
-    
+
     // combobox 내 검색 입력 찾기 (다중 전략)
-    let searchInput = multiselect.getByRole('textbox');
-    let isInputVisible = await searchInput.isVisible({ timeout: 2000 }).catch(() => false);
+    let searchInput = multiselect.getByRole("textbox");
+    let isInputVisible = await searchInput
+      .isVisible({ timeout: 2000 })
+      .catch(() => false);
 
     // 폴백 1: 활성화된 multiselect 내 input
     if (!isInputVisible) {
-      searchInput = this.page.locator('.multiselect--active input.multiselect__input');
-      isInputVisible = await searchInput.isVisible({ timeout: 2000 }).catch(() => false);
+      searchInput = this.page.locator(
+        ".multiselect--active input.multiselect__input",
+      );
+      isInputVisible = await searchInput
+        .isVisible({ timeout: 2000 })
+        .catch(() => false);
     }
 
     // 폴백 2: combobox 내 input 태그 직접
     if (!isInputVisible) {
-      searchInput = multiselect.locator('input').first();
-      isInputVisible = await searchInput.isVisible({ timeout: 1000 }).catch(() => false);
+      searchInput = multiselect.locator("input").first();
+      isInputVisible = await searchInput
+        .isVisible({ timeout: 1000 })
+        .catch(() => false);
     }
 
     if (isInputVisible) {
       await searchInput.fill(searchTerm);
       await this.wait(1500); // API 응답 대기
     } else {
-      console.log(`⚠️ ${fieldName} 검색 입력 필드를 찾을 수 없음 - 전체 옵션에서 선택 시도`);
+      console.log(
+        `⚠️ ${fieldName} 검색 입력 필드를 찾을 수 없음 - 전체 옵션에서 선택 시도`,
+      );
     }
 
     let selectedOption = false;
 
     // 옵션 선택 시도 (최대 2회: 검색 결과 → 전체 목록 폴백)
     for (let attempt = 0; attempt < 2 && !selectedOption; attempt++) {
-
       // "검색결과가 없습니다" 감지 시 검색어 클리어 후 재시도
       if (attempt === 1 && isInputVisible) {
-        console.log(`⚠️ ${fieldName} "${searchTerm}" 검색 결과 없음 - 전체 목록에서 선택 시도`);
+        console.log(
+          `⚠️ ${fieldName} "${searchTerm}" 검색 결과 없음 - 전체 목록에서 선택 시도`,
+        );
         await searchInput.clear();
         await this.wait(1500);
       }
 
       // 드롭다운 옵션 대기 (listbox 또는 기존 multiselect 구조)
-      const listbox = this.page.getByRole('listbox');
-      const hasListbox = await listbox.isVisible({ timeout: 3000 }).catch(() => false);
+      const listbox = this.page.getByRole("listbox");
+      const hasListbox = await listbox
+        .isVisible({ timeout: 3000 })
+        .catch(() => false);
 
       if (hasListbox) {
         // 새 UI: listbox 내 option 사용
-        const options = this.page.getByRole('option');
-        const targetText = attempt === 0 ? searchTerm : '';
+        const options = this.page.getByRole("option");
+        const targetText = attempt === 0 ? searchTerm : "";
         const matchingOption = targetText
-          ? options.filter({ hasText: targetText }).filter({ hasNotText: excludePatterns }).first()
+          ? options
+              .filter({ hasText: targetText })
+              .filter({ hasNotText: excludePatterns })
+              .first()
           : options.filter({ hasNotText: excludePatterns }).first();
 
-        if (await matchingOption.isVisible({ timeout: 2000 }).catch(() => false)) {
+        if (
+          await matchingOption.isVisible({ timeout: 2000 }).catch(() => false)
+        ) {
           const optionText = await matchingOption.textContent();
           await matchingOption.click();
-          console.log(`ℹ️ ${fieldName} 선택${attempt > 0 ? '(폴백)' : ''}: ${optionText?.trim()}`);
+          console.log(
+            `ℹ️ ${fieldName} 선택${attempt > 0 ? "(폴백)" : ""}: ${optionText?.trim()}`,
+          );
           selectedOption = true;
         } else if (attempt === 0) {
           // 첫 번째 시도에서 매칭 실패 → 첫 번째 유효 옵션 시도
-          const firstOption = options.filter({ hasNotText: excludePatterns }).first();
-          if (await firstOption.isVisible({ timeout: 1000 }).catch(() => false)) {
+          const firstOption = options
+            .filter({ hasNotText: excludePatterns })
+            .first();
+          if (
+            await firstOption.isVisible({ timeout: 1000 }).catch(() => false)
+          ) {
             const optionText = await firstOption.textContent();
             await firstOption.click();
             console.log(`ℹ️ ${fieldName} 선택(첫번째): ${optionText?.trim()}`);
@@ -482,35 +541,49 @@ export class SkuCreatePage extends AdminBasePage {
         }
       } else {
         // 레거시 UI: multiselect 구조 사용
-        await this.page.locator('.multiselect__content-wrapper:visible').waitFor({
-          state: 'visible',
-          timeout: 5000
-        }).catch(() => {});
+        await this.page
+          .locator(".multiselect__content-wrapper:visible")
+          .waitFor({
+            state: "visible",
+            timeout: 5000,
+          })
+          .catch(() => {});
 
-        const validOptions = this.page.locator('.multiselect__option:visible')
+        const validOptions = this.page
+          .locator(".multiselect__option:visible")
           .filter({ hasNotText: excludePatterns });
 
-        const targetText = attempt === 0 ? searchTerm : '';
+        const targetText = attempt === 0 ? searchTerm : "";
         const matchingOption = targetText
           ? validOptions.filter({ hasText: targetText }).first()
           : validOptions.first();
 
-        if (await matchingOption.isVisible({ timeout: 2000 }).catch(() => false)) {
+        if (
+          await matchingOption.isVisible({ timeout: 2000 }).catch(() => false)
+        ) {
           const optionText = await matchingOption.textContent();
-          if (optionText && !optionText.includes('undefined') && optionText.trim().length > 0) {
+          if (
+            optionText &&
+            !optionText.includes("undefined") &&
+            optionText.trim().length > 0
+          ) {
             await matchingOption.click();
-            console.log(`ℹ️ ${fieldName} 선택${attempt > 0 ? '(폴백)' : ''}: ${optionText?.trim()}`);
+            console.log(
+              `ℹ️ ${fieldName} 선택${attempt > 0 ? "(폴백)" : ""}: ${optionText?.trim()}`,
+            );
             selectedOption = true;
           }
         }
       }
     }
-    
+
     await this.wait(300);
     await this.closeModalIfVisible();
 
     if (!selectedOption) {
-      throw new Error(`${fieldName} 선택 실패: "${searchTerm}" 옵션을 찾을 수 없습니다`);
+      throw new Error(
+        `${fieldName} 선택 실패: "${searchTerm}" 옵션을 찾을 수 없습니다`,
+      );
     }
   }
 
@@ -521,8 +594,8 @@ export class SkuCreatePage extends AdminBasePage {
     await this.selectFromMultiselect(
       this.vendorMultiselect,
       vendorName,
-      '발주처',
-      /새로운 발주처 등록|검색결과가 없습니다/
+      "발주처",
+      /새로운 발주처 등록|검색결과가 없습니다/,
     );
   }
 
@@ -533,8 +606,8 @@ export class SkuCreatePage extends AdminBasePage {
     await this.selectFromMultiselect(
       this.distributorMultiselect,
       distributorName,
-      '유통사',
-      /새로운 제작사 등록|새로운 유통사 등록|검색결과가 없습니다/
+      "유통사",
+      /새로운 제작사 등록|새로운 유통사 등록|검색결과가 없습니다/,
     );
   }
 
@@ -545,8 +618,8 @@ export class SkuCreatePage extends AdminBasePage {
     await this.selectFromMultiselect(
       this.artistMultiselect,
       artistName,
-      '아티스트',
-      /새로운 아티스트 등록|검색결과가 없습니다/
+      "아티스트",
+      /새로운 아티스트 등록|검색결과가 없습니다/,
     );
   }
 
@@ -556,17 +629,24 @@ export class SkuCreatePage extends AdminBasePage {
   async fillDateField(labelText: string, date: string): Promise<void> {
     // 레이블 찾기
     const label = this.page.getByText(labelText, { exact: true });
-    
+
     // 레이블 근처의 날짜 입력 필드 찾기
-    const dateContainer = label.locator('xpath=ancestor::div[contains(@class, "flex") or contains(@class, "grid")]//div[contains(@class, "date") or contains(text(), "날짜를 선택")]').first();
-    
+    const dateContainer = label
+      .locator(
+        'xpath=ancestor::div[contains(@class, "flex") or contains(@class, "grid")]//div[contains(@class, "date") or contains(text(), "날짜를 선택")]',
+      )
+      .first();
+
     if (await dateContainer.isVisible({ timeout: 2000 }).catch(() => false)) {
       await dateContainer.click();
       await this.wait(300);
-      
+
       // 날짜 입력 (보통 캘린더 팝업)
       // 직접 입력 시도
-      const input = this.page.locator('input:visible').filter({ hasText: '' }).last();
+      const input = this.page
+        .locator("input:visible")
+        .filter({ hasText: "" })
+        .last();
       await input.fill(date);
     }
   }
@@ -631,7 +711,7 @@ export class SkuCreatePage extends AdminBasePage {
     if (options.productCode) {
       await this.fillProductCode(options.productCode);
     }
-    
+
     // 가격
     if (options.purchasePrice) {
       await this.fillPurchasePrice(options.purchasePrice);
@@ -639,38 +719,38 @@ export class SkuCreatePage extends AdminBasePage {
     if (options.consumerPrice) {
       await this.fillConsumerPrice(options.consumerPrice);
     }
-    
+
     // 메인 타이틀명
     await this.fillMainTitle(options.mainTitleKr, options.mainTitleEn);
-    
+
     // 버전명
     if (options.versionKr || options.versionEn) {
       await this.fillVersion(options.versionKr, options.versionEn);
     }
-    
+
     // SKU 상품명
     await this.fillSkuProductName(options.skuProductName);
-    
+
     // 카테고리
     if (options.category) {
       await this.selectSingleCategory(options.category);
     }
-    
+
     // 발주처/유통사/아티스트
     await this.selectVendor(options.vendor);
     await this.selectDistributor(options.distributor);
     await this.selectArtist(options.artist);
-    
+
     // 과세여부
     if (options.taxable !== undefined) {
       await this.selectTaxable(options.taxable);
     }
-    
+
     // 사용여부
     if (options.active !== undefined) {
       await this.selectActive(options.active);
     }
-    
+
     // 상품사양
     await this.fillSpecifications({
       weight: options.weight,
@@ -686,18 +766,20 @@ export class SkuCreatePage extends AdminBasePage {
    */
   async clickCreate(): Promise<void> {
     // 버튼이 활성화될 때까지 대기
-    await expect(this.createButton).toBeEnabled({ timeout: this.timeouts.navigation });
-    console.log('ℹ️ SKU 생성하기 버튼 클릭 시도...');
-    
+    await expect(this.createButton).toBeEnabled({
+      timeout: this.timeouts.navigation,
+    });
+    console.log("ℹ️ SKU 생성하기 버튼 클릭 시도...");
+
     // 버튼이 viewport에 보이도록 스크롤
     await this.createButton.scrollIntoViewIfNeeded();
     await this.wait(300);
-    
+
     // 클릭 (네비게이션 발생 여부 확인)
     await this.createButton.click();
     await this.wait(1000);
-    
-    console.log('ℹ️ 버튼 클릭 완료');
+
+    console.log("ℹ️ 버튼 클릭 완료");
   }
 
   /**
@@ -705,19 +787,19 @@ export class SkuCreatePage extends AdminBasePage {
    */
   async submitAndWaitForList(): Promise<void> {
     await this.clickCreate();
-    
+
     // 네비게이션 대기 (최대 10초)
     try {
-      await this.page.waitForURL('**/sku/list**', { timeout: 10000 });
-      console.log('ℹ️ SKU 목록 페이지로 자동 이동됨');
+      await this.page.waitForURL("**/sku/list**", { timeout: 10000 });
+      console.log("ℹ️ SKU 목록 페이지로 자동 이동됨");
     } catch {
-      console.log('ℹ️ 네비게이션 미발생 (10초 대기)');
+      console.log("ℹ️ 네비게이션 미발생 (10초 대기)");
       console.log(`ℹ️ 버튼 클릭 후 현재 URL: ${this.page.url()}`);
-      
+
       // 수동으로 목록 페이지로 이동
       await this.page.goto(`${this.baseUrl}/sku/list`);
-      await this.page.waitForLoadState('networkidle');
-      console.log('ℹ️ SKU 목록 페이지로 수동 이동...');
+      await this.page.waitForLoadState("networkidle");
+      console.log("ℹ️ SKU 목록 페이지로 수동 이동...");
     }
   }
 }

@@ -9,12 +9,12 @@ import { AdminBasePage, ADMIN_TIMEOUTS } from "./admin-base.page";
 // 대분류 검색 조건 타입
 // ============================================================================
 
-export interface CategorySearchOptions {
+export type CategorySearchOptions = {
   keyword?: string;
   periodType?: string;
   startDate?: string;
   endDate?: string;
-}
+};
 
 // ============================================================================
 // 대분류 목록 페이지 클래스
