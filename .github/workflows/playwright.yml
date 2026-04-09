@@ -447,3 +447,86 @@ jobs:
         env:
           DASHBOARD_URL: ${{ secrets.DASHBOARD_URL }}
           DASHBOARD_API_SECRET: ${{ secrets.DASHBOARD_API_SECRET }}
+
+      # Slack #team-qa 채널에 결과 알림
+      - name: Notify Slack
+        if: always() && github.event_name != 'pull_request'
+        run: |
+          node <<'SLACK_EOF'
+          const fs = require('fs');
+          const https = require('https');
+
+          const outcome = process.env.RUN_OUTCOME || 'unknown';
+          const suite = process.env.RUN_SUITE || 'cmr';
+          const env = process.env.RUN_ENVIRONMENT || 'prod';
+          const runUrl = `https://github.com/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+          const triggeredBy = process.env.GITHUB_EVENT_NAME || 'unknown';
+
+          const emojiMap = { success: '✅', failure: '🔴', cancelled: '⚠️' };
+          const labelMap = { success: '성공', failure: '실패', cancelled: '취소' };
+          const emoji = emojiMap[outcome] || '❓';
+          const label = labelMap[outcome] || outcome;
+
+          let statsText = '';
+          let failureText = '';
+
+          const resultFile = 'test-results/results.json';
+          if (fs.existsSync(resultFile)) {
+            try {
+              const data = JSON.parse(fs.readFileSync(resultFile, 'utf-8'));
+              const s = data.stats || {};
+              const dur = typeof s.duration === 'number' ? `${Math.round(s.duration / 1000)}s` : '-';
+              statsText = `통과: ${s.expected ?? '-'} | 실패: ${s.unexpected ?? 0} | Flaky: ${s.flaky ?? 0} | 스킵: ${s.skipped ?? 0} | 소요: ${dur}`;
+
+              const failures = [];
+              const failedStates = new Set(['failed', 'timedOut', 'interrupted']);
+              const walk = (node) => {
+                for (const spec of node.specs || []) {
+                  for (const t of spec.tests || []) {
+                    if ((t.results || []).some(r => failedStates.has(r.status))) {
+                      const title = [...(spec.titlePath || []), ...(t.titlePath || [])].filter(Boolean).join(' > ') || t.title || spec.title;
+                      failures.push(title);
+                    }
+                  }
+                }
+                for (const child of node.suites || []) walk(child);
+              };
+              for (const topSuite of data.suites || []) walk(topSuite);
+
+              const unique = [...new Set(failures)];
+              if (unique.length > 0) {
+                failureText = '\n\n*실패 테스트:*\n' + unique.slice(0, 5).map(f => `• ${f}`).join('\n');
+                if (unique.length > 5) failureText += `\n  ...외 ${unique.length - 5}건`;
+              }
+            } catch {}
+          }
+
+          const text = `${emoji} *Playwright ${suite.toUpperCase()} (${env})* — ${label}\n${statsText}${failureText}\n\n<${runUrl}|GitHub Actions에서 보기> | 트리거: ${triggeredBy}`;
+
+          const webhookUrl = process.env.SLACK_WEBHOOK_URL;
+          if (!webhookUrl) {
+            console.log('SLACK_WEBHOOK_URL not set, skipping');
+            process.exit(0);
+          }
+
+          const url = new URL(webhookUrl);
+          const payload = JSON.stringify({ text });
+          const req = https.request({
+            hostname: url.hostname,
+            path: url.pathname,
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
+          }, (res) => {
+            let body = '';
+            res.on('data', d => body += d);
+            res.on('end', () => console.log(`Slack response: ${res.statusCode} ${body}`));
+          });
+          req.on('error', (e) => console.log(`Slack request failed: ${e.message}`));
+          req.write(payload);
+          req.end();
+          SLACK_EOF
+        env:
+          RUN_OUTCOME: ${{ steps.run_playwright.outcome }}
+          RUN_SUITE: ${{ steps.run_playwright.outputs.suite }}
+          RUN_ENVIRONMENT: ${{ steps.run_playwright.outputs.environment }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
