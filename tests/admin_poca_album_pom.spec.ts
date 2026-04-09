@@ -15,7 +15,7 @@
  *   PA-CREATE-01 ~ PA-CREATE-03: 생성/검증/유튜브앨범
  *   PA-UPDATE-01: 앨범 수정
  *   PA-DETAIL-01: 상세 진입
- *   PA-ACTION-02: 삭제
+ *   (PA-ACTION-02 삭제: UI 미제공)
  *
  * @see tests/pages/ (POM 클래스)
  * @see tests/helpers/admin/ (인증/공통 유틸)
@@ -226,6 +226,8 @@ test.describe("POCAAlbum Admin 앨범 테스트", () => {
 
         await albumCreatePage.fillCreateForm({
           title: sharedAlbumTitle,
+          artist: "김뭉먕",
+          albumType: "싱글",
           releaseDate,
           imagePath: "fixtures/ta_sample.png",
         });
@@ -233,8 +235,6 @@ test.describe("POCAAlbum Admin 앨범 테스트", () => {
 
       // Step 5: 등록 시도
       await test.step("등록 시도", async () => {
-        page.once("dialog", (dialog) => dialog.accept());
-
         const createBtn = albumCreatePage.createButton;
         const isVisible = await createBtn
           .isVisible({ timeout: 5000 })
@@ -331,6 +331,9 @@ test.describe("POCAAlbum Admin 앨범 테스트", () => {
 
         await albumCreatePage.fillTitle(ytTitle);
 
+        // 아티스트 선택 (필수)
+        await albumCreatePage.selectArtist("김뭉먕");
+
         // 앨범 타입에서 "유튜브" 관련 옵션 선택 시도
         const albumTypeSelect = page
           .locator(
@@ -406,8 +409,6 @@ test.describe("POCAAlbum Admin 앨범 테스트", () => {
 
       // 등록 시도
       await test.step("등록 시도", async () => {
-        page.once("dialog", (dialog) => dialog.accept());
-
         const createBtn = albumCreatePage.createButton;
         const isVisible = await createBtn
           .isVisible({ timeout: 5000 })
@@ -509,64 +510,6 @@ test.describe("POCAAlbum Admin 앨범 테스트", () => {
       }
     });
 
-    test("PA-ACTION-02: 테스트 앨범 삭제", async ({ page }) => {
-      expect(
-        sharedAlbumCreated,
-        "❌ PA-CREATE-01에서 앨범이 생성되지 않음",
-      ).toBe(true);
-
-      const albumListPage = new PocaAlbumListPage(page);
-      await albumListPage.navigate();
-      await waitForPageStable(page);
-
-      await albumListPage.searchByKeyword(sharedAlbumTitle);
-      const rowIndex = await albumListPage.findRowByText(sharedAlbumTitle);
-
-      if (rowIndex < 0) {
-        console.log(
-          "⚠️ 삭제할 앨범을 찾을 수 없음 - 이미 삭제되었거나 DB 미반영",
-        );
-        return;
-      }
-
-      await albumListPage.clickEdit(rowIndex);
-      await waitForPageStable(page);
-
-      const deleteBtn = page.getByRole("button", { name: "삭제" }).first();
-      const isDeleteVisible = await deleteBtn
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
-
-      if (!isDeleteVisible) {
-        console.log(
-          "⚠️ 삭제 버튼을 찾을 수 없음 - 권한 또는 UI 구조 확인 필요",
-        );
-        return;
-      }
-
-      page.once("dialog", (dialog) => dialog.accept());
-
-      await deleteBtn.click();
-
-      try {
-        await page.waitForURL(/\/pocaalbum\/album\/list/, { timeout: 10000 });
-        console.log("✅ 앨범 삭제 후 목록으로 이동");
-      } catch {
-        console.log("ℹ️ 삭제 후 목록 이동 미확인 - 현재 URL:", page.url());
-      }
-
-      await albumListPage.navigate();
-      await waitForPageStable(page);
-      await albumListPage.searchByKeyword(sharedAlbumTitle);
-      const afterIndex = await albumListPage.findRowByText(sharedAlbumTitle);
-
-      if (afterIndex < 0) {
-        console.log(`✅ 앨범 삭제 확인 완료: ${sharedAlbumTitle}`);
-      } else {
-        console.log(
-          `⚠️ 앨범이 아직 목록에 존재 (삭제 지연 가능): ${sharedAlbumTitle}`,
-        );
-      }
-    });
+    // PA-ACTION-02 삭제 테스트 제거: 앨범 상세에 삭제 기능 미제공 (UI 미존재)
   });
 });

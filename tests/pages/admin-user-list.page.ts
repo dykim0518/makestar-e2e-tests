@@ -642,9 +642,11 @@ export class UserListPage extends AdminBasePage {
     const row = this.table.locator("tbody tr").nth(rowIndex);
     // 두 번째 셀 클릭 (첫 번째는 체크박스)
     const cell = row.locator("td").nth(1);
-    await cell.click();
+    await Promise.all([
+      this.page.waitForURL(/\/user\/\d+/, { timeout: 10000 }),
+      cell.click(),
+    ]);
     await this.waitForLoadState("domcontentloaded");
-    await this.page.waitForLoadState("networkidle").catch(() => {});
     return this.page.url();
   }
 

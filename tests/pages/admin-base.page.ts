@@ -146,7 +146,7 @@ export abstract class AdminBasePage extends BasePage {
     for (let attempt = 0; attempt <= retryCount; attempt++) {
       try {
         await this.goto(url);
-      } catch (e: any) {
+      } catch (e: unknown) {
         if (attempt < retryCount) {
           console.warn(
             `⚠️ 페이지 로드 실패 (시도 ${attempt + 1}/${retryCount + 1}) - 재시도`,
@@ -283,6 +283,14 @@ export abstract class AdminBasePage extends BasePage {
         })
         .catch(() => null),
     ]);
+
+    // 스켈레톤 로딩 행이 사라질 때까지 대기
+    await this.page
+      .waitForSelector(".animate-pulse", {
+        state: "hidden",
+        timeout: this.timeouts.navigation,
+      })
+      .catch(() => null);
 
     await this.waitForLoadState("domcontentloaded");
   }

@@ -58,8 +58,35 @@ export class PocaNotificationCreatePage extends AdminBasePage {
     await this.titleInput.fill(title);
   }
 
-  /** 내용 입력 */
+  /** 내용 입력 (Toast UI Editor WYSIWYG 모드 대응) */
   async fillContent(content: string): Promise<void> {
+    // Toast UI Editor WYSIWYG 모드 (toastui-editor-contents 클래스)
+    const wwEditor = this.page
+      .locator(".toastui-editor-contents.ProseMirror")
+      .first();
+    const isWwEditor = await wwEditor
+      .isVisible({ timeout: 5000 })
+      .catch(() => false);
+
+    if (isWwEditor) {
+      await wwEditor.click();
+      await this.page.keyboard.type(content);
+      return;
+    }
+
+    // 일반 ProseMirror 폴백
+    const proseMirror = this.page.locator(".ProseMirror").first();
+    const isProseMirror = await proseMirror
+      .isVisible({ timeout: 3000 })
+      .catch(() => false);
+
+    if (isProseMirror) {
+      await proseMirror.click();
+      await this.page.keyboard.type(content);
+      return;
+    }
+
+    // textarea 폴백
     const isVisible = await this.contentInput
       .isVisible({ timeout: 3000 })
       .catch(() => false);
@@ -91,14 +118,42 @@ export class PocaNotificationCreatePage extends AdminBasePage {
 
   /** 등록 후 목록 이동 대기 */
   async submitAndWaitForList(): Promise<void> {
-    this.page.once("dialog", (dialog) => dialog.accept());
-
     await this.createButton.scrollIntoViewIfNeeded();
-    await this.createButton.click({ force: true });
+    await this.createButton.click();
 
+    // 모달 에러 알림 감지 (필수 필드 누락 시 나타남)
+    const modal = this.page.locator(
+      '.fixed :text("알림"), [role="dialog"] :text("알림")',
+    );
+    const hasModal = await modal
+      .isVisible({ timeout: 2000 })
+      .catch(() => false);
+    if (hasModal) {
+      const modalBody =
+        (await this.page
+          .locator(".fixed, [role='dialog']")
+          .first()
+          .textContent()) || "";
+      await this.page
+        .locator('button:has-text("확인")')
+        .first()
+        .click()
+        .catch(() => {});
+      throw new Error(`등록 실패 — 모달 알림: ${modalBody.trim()}`);
+    }
+
+    // 목록 페이지로 이동 대기 (create URL에서 벗어나면 성공)
     await this.page
-      .waitForURL(/\/pocaalbum\/notice/, { timeout: 15000 })
+      .waitForFunction(() => !window.location.href.includes("/create"), {
+        timeout: 15000,
+      })
       .catch(() => {});
+
+    const currentUrl = this.page.url();
+    if (currentUrl.includes("/create")) {
+      throw new Error(`등록 후 목록 이동 실패 — 현재 URL: ${currentUrl}`);
+    }
+
     await this.waitForLoadState("domcontentloaded");
   }
 

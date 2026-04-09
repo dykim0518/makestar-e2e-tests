@@ -7,21 +7,21 @@
  *   PF-PAGE-01: 목록 로드
  *   PF-SEARCH-01: 키워드 검색
  *   PF-PAGIN-01: 페이지네이션
- *   PF-CREATE-01 ~ PF-ACTION-01: 생성/삭제 (serial)
+ *   PF-CREATE-01 ~ PF-CREATE-02: 생성/검증 (serial)
  *
  * ============================================================================
  * Section 6: BENEFIT CRUD
  * ============================================================================
  *   PB-PAGE-01: 목록 로드
  *   PB-SEARCH-01: 키워드 검색
- *   PB-CREATE-01 ~ PB-ACTION-01: 생성/삭제 (serial)
+ *   PB-CREATE-01 ~ PB-CREATE-02: 생성/검증 (serial)
  *
  * ============================================================================
  * Section 7: 알림 CRUD
  * ============================================================================
  *   PN-PAGE-01: 목록 로드
  *   PN-SEARCH-01: 키워드 검색
- *   PN-CREATE-01 ~ PN-ACTION-01: 생성/삭제 (serial)
+ *   PN-CREATE-01 ~ PN-CREATE-02: 생성/검증 (serial)
  *
  * @see tests/pages/ (POM 클래스)
  * @see tests/helpers/admin/ (인증/공통 유틸)
@@ -196,53 +196,7 @@ test.describe("POCAAlbum Admin 콘텐츠 테스트", () => {
       }
     });
 
-    test("PF-ACTION-01: 테스트 팩 삭제", async ({ page }) => {
-      expect(sharedFaveCreated, "❌ PF-CREATE-01에서 팩이 생성되지 않음").toBe(
-        true,
-      );
-
-      const faveListPage = new PocaFaveListPage(page);
-      await faveListPage.navigate();
-      await waitForPageStable(page);
-
-      const isSearchVisible = await faveListPage.searchInput
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
-
-      if (isSearchVisible) {
-        await faveListPage.searchByKeyword(sharedFaveTitle);
-      }
-
-      const rowIndex = await faveListPage.findRowByText(sharedFaveTitle);
-      if (rowIndex < 0) {
-        console.log("⚠️ 삭제할 팩을 찾을 수 없음");
-        return;
-      }
-
-      // 상세 진입
-      await faveListPage.clickFirstRow(1);
-      await waitForPageStable(page);
-
-      const deleteBtn = page.getByRole("button", { name: "삭제" }).first();
-      const isDeleteVisible = await deleteBtn
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
-
-      if (!isDeleteVisible) {
-        console.log("⚠️ 삭제 버튼을 찾을 수 없음");
-        return;
-      }
-
-      page.once("dialog", (dialog) => dialog.accept());
-      await deleteBtn.click();
-
-      try {
-        await page.waitForURL(/\/pocaalbum\/fave/, { timeout: 10000 });
-        console.log("✅ FAVE 팩 삭제 후 목록으로 이동");
-      } catch {
-        console.log("ℹ️ 삭제 후 목록 이동 미확인 - 현재 URL:", page.url());
-      }
-    });
+    // PF-ACTION-01 삭제 테스트 제거: FAVE 상세에 삭제 기능 미제공 (UI 미존재)
   });
 
   // ========================================================================
@@ -365,53 +319,7 @@ test.describe("POCAAlbum Admin 콘텐츠 테스트", () => {
       }
     });
 
-    test("PB-ACTION-01: 테스트 BENEFIT 삭제", async ({ page }) => {
-      expect(
-        sharedBenefitCreated,
-        "PB-CREATE-01에서 BENEFIT이 생성되지 않음",
-      ).toBe(true);
-
-      const benefitListPage = new PocaBenefitListPage(page);
-      await benefitListPage.navigate();
-      await waitForPageStable(page);
-
-      const isSearchVisible = await benefitListPage.searchInput
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
-
-      if (isSearchVisible) {
-        await benefitListPage.searchByKeyword(sharedBenefitTitle);
-      }
-
-      const rowIndex = await benefitListPage.findRowByText(sharedBenefitTitle);
-      if (rowIndex < 0) {
-        console.log("⚠️ 삭제할 BENEFIT을 찾을 수 없음");
-        return;
-      }
-
-      await benefitListPage.clickFirstRow(1);
-      await waitForPageStable(page);
-
-      const deleteBtn = page.getByRole("button", { name: "삭제" }).first();
-      const isDeleteVisible = await deleteBtn
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
-
-      if (!isDeleteVisible) {
-        console.log("⚠️ 삭제 버튼을 찾을 수 없음");
-        return;
-      }
-
-      page.once("dialog", (dialog) => dialog.accept());
-      await deleteBtn.click();
-
-      try {
-        await page.waitForURL(/\/pocaalbum\/benefit/, { timeout: 10000 });
-        console.log("✅ BENEFIT 삭제 후 목록으로 이동");
-      } catch {
-        console.log("ℹ️ 삭제 후 목록 이동 미확인 - 현재 URL:", page.url());
-      }
-    });
+    // PB-ACTION-01 삭제 테스트 제거: BENEFIT 상세에 삭제 기능 미제공 (UI 미존재)
   });
 
   // ========================================================================
@@ -497,8 +405,6 @@ test.describe("POCAAlbum Admin 콘텐츠 테스트", () => {
         content: "자동화 테스트용 알림 내용입니다.",
       });
 
-      page.once("dialog", (dialog) => dialog.accept());
-
       const isCreateVisible = await notifCreatePage.createButton
         .isVisible({ timeout: 5000 })
         .catch(() => false);
@@ -544,52 +450,6 @@ test.describe("POCAAlbum Admin 콘텐츠 테스트", () => {
       }
     });
 
-    test("PN-ACTION-01: 테스트 알림 삭제", async ({ page }) => {
-      expect(
-        sharedNotifCreated,
-        "❌ PN-CREATE-01에서 알림이 생성되지 않음",
-      ).toBe(true);
-
-      const notifListPage = new PocaNotificationListPage(page);
-      await notifListPage.navigate();
-      await waitForPageStable(page);
-
-      const isSearchVisible = await notifListPage.searchInput
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
-
-      if (isSearchVisible) {
-        await notifListPage.searchByKeyword(sharedNotifTitle);
-      }
-
-      const rowIndex = await notifListPage.findRowByText(sharedNotifTitle);
-      if (rowIndex < 0) {
-        console.log("⚠️ 삭제할 알림을 찾을 수 없음");
-        return;
-      }
-
-      await notifListPage.clickFirstRow(1);
-      await waitForPageStable(page);
-
-      const deleteBtn = page.getByRole("button", { name: "삭제" }).first();
-      const isDeleteVisible = await deleteBtn
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
-
-      if (!isDeleteVisible) {
-        console.log("⚠️ 삭제 버튼을 찾을 수 없음");
-        return;
-      }
-
-      page.once("dialog", (dialog) => dialog.accept());
-      await deleteBtn.click();
-
-      try {
-        await page.waitForURL(/\/pocaalbum\/notification/, { timeout: 10000 });
-        console.log("✅ 알림 삭제 후 목록으로 이동");
-      } catch {
-        console.log("ℹ️ 삭제 후 목록 이동 미확인 - 현재 URL:", page.url());
-      }
-    });
+    // PN-ACTION-01 삭제 테스트 제거: 알림 상세에 삭제 기능 미제공 (UI 미존재)
   });
 });
