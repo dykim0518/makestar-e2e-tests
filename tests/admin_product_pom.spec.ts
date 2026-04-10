@@ -35,6 +35,11 @@
  *    PRD-ACTION-01: 액션 버튼 검증
  *    PRD-CREATE-01: 상품 신규 등록 및 검증
  *
+ * 4. 전시 카테고리 (QA-84) - 생성 검증
+ *    QA84-PAGE-01: 페이지 기본 요소 검증
+ *    QA84-CREATE-01: 카테고리 생성 모달 폼 요소 확인
+ *    QA84-CREATE-02: 카테고리 생성 후 목록 반영 확인
+ *
  * @see tests/pages/admin-category-list.page.ts
  * @see tests/pages/admin-category-create.page.ts
  * @see tests/pages/admin-sku-list.page.ts
@@ -55,6 +60,7 @@ import {
 } from "./pages";
 import {
   waitForPageStable,
+  waitForModalOpen,
   waitForTableUpdate,
   formatDate,
   getMaxAutomationTestNumber,
@@ -1658,6 +1664,103 @@ test.describe.serial("상품 등록", () => {
       }
 
       console.log(`\n🎉 PRD-CREATE-01 통과: 상품 등록 완료 (${productName})\n`);
+    });
+  });
+
+  // ========================================================================
+  // 4. 전시 카테고리 — QA-84: 전시 카테고리 생성 불가
+  // Jira: https://makestar-product.atlassian.net/browse/QA-84
+  // ========================================================================
+  test.describe.serial("전시 카테고리 생성", () => {
+    const DC_URL = "https://stage-new-admin.makeuni2026.com/display-category";
+    const DC_SUFFIX = Date.now().toString().slice(-6);
+    const DC_CATEGORY = {
+      ko: `[자동화테스트] QA84 카테고리 ${DC_SUFFIX}`,
+      en: `[AutoTest] QA84 Category ${DC_SUFFIX}`,
+      zh: `[AutoTest] QA84 ${DC_SUFFIX}`,
+      ja: `[AutoTest] QA84 ${DC_SUFFIX}`,
+    };
+
+    test.beforeEach(async ({ page }) => {
+      await page.goto(DC_URL);
+      await waitForPageStable(page);
+      await page.waitForLoadState("networkidle");
+    });
+
+    test("QA84-PAGE-01: 전시 카테고리 목록 페이지 기본 요소 노출 검증", async ({
+      page,
+    }) => {
+      await expect(page.getByRole("button", { name: "B2C" })).toBeVisible({
+        timeout: ELEMENT_TIMEOUT,
+      });
+      await expect(page.getByRole("button", { name: "B2B" })).toBeVisible();
+      await expect(
+        page.getByText("카테고리 생성", { exact: true }),
+      ).toBeVisible();
+
+      const categoryLinks = page.locator('a[href*="/display-category/"]');
+      await expect(categoryLinks.first()).toBeVisible({
+        timeout: ELEMENT_TIMEOUT,
+      });
+      await expect(
+        page.getByRole("button", { name: "변경내용 저장하기" }),
+      ).toBeVisible();
+    });
+
+    test("QA84-CREATE-01: 카테고리 생성 모달 폼 요소 확인", async ({
+      page,
+    }) => {
+      await page
+        .locator('[class*="button-accent"]:has-text("카테고리 생성")')
+        .click();
+      await waitForModalOpen(page);
+
+      await expect(page.getByPlaceholder("한글 값을 입력해주세요")).toBeVisible(
+        { timeout: ELEMENT_TIMEOUT },
+      );
+      await expect(
+        page.getByPlaceholder("영문 값을 입력해주세요"),
+      ).toBeVisible();
+      await expect(
+        page.getByPlaceholder("중문 값을 입력해주세요"),
+      ).toBeVisible();
+      await expect(
+        page.getByPlaceholder("일본어 값을 입력해주세요"),
+      ).toBeVisible();
+      await expect(page.getByRole("button", { name: "취소" })).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: "전시 카테고리 생성하기" }),
+      ).toBeVisible();
+    });
+
+    test("QA84-CREATE-02: 카테고리 생성 후 목록 반영 확인", async ({
+      page,
+    }) => {
+      await page
+        .locator('[class*="button-accent"]:has-text("카테고리 생성")')
+        .click();
+      await waitForModalOpen(page);
+
+      await page
+        .getByPlaceholder("한글 값을 입력해주세요")
+        .fill(DC_CATEGORY.ko);
+      await page
+        .getByPlaceholder("영문 값을 입력해주세요")
+        .fill(DC_CATEGORY.en);
+      await page
+        .getByPlaceholder("중문 값을 입력해주세요")
+        .fill(DC_CATEGORY.zh);
+      await page
+        .getByPlaceholder("일본어 값을 입력해주세요")
+        .fill(DC_CATEGORY.ja);
+
+      await page
+        .getByRole("button", { name: "전시 카테고리 생성하기" })
+        .click();
+
+      await expect(page.getByText(DC_CATEGORY.ko)).toBeVisible({
+        timeout: ELEMENT_TIMEOUT,
+      });
     });
   });
 });

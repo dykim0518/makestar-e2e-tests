@@ -22,6 +22,8 @@ import { initPageWithRecovery } from "./helpers/admin";
 import {
   ELEMENT_TIMEOUT,
   applyAdminTestConfig,
+  waitForPageStable,
+  waitForModalOpen,
 } from "./helpers/admin/test-helpers";
 
 // ============================================================================
@@ -732,5 +734,188 @@ test.describe.serial("상세 페이지", () => {
         "❌ 목록 복귀 후 데이터가 로드되지 않았습니다.",
       ).toBeGreaterThan(0);
     }
+  });
+});
+
+// ============================================================================
+// B2B 예치금 관리 — QA-98: 예치금 충전 불가
+// Jira: https://makestar-product.atlassian.net/browse/QA-98
+// ============================================================================
+test.describe.serial("[QA-98] B2B 예치금 충전/차감 검증", () => {
+  const DEPOSIT_URL = "https://stage-new-admin.makeuni2026.com/user-group/474";
+  const CHARGE_AMOUNT = "1";
+  const DEPOSIT_SUFFIX = Date.now().toString().slice(-6);
+  const CHARGE_MEMO = `[자동화테스트] QA98 충전 ${DEPOSIT_SUFFIX}`;
+  const DEDUCT_MEMO = `[자동화테스트] QA98 차감 ${DEPOSIT_SUFFIX}`;
+  let balanceBefore: number;
+
+  test.beforeEach(async ({ page }) => {
+    await page.goto(DEPOSIT_URL);
+    await waitForPageStable(page);
+    await page.waitForLoadState("networkidle");
+  });
+
+  test("QA98-PAGE-01: 업체 관리 페이지 기본 요소 노출 검증", async ({
+    page,
+  }) => {
+    await expect(page.getByText("예치금").first()).toBeVisible({
+      timeout: ELEMENT_TIMEOUT,
+    });
+    await expect(page.getByRole("button", { name: "충전" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "차감" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "내역" })).toBeVisible();
+    await expect(page.locator("table").first()).toBeVisible({
+      timeout: ELEMENT_TIMEOUT,
+    });
+  });
+
+  test("QA98-CREATE-01: 충전 모달 폼 요소 확인", async ({ page }) => {
+    await page.getByRole("button", { name: "충전" }).click();
+    await waitForModalOpen(page);
+
+    await expect(page.getByText("예치금 충전하기")).toBeVisible({
+      timeout: ELEMENT_TIMEOUT,
+    });
+    await expect(
+      page.getByPlaceholder("충전 금액을 입력해주세요"),
+    ).toBeVisible();
+    await expect(
+      page.getByPlaceholder("예치금 충전 시 메모를 입력할 수 있습니다."),
+    ).toBeVisible();
+    await expect(page.getByText(/현재 보유 예치금/)).toBeVisible();
+    await expect(page.getByRole("button", { name: "취소" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "확인" })).toBeVisible();
+  });
+
+  test("QA98-CREATE-02: 예치금 충전 실행 및 잔액 변경 확인", async ({
+    page,
+  }) => {
+    const balanceText = await page.evaluate(() => {
+      const match = document.body.innerText.match(
+        /예치금\s*(?:USD\s*\$?\s*)?(\d[\d,]*)/,
+      );
+      return match ? match[1].replace(/,/g, "") : null;
+    });
+    balanceBefore = balanceText ? parseInt(balanceText, 10) : 0;
+    console.log(`  충전 전 예치금 잔액: ${balanceBefore} USD`);
+
+    await page.getByRole("button", { name: "충전" }).click();
+    await waitForModalOpen(page);
+    await expect(page.getByPlaceholder("충전 금액을 입력해주세요")).toBeVisible(
+      { timeout: ELEMENT_TIMEOUT },
+    );
+
+    await page.getByPlaceholder("충전 금액을 입력해주세요").fill(CHARGE_AMOUNT);
+    await page
+      .getByPlaceholder("예치금 충전 시 메모를 입력할 수 있습니다.")
+      .fill(CHARGE_MEMO);
+
+    page.once("dialog", (dialog) => dialog.accept());
+    await page.getByRole("button", { name: "확인" }).click();
+    await expect(page.getByText("예치금 충전하기")).not.toBeVisible({
+      timeout: ELEMENT_TIMEOUT,
+    });
+
+    await page.reload({ waitUntil: "networkidle" });
+    const newText = await page.evaluate(() => {
+      const match = document.body.innerText.match(
+        /예치금\s*(?:USD\s*\$?\s*)?(\d[\d,]*)/,
+      );
+      return match ? match[1].replace(/,/g, "") : null;
+    });
+    const balanceAfter = newText ? parseInt(newText, 10) : 0;
+    console.log(`  충전 후 예치금 잔액: ${balanceAfter} USD`);
+    expect(balanceAfter).toBe(balanceBefore + parseInt(CHARGE_AMOUNT, 10));
+  });
+
+  test("QA98-DATA-01: 내역에서 충전 기록 확인", async ({ page }) => {
+    await page.getByRole("button", { name: "내역" }).click();
+    await expect(page.getByText("예치금 내역")).toBeVisible({
+      timeout: ELEMENT_TIMEOUT,
+    });
+
+    const historyTable = page
+      .locator("table")
+      .filter({ has: page.locator("th", { hasText: "상태" }) });
+    await expect(historyTable).toBeVisible({ timeout: ELEMENT_TIMEOUT });
+
+    const latestCharge = historyTable
+      .locator("tbody tr")
+      .filter({ hasText: "충전" })
+      .first();
+    await expect(latestCharge).toBeVisible();
+    console.log("  ✅ 내역에서 충전 기록 확인");
+  });
+
+  test("QA98-CREATE-03: 예치금 차감 실행 및 잔액 원복 확인", async ({
+    page,
+  }) => {
+    const beforeText = await page.evaluate(() => {
+      const match = document.body.innerText.match(
+        /예치금\s*(?:USD\s*\$?\s*)?(\d[\d,]*)/,
+      );
+      return match ? match[1].replace(/,/g, "") : null;
+    });
+    const deductBefore = beforeText ? parseInt(beforeText, 10) : 0;
+    console.log(`  차감 전 예치금 잔액: ${deductBefore} USD`);
+
+    await page.getByRole("button", { name: "차감" }).click();
+    await waitForModalOpen(page);
+    await expect(page.getByPlaceholder("차감 금액을 입력해주세요")).toBeVisible(
+      { timeout: ELEMENT_TIMEOUT },
+    );
+
+    await page.getByPlaceholder("차감 금액을 입력해주세요").fill(CHARGE_AMOUNT);
+    await page
+      .getByPlaceholder("예치금 차감 시 메모를 입력할 수 있습니다.")
+      .fill(DEDUCT_MEMO);
+
+    page.once("dialog", (dialog) => dialog.accept());
+    await page.getByRole("button", { name: "확인" }).click();
+    await expect(page.getByText("예치금 차감하기")).not.toBeVisible({
+      timeout: ELEMENT_TIMEOUT,
+    });
+
+    await page.reload({ waitUntil: "networkidle" });
+    const afterText = await page.evaluate(() => {
+      const match = document.body.innerText.match(
+        /예치금\s*(?:USD\s*\$?\s*)?(\d[\d,]*)/,
+      );
+      return match ? match[1].replace(/,/g, "") : null;
+    });
+    const deductAfter = afterText ? parseInt(afterText, 10) : 0;
+    console.log(`  차감 후 예치금 잔액: ${deductAfter} USD`);
+    expect(deductAfter).toBe(deductBefore - parseInt(CHARGE_AMOUNT, 10));
+  });
+
+  test("QA98-DATA-02: 내역에서 차감 기록 확인", async ({ page }) => {
+    await page.getByRole("button", { name: "내역" }).click();
+    await expect(page.getByText("예치금 내역")).toBeVisible({
+      timeout: ELEMENT_TIMEOUT,
+    });
+
+    // 내역 테이블 실제 데이터 로드 대기 (비동기 로딩)
+    const historyTable = page
+      .locator("table")
+      .filter({ has: page.locator("th", { hasText: "상태" }) });
+    await expect(historyTable).toBeVisible({ timeout: ELEMENT_TIMEOUT });
+    await expect(
+      historyTable
+        .locator("tbody tr")
+        .filter({ hasText: /충전|차감/ })
+        .first(),
+    ).toBeVisible({ timeout: ELEMENT_TIMEOUT });
+
+    const chargeRows = historyTable
+      .locator("tbody tr")
+      .filter({ hasText: "충전" });
+    const deductRows = historyTable
+      .locator("tbody tr")
+      .filter({ hasText: "차감" });
+    expect(await chargeRows.count()).toBeGreaterThan(0);
+    expect(await deductRows.count()).toBeGreaterThan(0);
+    console.log(
+      `  내역 요약: 충전 ${await chargeRows.count()}건, 차감 ${await deductRows.count()}건`,
+    );
   });
 });

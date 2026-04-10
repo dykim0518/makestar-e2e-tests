@@ -25,6 +25,12 @@
  *   PM-PAGE-01: 목록 로드
  *   PM-SEARCH-01: 키워드 검색
  *
+ * ============================================================================
+ * Section 12: 캐시 관리 — QA-78: 선택한 캐시 삭제 기능 동작 불가
+ * ============================================================================
+ *   QA78-PAGE-01: 캐시 목록 기본 요소 노출
+ *   QA78-ACTION-01: 캐시 선택 후 삭제 동작 검증
+ *
  * @see tests/pages/ (POM 클래스)
  * @see tests/helpers/admin/ (인증/공통 유틸)
  */
@@ -242,6 +248,106 @@ test.describe("POCAAlbum Admin 읽기 전용 테스트", () => {
         hasData || hasNoResult,
         "검색 후 결과나 안내 메시지가 없습니다",
       ).toBeTruthy();
+    });
+  });
+
+  // ========================================================================
+  // Section 12: 캐시 관리 — QA-78: 선택한 캐시 삭제 기능 동작 불가
+  // Jira: https://makestar-product.atlassian.net/browse/QA-78
+  // ========================================================================
+  test.describe.serial("캐시 관리", () => {
+    const CACHE_URL =
+      "https://stage-new-admin.makeuni2026.com/pocaalbum/system/cache/list";
+
+    test.beforeEach(async ({ page }) => {
+      await page.goto(CACHE_URL);
+      await waitForPageStable(page);
+      await page.waitForLoadState("networkidle");
+    });
+
+    test("QA78-PAGE-01: 캐시 목록 페이지 기본 요소 노출 검증", async ({
+      page,
+    }) => {
+      const table = page.locator("table");
+      await expect(table).toBeVisible({ timeout: ELEMENT_TIMEOUT });
+
+      const headers = await page.locator("table thead th").allTextContents();
+      expect(headers).toContain("ID");
+      expect(headers).toContain("데이터타입");
+      expect(headers).toContain("KEY");
+
+      const rowCount = await page.locator("table tbody tr").count();
+      expect(rowCount, "캐시 데이터가 존재해야 합니다").toBeGreaterThan(0);
+      console.log(`  캐시 목록: ${rowCount}행`);
+
+      await expect(page.getByPlaceholder("검색어 입력")).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: "조회하기" }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: "검색 초기화" }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: "선택한 캐시 삭제" }),
+      ).toBeVisible();
+      await expect(page.getByRole("button", { name: "전체" })).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: "앨범", exact: true }),
+      ).toBeVisible();
+    });
+
+    test("QA78-ACTION-01: 캐시 선택 후 삭제 동작 검증", async ({ page }) => {
+      await expect(page.locator("table")).toBeVisible({
+        timeout: ELEMENT_TIMEOUT,
+      });
+
+      const rowsBefore = await page.locator("table tbody tr").count();
+      console.log(`  삭제 전 행 수: ${rowsBefore}`);
+
+      const firstRowCheckbox = page
+        .locator("table tbody tr")
+        .first()
+        .locator('input[type="checkbox"]');
+      await firstRowCheckbox.check();
+      await expect(firstRowCheckbox).toBeChecked();
+
+      const selectedId = await page
+        .locator("table tbody tr")
+        .first()
+        .locator("td")
+        .nth(1)
+        .textContent();
+      console.log(`  선택한 캐시 ID: ${selectedId?.trim()}`);
+
+      page.once("dialog", (dialog) => dialog.accept());
+      await page.getByRole("button", { name: "선택한 캐시 삭제" }).click();
+
+      const hasToast = await page
+        .locator(
+          '[class*="toast"], [class*="alert"], [class*="notification"], [class*="success"], [class*="message"]',
+        )
+        .first()
+        .isVisible({ timeout: 5000 })
+        .catch(() => false);
+
+      const rowsAfter = await page.locator("table tbody tr").count();
+      const rowRemoved = rowsAfter < rowsBefore;
+
+      if (!rowRemoved && !hasToast) {
+        await page.reload({ waitUntil: "networkidle" });
+        const rowsReloaded = await page.locator("table tbody tr").count();
+        expect(
+          rowsReloaded < rowsBefore || hasToast,
+          `캐시 삭제 후 결과가 반영되어야 합니다 (행 수: ${rowsBefore} → ${rowsReloaded})`,
+        ).toBe(true);
+        console.log(
+          `  삭제 후 행 수 (리로드): ${rowsReloaded} (${rowsBefore - rowsReloaded}건 감소)`,
+        );
+      } else {
+        console.log(
+          `  삭제 결과: ${hasToast ? "메시지 표시됨" : ""} ${rowRemoved ? `행 제거됨 (${rowsBefore} → ${rowsAfter})` : ""}`,
+        );
+      }
     });
   });
 });
