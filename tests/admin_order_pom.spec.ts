@@ -166,6 +166,69 @@ test.describe.serial("주문관리 목록", () => {
     await orderPage.resetFiltersAndWait();
   });
 
+  // ==========================================================================
+  // CT-65 회귀: 상품코드/상품명 검색 (Jira CT-65)
+  // ==========================================================================
+
+  test("ORD-SEARCH-10: 상품코드 검색 시 에러 없이 완료 확인", async () => {
+    await orderPage.switchTab("all");
+    await orderPage.resetFiltersAndWait();
+    await orderPage.searchByProductCode("S634NCTDREAM22");
+
+    const hasSummary = await orderPage.resultSummary
+      .isVisible({ timeout: ELEMENT_TIMEOUT })
+      .catch(() => false);
+    const hasNoResult = await orderPage.hasNoResultOrEmptyTable();
+
+    expect(
+      hasSummary || hasNoResult,
+      "상품코드 검색이 정상적으로 완료되어야 합니다 (결과 영역 또는 결과 없음)",
+    ).toBeTruthy();
+  });
+
+  test("ORD-SEARCH-11: 상품명 검색 시 에러 없이 완료 확인", async () => {
+    await orderPage.switchTab("all");
+    await orderPage.resetFiltersAndWait();
+    await orderPage.searchByProductName("NCT");
+
+    const hasSummary = await orderPage.resultSummary
+      .isVisible({ timeout: ELEMENT_TIMEOUT })
+      .catch(() => false);
+    const hasNoResult = await orderPage.hasNoResultOrEmptyTable();
+
+    expect(
+      hasSummary || hasNoResult,
+      "상품명 검색이 정상적으로 완료되어야 합니다",
+    ).toBeTruthy();
+  });
+
+  test("ORD-SEARCH-12: 상품코드 검색 후 초기화 시 전체 목록 복원 확인", async () => {
+    await orderPage.switchTab("all");
+    const initialCount = await orderPage.getRowCount();
+
+    await orderPage.searchByProductCode("S634NCTDREAM22");
+    await orderPage.resetFiltersAndWait();
+
+    const resetCount = await orderPage.getRowCount();
+    expect(
+      resetCount,
+      "상품코드 검색 초기화 후 목록이 복원되어야 합니다",
+    ).toBeGreaterThanOrEqual(initialCount);
+  });
+
+  test("ORD-SEARCH-13: 존재하지 않는 상품코드 검색 시 빈 결과 확인", async () => {
+    await orderPage.switchTab("all");
+    await orderPage.searchByProductCode("NONEXISTENT_CODE_99999");
+
+    const noResult = await orderPage.hasNoResultOrEmptyTable();
+    expect(
+      noResult,
+      "존재하지 않는 상품코드 검색에서 빈 결과가 확인되어야 합니다",
+    ).toBeTruthy();
+
+    await orderPage.resetFiltersAndWait();
+  });
+
   test("ORD-FLT-01: 단일 상태 필터 검색 정합성 검증", async () => {
     await orderPage.switchTab("all");
 

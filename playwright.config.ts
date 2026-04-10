@@ -125,21 +125,6 @@ export default defineConfig({
         headless: false,
       },
     },
-    // Admin 탐색적 테스팅 (QA Explore) - 독립 실행
-    {
-      name: "admin-explore",
-      testMatch: [
-        "**/admin_pocaalbum_qa_explore.spec.ts",
-        "**/admin_pocaalbum_explore.spec.ts",
-        "**/admin_pocaalbum_deep_explore.spec.ts",
-        "**/admin_pocaalbum_explore_menus.spec.ts",
-      ],
-      use: {
-        ...devices["Desktop Chrome"],
-        viewport: { width: 1920, height: 1080 },
-        headless: process.env.HEADED !== "true",
-      },
-    },
     // Admin 테스트 전용 (PC 환경만) - Setup 완료 후 실행
     {
       name: "admin-pc",
@@ -151,6 +136,7 @@ export default defineConfig({
         "**/admin_user_pom.spec.ts",
         "**/admin_artist_pom.spec.ts",
         "**/admin_isms_*.spec.ts",
+        "**/auto_*_pom.spec.ts",
       ],
       dependencies: ["admin-setup"], // Setup 프로젝트에 의존
       use: {
