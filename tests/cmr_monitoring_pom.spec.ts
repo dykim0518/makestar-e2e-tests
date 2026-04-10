@@ -1082,10 +1082,10 @@ test.describe("상품/장바구니 기능", () => {
       const increased = await makestar.increaseQuantity();
       expect(increased).toBeTruthy();
 
-      // 수량이 증가할 때까지 대기 (장바구니 전용 로케이터 — 상품 상세와 다른 input 타입)
-      const cartQuantityInput = page.getByRole("textbox", {
-        name: "Quantity",
-      });
+      // 수량이 증가할 때까지 대기 (장바구니 전용 로케이터 — EN/KO 다국어 지원)
+      const cartQuantityInput = page
+        .getByRole("textbox", { name: /Quantity|수량/i })
+        .first();
       await expect(cartQuantityInput).not.toHaveValue(String(qtyBefore), {
         timeout: 10000,
       });

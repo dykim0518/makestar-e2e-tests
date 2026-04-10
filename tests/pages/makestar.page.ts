@@ -1674,24 +1674,50 @@ export class MakestarPage extends BasePage {
       return true;
     }
 
-    // 장바구니 페이지 fallback: Quantity 텍스트박스의 가장 가까운 컨테이너에서 + 버튼 탐색
-    const quantityInput = this.page.getByRole("textbox", { name: "Quantity" });
+    // 장바구니 페이지 fallback: 수량 input 뒤의 + 버튼을 CSS selector로 직접 탐색
+    // DOM 구조: <div> <button>-</button> <input "수량"/> <button>+</button> </div>
+    // (wrapper div가 있을 수 있으므로 여러 패턴 시도)
+    const cartPlusBtnSelectors = [
+      'input[aria-label*="수량"] ~ button:last-of-type',
+      'input[aria-label*="Quantity"] ~ button:last-of-type',
+      'input[placeholder*="수량"] ~ button:last-of-type',
+    ];
+    for (const selector of cartPlusBtnSelectors) {
+      const btn = this.page.locator(selector).first();
+      if (
+        await btn.isVisible({ timeout: this.timeouts.short }).catch(() => false)
+      ) {
+        await btn.click();
+        console.log("   ✅ 장바구니 수량 증가 버튼 클릭 (CSS fallback)");
+        return true;
+      }
+    }
+
+    // 최종 fallback: 장바구니 페이지의 수량 영역에서 마지막 버튼
+    const qtyTextbox = this.page
+      .getByRole("textbox", { name: /Quantity|수량/i })
+      .first();
     if (
-      await quantityInput
+      await qtyTextbox
         .isVisible({ timeout: this.timeouts.short })
         .catch(() => false)
     ) {
-      // 가장 가까운 ancestor 중 비활성이 아닌 button을 포함하는 컨테이너를 찾아 클릭
-      const plusButton = quantityInput.locator(
-        "xpath=ancestor::*[.//button[not(@disabled)]][1]/descendant::button[not(@disabled)][last()]",
-      );
-      if (
-        await plusButton
-          .isVisible({ timeout: this.timeouts.short })
-          .catch(() => false)
-      ) {
-        await plusButton.click();
-        console.log("   ✅ 장바구니 수량 증가 버튼 클릭");
+      // evaluate: input → 부모 1~4단계에서 button 2개(-, +) 포함 컨테이너를 찾아 마지막 button(+) 클릭
+      const clicked = await qtyTextbox.evaluate((el) => {
+        let ancestor: HTMLElement | null = el.parentElement;
+        for (let depth = 0; depth < 4 && ancestor; depth++) {
+          const buttons = ancestor.querySelectorAll("button");
+          if (buttons.length >= 2) {
+            // input 앞뒤의 button 중 마지막 = + 버튼
+            (buttons[buttons.length - 1] as HTMLElement).click();
+            return true;
+          }
+          ancestor = ancestor.parentElement;
+        }
+        return false;
+      });
+      if (clicked) {
+        console.log("   ✅ 장바구니 수량 증가 버튼 클릭 (evaluate)");
         return true;
       }
     }
@@ -1738,47 +1764,65 @@ export class MakestarPage extends BasePage {
     return await this.cartItem.count();
   }
 
-  /** 장바구니 수량 입력값 반환 */
+  /** 장바구니 수량 입력값 반환 (EN/KO 다국어 지원) */
   async getCartQuantity(): Promise<number> {
-    const input = this.page.getByRole("textbox", { name: "Quantity" });
-    if (
-      await input.isVisible({ timeout: this.timeouts.short }).catch(() => false)
-    ) {
-      const value = await input.inputValue();
-      return parseInt(value, 10) || 0;
+    // spinbutton (수량 +/- 컨트롤) 또는 textbox 중 보이는 것을 사용
+    const candidates = [
+      this.page.getByRole("spinbutton").first(),
+      this.page.getByRole("textbox", { name: /Quantity|수량/i }),
+      this.page.locator('input[type="number"]').first(),
+    ];
+
+    for (const input of candidates) {
+      if (
+        await input
+          .isVisible({ timeout: this.timeouts.short })
+          .catch(() => false)
+      ) {
+        const value = await input.inputValue();
+        return parseInt(value, 10) || 0;
+      }
     }
     return 0;
   }
 
-  /** 장바구니 Total price 값 반환 (센트 단위 정수) */
+  /** 장바구니 총 금액 반환 (정수, 원화 또는 센트) — EN/KO 다국어 지원 */
   async getCartTotalPrice(): Promise<number | null> {
-    const totalLabel = this.page.getByText("Total price");
+    // "Total price" 또는 "총 상품금액" 등 다국어 라벨 탐색
+    const totalLabel = this.page
+      .getByText(/Total price|총\s*상품금액|총\s*금액/i)
+      .first();
     if (
       await totalLabel
         .isVisible({ timeout: this.timeouts.short })
         .catch(() => false)
     ) {
-      // Total price 라벨의 형제 또는 부모에서 가격 텍스트 추출
       const parent = totalLabel.locator("xpath=..");
       const parentText = await parent.textContent().catch(() => "");
       if (parentText) {
-        return this.parseDollarToCents(parentText);
+        return this.parsePriceText(parentText);
       }
     }
     return null;
   }
 
-  /** 달러 문자열을 센트 정수로 변환 (예: "$203.10" → 20310) */
-  private parseDollarToCents(text: string): number | null {
-    const match = text.match(/\$([\d,]+\.?\d*)/);
-    if (match) {
-      const dollars = parseFloat(match[1].replace(/,/g, ""));
+  /** 가격 문자열에서 숫자를 추출 (달러→센트, 원화→정수, ₩ 기호 지원) */
+  private parsePriceText(text: string): number | null {
+    // 달러: $203.10 → 20310
+    const dollarMatch = text.match(/\$([\d,]+\.?\d*)/);
+    if (dollarMatch) {
+      const dollars = parseFloat(dollarMatch[1].replace(/,/g, ""));
       if (!isNaN(dollars)) return Math.round(dollars * 100);
     }
-    // fallback: 원화 등
-    const wonMatch = text.match(/([\d,]+)\s*원/);
-    if (wonMatch) {
-      return parseInt(wonMatch[1].replace(/,/g, ""), 10);
+    // 원화 기호: ₩68,000 또는 ￦68,000
+    const wonSymbolMatch = text.match(/[₩￦]([\d,]+)/);
+    if (wonSymbolMatch) {
+      return parseInt(wonSymbolMatch[1].replace(/,/g, ""), 10);
+    }
+    // 원화 텍스트: 68,000원
+    const wonTextMatch = text.match(/([\d,]+)\s*원/);
+    if (wonTextMatch) {
+      return parseInt(wonTextMatch[1].replace(/,/g, ""), 10);
     }
     return null;
   }
