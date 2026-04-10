@@ -3,8 +3,9 @@ import * as fs from "fs";
 
 type StoredCookie = { name: string; value: string; expires?: number };
 
-// auth.json 파일이 있고 유효한지 확인
-const authFile = "./auth.json";
+// 환경별 auth 파일 선택: STG → stg-auth.json, Prod → auth.json
+const isSTG = process.env.MAKESTAR_BASE_URL?.includes("stage");
+const authFile = isSTG ? "./stg-auth.json" : "./auth.json";
 let hasValidAuthFile = false;
 const excludeAuthTests = process.env.EXCLUDE_AUTH_TESTS === "true";
 const manualAuthSpecPatterns = [
@@ -41,7 +42,7 @@ if (fs.existsSync(authFile)) {
         const expiresAt = new Date(payload.exp * 1000);
         hasValidRefreshToken = expiresAt > new Date();
         if (hasValidRefreshToken) {
-          console.log(`✅ auth.json refresh_token 유효`);
+          console.log(`✅ ${authFile} refresh_token 유효`);
         }
       } catch {
         // JWT 파싱 실패 — 토큰 형식 이상
@@ -51,12 +52,12 @@ if (fs.existsSync(authFile)) {
     hasValidAuthFile =
       !hasMockData && authData.cookies?.length > 5 && hasValidRefreshToken;
     if (hasValidAuthFile) {
-      console.log(`✅ auth.json 로드됨 (쿠키 ${authData.cookies.length}개)`);
+      console.log(`✅ ${authFile} 로드됨 (쿠키 ${authData.cookies.length}개)`);
     } else if (!hasValidRefreshToken) {
-      console.log("⚠️ auth.json의 refresh_token이 없거나 만료됨");
+      console.log(`⚠️ ${authFile}의 refresh_token이 없거나 만료됨`);
     }
   } catch (e) {
-    console.log("⚠️ auth.json 파싱 실패");
+    console.log(`⚠️ ${authFile} 파싱 실패`);
   }
 }
 
@@ -149,6 +150,7 @@ export default defineConfig({
         "**/admin_pocaalbum_functional.spec.ts",
         "**/admin_user_pom.spec.ts",
         "**/admin_artist_pom.spec.ts",
+        "**/admin_isms_*.spec.ts",
       ],
       dependencies: ["admin-setup"], // Setup 프로젝트에 의존
       use: {

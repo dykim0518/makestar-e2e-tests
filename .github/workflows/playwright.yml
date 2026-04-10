@@ -47,6 +47,11 @@ on:
         type: number
         required: false
         default: 1
+      notify_slack:
+        description: "Slack 알림 전송 여부 (스케줄 전용)"
+        type: boolean
+        required: false
+        default: false
 
 # 동시 실행 제한
 # - push/PR: 같은 브랜치 내 이전 실행 취소
@@ -109,6 +114,8 @@ jobs:
         id: auth_refresh
         run: node scripts/ci-refresh-auth.js
         continue-on-error: true
+        env:
+          ENVIRONMENT_INPUT: ${{ github.event.inputs.environment || 'prod' }}
 
       # 갱신 후 토큰 유효성 최종 검증 (실패 시 테스트 중단 + 갱신 안내)
       - name: Validate auth tokens
@@ -450,7 +457,7 @@ jobs:
 
       # Slack #team-qa 채널에 결과 알림
       - name: Notify Slack
-        if: always() && github.event_name != 'pull_request'
+        if: always() && inputs.notify_slack == true
         run: |
           node <<'SLACK_EOF'
           const fs = require('fs');

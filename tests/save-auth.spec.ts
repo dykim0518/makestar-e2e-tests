@@ -255,6 +255,96 @@ test("Admin 로그인 세션 저장 (stage-new-admin)", async ({ page, context }
   }
 });
 
+test("STG 공개 사이트 로그인 세션 저장 (stage-new)", async ({
+  page,
+  context,
+}) => {
+  test.setTimeout(300000); // 5분 timeout
+
+  console.log("");
+  console.log("=".repeat(70));
+  console.log("🔐 STG 공개 사이트 로그인 세션 저장 도구");
+  console.log("=".repeat(70));
+  console.log("");
+
+  // STG 인증 페이지로 이동 (공개 사이트 → my-page 리다이렉트)
+  console.log("🌐 STG 로그인 페이지로 이동 중...");
+  await page.goto(
+    "https://stage-auth.makeuni2026.com/login/?application=MAKESTAR&redirect_url=https://stage-new.makeuni2026.com/my-page",
+  );
+  await page.waitForTimeout(2000);
+
+  console.log("");
+  console.log("┌" + "─".repeat(68) + "┐");
+  console.log("│" + " ".repeat(20) + "📋 로그인 안내" + " ".repeat(33) + "│");
+  console.log("├" + "─".repeat(68) + "┤");
+  console.log(
+    "│ 1. 브라우저에서 Google 또는 다른 방법으로 로그인하세요           │",
+  );
+  console.log(
+    "│ 2. 로그인 완료 후 STG my-page로 리다이렉트되면 자동 저장됩니다  │",
+  );
+  console.log(
+    "│ 3. 최대 3분 동안 대기합니다                                      │",
+  );
+  console.log("└" + "─".repeat(68) + "┘");
+  console.log("");
+
+  let loginSuccess = false;
+  const maxWaitTime = 180000;
+  const checkInterval = 2000;
+  const startTime = Date.now();
+
+  while (Date.now() - startTime < maxWaitTime) {
+    const currentUrl = page.url();
+
+    // 로그인 성공: stage-new.makeuni2026.com에 있고 login/auth가 아닌 경우
+    if (
+      currentUrl.includes("stage-new.makeuni2026.com") &&
+      !currentUrl.includes("login") &&
+      !currentUrl.includes("stage-auth")
+    ) {
+      loginSuccess = true;
+      console.log("");
+      console.log("✅ STG 로그인 감지! 세션 저장 중...");
+      break;
+    }
+
+    await page.waitForTimeout(checkInterval);
+    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+    process.stdout.write(
+      `\r⏳ 로그인 대기 중... (${elapsed}초/${maxWaitTime / 1000}초)`,
+    );
+  }
+
+  console.log("");
+
+  if (loginSuccess) {
+    // my-page 방문하여 SPA 인증 쿠키도 확보
+    await page.goto("https://stage-new.makeuni2026.com/my-page", {
+      waitUntil: "domcontentloaded",
+    });
+    await page.waitForTimeout(3000);
+
+    const totalCookies = await mergeAndSaveStorageState(context, AUTH_FILE);
+
+    console.log("");
+    console.log("=".repeat(70));
+    console.log("🎉 STG 공개 사이트 로그인 세션 저장 완료!");
+    console.log("=".repeat(70));
+    console.log("");
+    console.log(`📁 저장 위치: ${AUTH_FILE}`);
+    console.log(`🍪 저장된 쿠키 수: ${totalCookies}개`);
+    console.log("");
+
+    expect(loginSuccess).toBe(true);
+  } else {
+    console.log("");
+    console.error("❌ 로그인 시간 초과");
+    throw new Error("STG 공개 사이트 로그인 시간 초과");
+  }
+});
+
 test("저장된 세션 확인", async ({ page, context }) => {
   // 기존 세션 파일 확인
   if (!fs.existsSync(AUTH_FILE)) {

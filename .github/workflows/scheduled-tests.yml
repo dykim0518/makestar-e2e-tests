@@ -30,6 +30,7 @@ jobs:
                 suite: 'cmr',
                 environment: 'prod',
                 retries: '3',
+                notify_slack: 'true',
               },
             });
             console.log('CMR (prod) dispatched');
@@ -47,6 +48,7 @@ jobs:
                 suite: 'cmr',
                 environment: 'stg',
                 retries: '3',
+                notify_slack: 'true',
               },
             });
             console.log('CMR (stg) dispatched');
@@ -64,6 +66,7 @@ jobs:
                 suite: 'albumbuddy',
                 environment: 'prod',
                 retries: '3',
+                notify_slack: 'true',
               },
             });
             console.log('AlbumBuddy (prod) dispatched');

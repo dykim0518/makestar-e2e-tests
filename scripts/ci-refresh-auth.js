@@ -28,16 +28,26 @@ const AUTH_FILE =
 const FORCE = process.argv.includes("--force");
 const REFRESH_THRESHOLD_MS = 2 * 60 * 60 * 1000; // 2시간 이내면 갱신 시도
 
-const LOGIN_URL =
-  "https://auth.makestar.com/login/?application=MAKESTAR&redirect_url=https://www.makestar.com/my-page";
-const LOGIN_PATTERNS = [/auth\.makestar\.com/, /accounts\.google\.com/];
+// STG 환경 감지: MAKESTAR_BASE_URL 또는 ENVIRONMENT_INPUT으로 판별
+const isSTG =
+  process.env.MAKESTAR_BASE_URL?.includes("stage") ||
+  process.env.ENVIRONMENT_INPUT === "stg";
+
+const LOGIN_URL = isSTG
+  ? "https://stage-auth.makeuni2026.com/login/?application=MAKESTAR&redirect_url=https://stage-new.makeuni2026.com/my-page"
+  : "https://auth.makestar.com/login/?application=MAKESTAR&redirect_url=https://www.makestar.com/my-page";
+const LOGIN_PATTERNS = isSTG
+  ? [/stage-auth\.makeuni2026\.com/, /accounts\.google\.com/]
+  : [/auth\.makestar\.com/, /accounts\.google\.com/];
+const SUCCESS_HOSTNAME = isSTG
+  ? "stage-new.makeuni2026.com"
+  : "www.makestar.com";
 
 function isSuccessUrl(url) {
-  // www.makestar.com/my-page 에 실제로 도달했는지 확인 (query param의 redirect_url 오탐 방지)
   try {
     const parsed = new URL(url);
     return (
-      parsed.hostname === "www.makestar.com" &&
+      parsed.hostname === SUCCESS_HOSTNAME &&
       parsed.pathname.includes("/my-page")
     );
   } catch {
