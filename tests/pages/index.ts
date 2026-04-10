@@ -163,3 +163,10 @@ export {
   ARTIST_COL,
 } from "./admin-artist-list.page";
 export type { ArtistRowData } from "./admin-artist-list.page";
+
+// Admin 상품(이벤트) 수정 페이지
+export { EventUpdatePage } from "./admin-event-update.page";
+export type {
+  NoticeCheckboxLabel,
+  NoticeCheckboxState,
+} from "./admin-event-update.page";
