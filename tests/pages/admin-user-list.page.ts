@@ -385,10 +385,10 @@ export class UserListPage extends AdminBasePage {
 
     for (let i = 0; i < rows; i++) {
       const data = await this.getRowData(i);
-      if (
-        this.isMeaningfulValue(data.nickname) &&
-        this.isMeaningfulValue(data.name)
-      ) {
+      // 닉네임이 이메일과 동일하면 fallback 표시이므로 프로필 미완성으로 간주
+      const hasRealNickname =
+        this.isMeaningfulValue(data.nickname) && data.nickname !== data.email;
+      if (hasRealNickname && this.isMeaningfulValue(data.name)) {
         return { ...data, hasCompleteProfile: true };
       }
     }

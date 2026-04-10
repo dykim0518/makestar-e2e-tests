@@ -165,6 +165,8 @@ export class OrderListPage extends AdminBasePage {
   }
 
   async switchTab(tab: OrderTabKey): Promise<void> {
+    await this.page.keyboard.press("Escape").catch(() => {});
+    await this.page.keyboard.press("Escape").catch(() => {});
     const tabLocator = await this.resolveTab(tab);
     await tabLocator.scrollIntoViewIfNeeded().catch(() => {});
     await tabLocator.click({ force: true });
@@ -199,6 +201,34 @@ export class OrderListPage extends AdminBasePage {
     }
 
     await keywordInput.fill(keyword);
+    await this.clickSearchAndWait();
+  }
+
+  /**
+   * 상품코드로 검색 (CT-65 회귀 테스트용)
+   */
+  async searchByProductCode(productCode: string): Promise<void> {
+    const productCodeInput =
+      this.page.getByPlaceholder("상품코드를 입력해주세요");
+
+    await expect(productCodeInput).toBeVisible({
+      timeout: this.timeouts.medium,
+    });
+    await productCodeInput.fill(productCode);
+    await this.clickSearchAndWait();
+  }
+
+  /**
+   * 상품명으로 검색 (CT-65 회귀 테스트용)
+   */
+  async searchByProductName(productName: string): Promise<void> {
+    const productNameInput =
+      this.page.getByPlaceholder("상품명을 입력해주세요");
+
+    await expect(productNameInput).toBeVisible({
+      timeout: this.timeouts.medium,
+    });
+    await productNameInput.fill(productName);
     await this.clickSearchAndWait();
   }
 
@@ -1109,16 +1139,17 @@ export class OrderListPage extends AdminBasePage {
       .locator("xpath=following-sibling::*[1]");
 
     const resolved = await this.findFirstVisible([
+      this.page.getByRole("link", { name: label, exact: true }).first(),
+      this.page.getByRole("tab", { name: label, exact: true }).first(),
       tabContainer.getByText(label, { exact: true }).first(),
       tabContainer
         .locator("div, button, a, span, p")
         .filter({ hasText: exactRegex })
         .first(),
-      this.page.getByRole("tab", { name: label, exact: true }).first(),
       this.page.getByRole("button", { name: label, exact: true }).first(),
       this.page
         .locator("main")
-        .locator("div, button, a, span, p")
+        .locator("a, div, button, span, p")
         .filter({ hasText: exactRegex })
         .first(),
     ]);
