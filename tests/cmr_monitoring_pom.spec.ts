@@ -7,7 +7,7 @@
  * @see tests/pages/makestar.page.ts
  *
  * ============================================================================
- * 테스트 그룹 구조 (총 36개 테스트)
+ * 테스트 그룹 구조 (총 38개 테스트)
  * ============================================================================
  *
  * A. 기본 페이지 (CMR-HOME-01~02, CMR-PAGE-01~05)
@@ -22,8 +22,8 @@
  * D. 네비게이션 검증 (CMR-NAV-05~08)
  *    - GNB 버튼 클릭 네비게이션 (serial)
  *
- * E. 마이페이지/회원 기능 (CMR-AUTH-01~06, CMR-AUTH-04-1~04-2)
- *    - 마이페이지, 주문내역, 배송지, 비밀번호, 응모정보
+ * E. 마이페이지/회원 기능 (CMR-AUTH-01~06, CMR-AUTH-04-1~04-2, CMR-AUTH-07~08)
+ *    - 마이페이지, 주문내역, 배송지, 비밀번호, 응모정보, 이메일 로그인
  *
  * F. 상품/장바구니 기능 (CMR-ACTION-01~05)
  *    - 상품 옵션/가격, 품절, 장바구니, 비회원 접근
@@ -737,6 +737,66 @@ test.describe.serial("마이페이지/회원 기능", () => {
 
     const hasContent = await makestar.hasEventEntryListContent();
     console.log(`   응모 내역/빈 상태 메시지 표시: ${hasContent}`);
+  });
+
+  test("CMR-AUTH-07: 이메일 로그인 — 이메일 입력 시 다음 버튼 활성화 검증", async ({
+    page,
+  }) => {
+    test.setTimeout(TEST_TIMEOUT);
+
+    const email = process.env.CMR_EMAIL_LOGIN_ID || "siboc79031@kobace.com";
+
+    const result = await makestar.verifyEmailLoginNextButton(email);
+
+    expect(
+      result.emailPageLoaded,
+      "이메일 입력 페이지가 정상 로드되어야 합니다",
+    ).toBe(true);
+
+    expect(
+      result.nextButtonDisabledInitially,
+      "이메일 미입력 시 다음 버튼은 비활성화 상태여야 합니다",
+    ).toBe(true);
+
+    expect(
+      result.nextButtonEnabledAfterInput,
+      "이메일 입력 후 다음 버튼이 활성화되어야 합니다 (CT-290 회귀 검증)",
+    ).toBe(true);
+
+    console.log(
+      "✅ 이메일 로그인 다음 버튼 활성화 검증 통과 (CT-290 회귀 방지)",
+    );
+
+    // auth 쿠키 복원 (후속 테스트에 영향 방지)
+    await makestar.restoreAuthCookies();
+  });
+
+  test("CMR-AUTH-08: 이메일 로그인 — 전체 로그인 플로우 검증", async ({
+    page,
+  }) => {
+    test.setTimeout(TEST_TIMEOUT);
+
+    const email = process.env.CMR_EMAIL_LOGIN_ID || "siboc79031@kobace.com";
+    const password = process.env.CMR_EMAIL_LOGIN_PW || "!xptmxm1234";
+
+    const result = await makestar.loginWithEmail(email, password);
+
+    expect(
+      result.success,
+      `이메일 로그인이 성공해야 합니다 (reason: ${result.reason || "none"})`,
+    ).toBe(true);
+
+    expect(
+      result.finalUrl,
+      "로그인 후 my-page로 리다이렉트되어야 합니다",
+    ).toContain("my-page");
+
+    console.log(
+      `✅ 이메일 로그인 전체 플로우 통과 (최종 URL: ${result.finalUrl})`,
+    );
+
+    // auth 쿠키 복원 (후속 테스트에 영향 방지)
+    await makestar.restoreAuthCookies();
   });
 });
 

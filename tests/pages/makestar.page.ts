@@ -2524,6 +2524,205 @@ export class MakestarPage extends BasePage {
       .catch(() => false);
   }
 
+  /** 이메일 로그인 테스트 전에 백업한 쿠키 (테스트 후 복원용) */
+  private savedCookiesBeforeEmailLogin: Awaited<
+    ReturnType<import("@playwright/test").BrowserContext["cookies"]>
+  > = [];
+
+  /**
+   * 이메일 로그인 페이지로 이동 (공통 헬퍼).
+   * auth 도메인 쿠키를 클리어한 후 로그인 선택 → Email로 계속하기 → 이메일 입력 페이지까지 이동합니다.
+   */
+  private async navigateToEmailLoginPage(): Promise<boolean> {
+    const authBaseUrl = this.baseUrl.includes("stage")
+      ? "https://stage-auth.makeuni2026.com"
+      : "https://auth.makestar.com";
+
+    // 쿠키 백업 후 auth 도메인만 클리어 (기존 세션이 로그인 플로우를 간섭하지 않도록)
+    this.savedCookiesBeforeEmailLogin = await this.page.context().cookies();
+    await this.page.context().clearCookies({ domain: /auth/ });
+
+    // 로그인 페이지 이동
+    await this.goto(
+      `${authBaseUrl}/login/?application=MAKESTAR&redirect_url=${this.baseUrl}/my-page`,
+    );
+    await this.waitForLoadState("domcontentloaded");
+    await this.waitForNetworkStable(5000).catch(() => {});
+
+    // Email로 계속하기 클릭 + /login/email 페이지 전환 대기
+    const emailBtn = this.page
+      .getByRole("button", { name: /Email로 계속하기/i })
+      .first();
+    await emailBtn.click({ timeout: 10000 });
+
+    // URL이 /login/email로 변경될 때까지 대기
+    await this.page
+      .waitForURL(/\/login\/email/, { timeout: 10000 })
+      .catch(() => {});
+    await this.waitForLoadState("domcontentloaded");
+
+    // 이메일 입력 필드 표시 확인
+    const emailInput = this.page.getByRole("textbox", {
+      name: /이메일 아이디/i,
+    });
+    return await emailInput.isVisible({ timeout: 10000 }).catch(() => false);
+  }
+
+  /** 이메일 로그인 테스트 후 원래 쿠키를 복원합니다. */
+  async restoreAuthCookies(): Promise<void> {
+    if (this.savedCookiesBeforeEmailLogin.length > 0) {
+      await this.page.context().clearCookies();
+      await this.page.context().addCookies(this.savedCookiesBeforeEmailLogin);
+      this.savedCookiesBeforeEmailLogin = [];
+    }
+  }
+
+  /**
+   * 이메일 로그인 페이지로 이동하여 이메일 입력 후 "다음" 버튼 활성화 여부를 검증합니다.
+   * React SPA 특성상 fill() 대신 keyboard.type() + Tab(blur)으로 상태를 동기화합니다.
+   *
+   * @returns 이메일 입력 단계 검증 결과 (다음 버튼 활성화 여부 포함)
+   */
+  async verifyEmailLoginNextButton(email: string): Promise<{
+    emailPageLoaded: boolean;
+    nextButtonDisabledInitially: boolean;
+    nextButtonEnabledAfterInput: boolean;
+  }> {
+    const emailPageLoaded = await this.navigateToEmailLoginPage();
+
+    if (!emailPageLoaded) {
+      return {
+        emailPageLoaded: false,
+        nextButtonDisabledInitially: false,
+        nextButtonEnabledAfterInput: false,
+      };
+    }
+
+    // 초기 상태: "다음" 버튼 disabled 확인
+    const nextButton = this.page.getByRole("button", { name: "다음" });
+    const nextButtonDisabledInitially = await nextButton
+      .isDisabled()
+      .catch(() => false);
+
+    // 이메일 입력 (keyboard.type + Tab으로 React state 동기화)
+    const emailInput = this.page.getByRole("textbox", {
+      name: /이메일 아이디/i,
+    });
+    await emailInput.click();
+    await this.page.keyboard.type(email);
+    await this.page.keyboard.press("Tab");
+    await this.page.waitForTimeout(500);
+
+    // "다음" 버튼 활성화 확인
+    const nextButtonEnabledAfterInput = await nextButton
+      .isEnabled({ timeout: 5000 })
+      .catch(() => false);
+
+    return {
+      emailPageLoaded,
+      nextButtonDisabledInitially,
+      nextButtonEnabledAfterInput,
+    };
+  }
+
+  /**
+   * 이메일 + 비밀번호로 전체 로그인 플로우를 실행합니다.
+   * 로그인 성공 시 리다이렉트된 URL을 반환합니다.
+   *
+   * @returns 로그인 결과 (성공 여부 + 최종 URL)
+   */
+  async loginWithEmail(
+    email: string,
+    password: string,
+  ): Promise<{ success: boolean; finalUrl: string; reason?: string }> {
+    const emailPageLoaded = await this.navigateToEmailLoginPage();
+    if (!emailPageLoaded) {
+      return {
+        success: false,
+        finalUrl: this.currentUrl,
+        reason: "이메일 입력 필드 미표시",
+      };
+    }
+
+    // 이메일 입력
+    const emailInput = this.page.getByRole("textbox", {
+      name: /이메일 아이디/i,
+    });
+    await emailInput.click();
+    await this.page.keyboard.type(email);
+    await this.page.keyboard.press("Tab");
+    await this.page.waitForTimeout(500);
+
+    // 다음 버튼 클릭 (이메일 단계)
+    const nextBtnEmail = this.page.getByRole("button", { name: "다음" });
+    const emailNextEnabled = await nextBtnEmail
+      .isEnabled({ timeout: 5000 })
+      .catch(() => false);
+    if (!emailNextEnabled) {
+      return {
+        success: false,
+        finalUrl: this.currentUrl,
+        reason: "이메일 입력 후 다음 버튼 미활성화",
+      };
+    }
+    await nextBtnEmail.click();
+
+    // /login/password 페이지 전환 대기
+    await this.page
+      .waitForURL(/\/login\/password/, { timeout: 10000 })
+      .catch(() => {});
+    await this.waitForLoadState("domcontentloaded");
+
+    // 비밀번호 입력
+    const passwordInput = this.page.getByRole("textbox", {
+      name: /비밀번호/i,
+    });
+    const passwordVisible = await passwordInput
+      .isVisible({ timeout: 10000 })
+      .catch(() => false);
+    if (!passwordVisible) {
+      return {
+        success: false,
+        finalUrl: this.currentUrl,
+        reason: "비밀번호 입력 필드 미표시",
+      };
+    }
+
+    await passwordInput.click();
+    await this.page.keyboard.type(password);
+    await this.page.keyboard.press("Tab");
+    await this.page.waitForTimeout(500);
+
+    // 다음 버튼 클릭 (비밀번호 단계)
+    const nextBtnPassword = this.page.getByRole("button", { name: "다음" });
+    const pwNextEnabled = await nextBtnPassword
+      .isEnabled({ timeout: 5000 })
+      .catch(() => false);
+    if (!pwNextEnabled) {
+      return {
+        success: false,
+        finalUrl: this.currentUrl,
+        reason: "비밀번호 입력 후 다음 버튼 미활성화",
+      };
+    }
+    await nextBtnPassword.click();
+
+    // 리다이렉트 대기
+    await this.page
+      .waitForURL((url) => !url.href.includes("auth."), { timeout: 15000 })
+      .catch(() => {});
+    await this.waitForLoadState("domcontentloaded");
+
+    const finalUrl = this.currentUrl;
+    const success = !finalUrl.includes("auth.") && !finalUrl.includes("/login");
+
+    return {
+      success,
+      finalUrl,
+      reason: success ? undefined : "로그인 리다이렉트 실패",
+    };
+  }
+
   /** Shop 페이지에서 품절 상품 표시 여부 확인 */
   async hasSoldOutIndicator(timeout = 3000): Promise<boolean> {
     const selectors = [
