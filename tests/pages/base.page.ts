@@ -377,19 +377,44 @@ export abstract class BasePage {
   ];
 
   /**
+   * 모달 닫기 버튼 클릭 — exact 매칭으로 "확인"이 "사업자정보확인" 등에 부분 매칭되는 것 방지
+   */
+  private async clickModalCloseButton(
+    texts: readonly string[],
+    timeout: number,
+  ): Promise<boolean> {
+    for (const text of texts) {
+      try {
+        const btn = this._page.getByText(text, { exact: true }).first();
+        if (await btn.isVisible({ timeout })) {
+          await btn.click({ timeout: this.timeouts.medium, force: true });
+          await btn
+            .waitFor({ state: "hidden", timeout: this.timeouts.short })
+            .catch(() => {});
+          console.log(`✅ "${text}" 버튼 클릭`);
+          return true;
+        }
+      } catch {
+        continue;
+      }
+    }
+    return false;
+  }
+
+  /**
    * 모달 처리 - "다시 보지 않기" 우선, 없으면 "닫기" 클릭
    */
   async handleModal(): Promise<void> {
     try {
-      // 1단계: "Do not show again" 버튼 찾기 (clickFirstVisibleText가 visibility 확인)
+      // "다시 보지 않기" 계열은 부분 매칭 (문구 변형이 다양함)
       const dismissed = await this.clickFirstVisibleText(
         this.modalDoNotShowTexts,
         1000,
       );
 
-      // 2단계: 모달이 여전히 있으면 닫기 버튼 클릭
+      // 닫기/확인 계열은 exact 매칭 (푸터 "사업자정보확인" 오클릭 방지)
       if (!dismissed) {
-        await this.clickFirstVisibleText(this.modalCloseTexts, 800);
+        await this.clickModalCloseButton(this.modalCloseTexts, 800);
       }
     } catch {
       // 모달이 없거나 처리 실패 - 정상
@@ -400,16 +425,24 @@ export abstract class BasePage {
    * 모든 모달 닫기 (여러 개의 모달이 연속으로 나올 때)
    */
   async closeAllModals(): Promise<void> {
-    const allCloseTexts = [
-      ...this.modalDoNotShowTexts,
-      ...this.modalCloseTexts,
-    ];
-    for (const text of allCloseTexts) {
+    // "다시 보지 않기" 계열은 부분 매칭
+    for (const text of this.modalDoNotShowTexts) {
       try {
         const btn = this._page.getByText(text, { exact: false }).first();
         if (await btn.isVisible({ timeout: 1000 })) {
           await btn.click({ force: true });
-          // 모달이 닫힐 때까지 조건부 대기
+          await btn.waitFor({ state: "hidden", timeout: 1000 }).catch(() => {});
+        }
+      } catch {
+        continue;
+      }
+    }
+    // 닫기/확인 계열은 exact 매칭
+    for (const text of this.modalCloseTexts) {
+      try {
+        const btn = this._page.getByText(text, { exact: true }).first();
+        if (await btn.isVisible({ timeout: 500 })) {
+          await btn.click({ force: true });
           await btn.waitFor({ state: "hidden", timeout: 1000 }).catch(() => {});
         }
       } catch {
