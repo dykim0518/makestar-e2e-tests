@@ -1763,4 +1763,205 @@ test.describe.serial("상품 등록", () => {
       });
     });
   });
+
+  // ========================================================================
+  // 5. 전시 카테고리 — QA-85: 저장되지 않은 변경사항 팝업 미노출
+  // Jira: https://makestar-product.atlassian.net/browse/QA-85
+  // 재현경로: 전시 카테고리 상세에서 상품 순서 변경 → 뒤로가기 → 미저장 팝업
+  // 기대결과: 'beforeunload' 다이얼로그 노출 + 사용자 선택에 따라 유지/이탈
+  // ========================================================================
+  test.describe
+    .serial("전시 카테고리 우선순위 변경 — 미저장 팝업 (QA-85)", () => {
+    const DC_PARENT =
+      "https://stage-new-admin.makeuni2026.com/display-category";
+    const DC_DETAIL = `${DC_PARENT}/34?type=B2C`;
+
+    test.beforeEach(async ({ page }) => {
+      // 히스토리 컨텍스트 확보 (뒤로가기 대상 페이지 → 상세)
+      await page.goto(DC_PARENT);
+      await waitForPageStable(page);
+      await page.goto(DC_DETAIL);
+      await waitForPageStable(page);
+    });
+
+    test("QA85-PAGE-01: 전시 카테고리 상세 페이지 기본 요소 노출", async ({
+      page,
+    }) => {
+      await expect(
+        page.getByRole("button", { name: /변경내용 저장/ }),
+        "'변경내용 저장하기' 버튼이 노출되어야 합니다",
+      ).toBeVisible({ timeout: ELEMENT_TIMEOUT });
+
+      await expect(
+        page.getByRole("button", { name: /상품 추가/ }),
+        "'상품 추가하기' 버튼이 노출되어야 합니다",
+      ).toBeVisible({ timeout: ELEMENT_TIMEOUT });
+
+      await page
+        .locator(".draggable-item")
+        .first()
+        .waitFor({ state: "visible", timeout: 15000 });
+      const itemCount = await page.locator(".draggable-item").count();
+      expect(
+        itemCount,
+        "드래그 가능한 상품 아이템이 2개 이상 있어야 순서 변경 테스트 가능",
+      ).toBeGreaterThanOrEqual(2);
+    });
+
+    test("QA85-ACTION-01: 변경 없이 뒤로가기 시 다이얼로그 미노출 (기준선)", async ({
+      page,
+    }) => {
+      const dialogs: string[] = [];
+      page.on("dialog", async (dialog) => {
+        dialogs.push(dialog.type());
+        await dialog.dismiss();
+      });
+
+      const backBtn = page
+        .locator('svg:has(use[href="#icon-arrow-left-line"])')
+        .first();
+      await backBtn.click();
+      await page.waitForTimeout(2000);
+
+      expect(
+        dialogs.find((t) => t === "beforeunload"),
+        "변경 없이 뒤로가기 시 beforeunload 다이얼로그가 떠서는 안 됩니다",
+      ).toBeUndefined();
+    });
+
+    test("QA85-DATA-01: 순서 변경 후 뒤로가기 시 다이얼로그 노출 + dismiss 시 페이지 유지", async ({
+      page,
+    }) => {
+      const dialogs: Array<{ type: string }> = [];
+      page.on("dialog", async (dialog) => {
+        dialogs.push({ type: dialog.type() });
+        await dialog.dismiss();
+      });
+
+      const saveBtn = page.getByRole("button", { name: /변경내용 저장/ });
+      await expect(saveBtn).toBeVisible({ timeout: ELEMENT_TIMEOUT });
+      expect(
+        await saveBtn.isDisabled(),
+        "드래그 전 저장 버튼은 비활성 상태여야 합니다",
+      ).toBe(true);
+
+      const items = page.locator(".draggable-item");
+      await expect(items.first()).toBeVisible({ timeout: ELEMENT_TIMEOUT });
+      const firstText = await items.first().textContent();
+
+      // 1번 핸들에서 2번 아래로 드래그
+      const sBox = await items
+        .nth(0)
+        .locator(".handle.cursor-grab")
+        .boundingBox();
+      const tBox = await items
+        .nth(1)
+        .locator(".handle.cursor-grab")
+        .boundingBox();
+      if (!sBox || !tBox) throw new Error("핸들 위치 가져오기 실패");
+      const sx = sBox.x + sBox.width / 2;
+      const sy = sBox.y + sBox.height / 2;
+      const tx = tBox.x + tBox.width / 2;
+      const ty = tBox.y + tBox.height + 10;
+
+      await page.mouse.move(sx, sy);
+      await page.mouse.down();
+      await page.waitForTimeout(200);
+      for (let i = 1; i <= 25; i++) {
+        await page.mouse.move(
+          sx + ((tx - sx) * i) / 25,
+          sy + ((ty - sy) * i) / 25,
+        );
+        await page.waitForTimeout(30);
+      }
+      await page.mouse.up();
+      await page.waitForTimeout(1500);
+
+      // Dirty state 확인
+      const newFirstText = await items.first().textContent();
+      expect(newFirstText, "드래그로 순서가 변경되어야 합니다").not.toBe(
+        firstText,
+      );
+      expect(
+        await saveBtn.isDisabled(),
+        "드래그 후 저장 버튼이 활성화되어야 합니다 (dirty state)",
+      ).toBe(false);
+
+      // 뒤로가기 → 다이얼로그 노출 + dismiss → 페이지 유지
+      const backBtn = page
+        .locator('svg:has(use[href="#icon-arrow-left-line"])')
+        .first();
+      await backBtn.click();
+      await page.waitForTimeout(2000);
+
+      expect(
+        dialogs.find((d) => d.type === "beforeunload"),
+        "순서 변경 후 뒤로가기 시 beforeunload 다이얼로그가 노출되어야 합니다 (QA-85 회귀 방지)",
+      ).toBeDefined();
+      expect(
+        page.url(),
+        "다이얼로그 dismiss 후에는 현재 페이지에 유지되어야 합니다",
+      ).toContain("/display-category/34");
+    });
+
+    test("QA85-DATA-02: 다이얼로그 accept 시 실제 부모 페이지로 이탈", async ({
+      page,
+    }) => {
+      const dialogs: Array<{ type: string }> = [];
+      page.on("dialog", async (dialog) => {
+        dialogs.push({ type: dialog.type() });
+        await dialog.accept();
+      });
+
+      const items = page.locator(".draggable-item");
+      await expect(items.first()).toBeVisible({ timeout: ELEMENT_TIMEOUT });
+      const firstText = await items.first().textContent();
+
+      const sBox = await items
+        .nth(0)
+        .locator(".handle.cursor-grab")
+        .boundingBox();
+      const tBox = await items
+        .nth(1)
+        .locator(".handle.cursor-grab")
+        .boundingBox();
+      if (!sBox || !tBox) throw new Error("핸들 위치 가져오기 실패");
+      const sx = sBox.x + sBox.width / 2;
+      const sy = sBox.y + sBox.height / 2;
+      const tx = tBox.x + tBox.width / 2;
+      const ty = tBox.y + tBox.height + 10;
+
+      await page.mouse.move(sx, sy);
+      await page.mouse.down();
+      await page.waitForTimeout(200);
+      for (let i = 1; i <= 25; i++) {
+        await page.mouse.move(
+          sx + ((tx - sx) * i) / 25,
+          sy + ((ty - sy) * i) / 25,
+        );
+        await page.waitForTimeout(30);
+      }
+      await page.mouse.up();
+      await page.waitForTimeout(1500);
+
+      const newFirstText = await items.first().textContent();
+      expect(newFirstText).not.toBe(firstText);
+
+      const backBtn = page
+        .locator('svg:has(use[href="#icon-arrow-left-line"])')
+        .first();
+      await backBtn.click();
+      await page.waitForTimeout(3000);
+
+      expect(
+        dialogs.find((d) => d.type === "beforeunload"),
+        "beforeunload 다이얼로그가 노출되어야 합니다",
+      ).toBeDefined();
+
+      expect(
+        page.url(),
+        `accept 후 부모 페이지(/display-category)로 이동해야 합니다. 현재: ${page.url()}`,
+      ).toMatch(/\/display-category(?:\?|$|\/)(?!34)/);
+    });
+  });
 });
