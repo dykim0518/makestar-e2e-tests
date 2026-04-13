@@ -465,6 +465,252 @@ test.describe.serial("주문관리 목록", () => {
 });
 
 // ##############################################################################
+// B2B 예치금 주문 회귀 검증 (QA-102, QA-100)
+// QA-102: 주문상세정보 > 결제정보 > 결제수단 미노출
+// QA-100: B2B 예치금 주문 > 결제 상태 미노출
+// Jira: https://makestar-product.atlassian.net/browse/QA-102
+//       https://makestar-product.atlassian.net/browse/QA-100
+// ##############################################################################
+test.describe.serial("B2B 예치금 주문 회귀 (QA-102, QA-100)", () => {
+  const TARGET_URL =
+    "https://stage-new-admin.makeuni2026.com/order/list?openedTab=b2b";
+
+  test.beforeEach(async ({ page }) => {
+    await page.goto(TARGET_URL);
+    await page
+      .waitForLoadState("networkidle", { timeout: 20000 })
+      .catch(() => {});
+    await page.waitForTimeout(1500);
+  });
+
+  test("QA102-PAGE-01: B2B 주문 목록 + 결제수단 필터 노출", async ({
+    page,
+  }) => {
+    await expect(
+      page.getByRole("button", { name: "조회하기", exact: true }),
+      "조회하기 버튼이 노출되어야 합니다",
+    ).toBeVisible({ timeout: ELEMENT_TIMEOUT });
+
+    await expect(
+      page.getByText("결제수단", { exact: false }).first(),
+      "결제수단 필터가 노출되어야 합니다",
+    ).toBeVisible({ timeout: ELEMENT_TIMEOUT });
+  });
+
+  test("QA102-FLT-01: 결제수단 '예치금' 필터 적용 가능", async ({ page }) => {
+    await page.getByText("결제수단", { exact: false }).first().click();
+    await page.waitForTimeout(500);
+    await page.getByText("예치금", { exact: true }).first().click();
+    await page.waitForTimeout(300);
+    await page.keyboard.press("Escape");
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(300);
+    await page
+      .getByRole("button", { name: "조회하기", exact: true })
+      .click({ force: true });
+    await page
+      .waitForLoadState("networkidle", { timeout: 15000 })
+      .catch(() => {});
+    await page.waitForTimeout(1500);
+
+    const hasSummary = await page
+      .getByText("상품 주문내역")
+      .first()
+      .isVisible({ timeout: ELEMENT_TIMEOUT })
+      .catch(() => false);
+    const hasNoResult = await page
+      .getByText(/검색결과가 없습니다/)
+      .first()
+      .isVisible({ timeout: 2000 })
+      .catch(() => false);
+
+    expect(
+      hasSummary || hasNoResult,
+      "조회 후 '상품 주문내역' 또는 '검색결과 없음'이 노출되어야 합니다",
+    ).toBe(true);
+  });
+
+  test("QA102-FLT-02: 예치금 필터 결과의 결제수단 정합성 (다른 결제수단 0건)", async ({
+    page,
+  }) => {
+    await expect(page.getByText("예치금", { exact: true }).first()).toBeVisible(
+      { timeout: 15000 },
+    );
+    await page.waitForTimeout(500);
+
+    // 텍스트 클릭으로는 체크박스가 토글되지 않아 input[checkbox] 직접 클릭
+    const checked = await page.evaluate(() => {
+      const deposits = Array.from(document.querySelectorAll("*")).filter(
+        (n) => n.children.length === 0 && n.textContent?.trim() === "예치금",
+      );
+      for (const n of deposits) {
+        let node: Element | null = n.parentElement;
+        for (let i = 0; i < 4 && node; i++) {
+          const cb = node.querySelector(
+            'input[type="checkbox"]',
+          ) as HTMLInputElement | null;
+          if (cb) {
+            cb.click();
+            return cb.checked;
+          }
+          node = node.parentElement;
+        }
+      }
+      return null;
+    });
+    expect(checked, "예치금 체크박스를 선택할 수 있어야 합니다").toBe(true);
+
+    await page.waitForTimeout(500);
+    await page
+      .getByRole("button", { name: "조회하기", exact: true })
+      .click({ force: true });
+    await page
+      .waitForLoadState("networkidle", { timeout: 15000 })
+      .catch(() => {});
+    await page.waitForTimeout(2000);
+
+    const counts = await page.evaluate(() => {
+      const text = document.body.innerText;
+      return {
+        예치금: (text.match(/예치금/g) || []).length,
+        직접송금: (text.match(/직접송금/g) || []).length,
+        신용카드: (text.match(/신용카드|카드결제/g) || []).length,
+        무통장: (text.match(/무통장/g) || []).length,
+      };
+    });
+
+    expect(counts.예치금, "예치금 텍스트가 노출되어야 합니다").toBeGreaterThan(
+      0,
+    );
+    expect(
+      counts.직접송금 + counts.신용카드 + counts.무통장,
+      `예치금 필터 결과에 다른 결제수단이 포함되어서는 안 됩니다: ${JSON.stringify(counts)}`,
+    ).toBe(0);
+  });
+
+  test("QA102-DATA-01: 주문상세 팝업의 결제수단 + 결제수단 정보 필드 검증", async ({
+    page,
+  }) => {
+    // 목록에서 결제수단 '예치금' 값 클릭 → 주문상세 팝업
+    await expect(
+      page.getByText(/상품 주문내역/).first(),
+      "주문 목록이 렌더링되어야 합니다",
+    ).toBeVisible({ timeout: 15000 });
+    await page.waitForTimeout(2000);
+
+    const depositValueNodes = page
+      .locator("span, p, div")
+      .filter({ hasText: /^예치금$/ });
+    await depositValueNodes
+      .first()
+      .waitFor({ state: "visible", timeout: 15000 });
+
+    const innerDeposit = depositValueNodes.nth(1);
+    await innerDeposit.scrollIntoViewIfNeeded();
+    await innerDeposit.click({ force: true });
+    await page.waitForTimeout(2000);
+
+    await expect(
+      page.getByText("주문상세정보", { exact: false }).first(),
+      "주문상세정보 팝업이 노출되어야 합니다",
+    ).toBeVisible({ timeout: ELEMENT_TIMEOUT });
+
+    const paymentInfo = await page.evaluate(() => {
+      const findRows = (label: string) => {
+        const labels = Array.from(document.querySelectorAll("*")).filter(
+          (n) => n.children.length === 0 && n.textContent?.trim() === label,
+        );
+        return labels.map((l) => {
+          const row = l.parentElement;
+          const text = row?.textContent?.trim() ?? "";
+          return text.replace(new RegExp(`^${label}\\s*`), "").trim();
+        });
+      };
+      return {
+        결제수단: findRows("결제수단"),
+        결제수단정보: findRows("결제수단 정보"),
+      };
+    });
+
+    // 필터 영역 '선택' 제외하고 팝업 내 실제 값 사용
+    const popupPayMethod = paymentInfo.결제수단.find((v) => v !== "선택");
+    expect(
+      popupPayMethod,
+      "주문상세 팝업에 '결제수단' 값이 존재해야 합니다 (QA-102 회귀 방지)",
+    ).toBeDefined();
+    expect(
+      popupPayMethod && popupPayMethod.length > 0 && popupPayMethod !== "-",
+      `결제수단 값이 비어있지 않아야 합니다. 실제: "${popupPayMethod}"`,
+    ).toBe(true);
+
+    if (paymentInfo.결제수단정보[0]) {
+      expect(
+        paymentInfo.결제수단정보[0].includes("예치금"),
+        `결제수단 정보가 '예치금'이어야 합니다. 실제: "${paymentInfo.결제수단정보[0]}"`,
+      ).toBe(true);
+    }
+  });
+
+  test("QA100-DATA-01: 예치금 필터 후 결제상태 '결제완료' 노출 + 정합성 검증", async ({
+    page,
+  }) => {
+    await expect(page.getByText("예치금", { exact: true }).first()).toBeVisible(
+      { timeout: 15000 },
+    );
+    await page.waitForTimeout(500);
+
+    const checked = await page.evaluate(() => {
+      const deposits = Array.from(document.querySelectorAll("*")).filter(
+        (n) => n.children.length === 0 && n.textContent?.trim() === "예치금",
+      );
+      for (const n of deposits) {
+        let node: Element | null = n.parentElement;
+        for (let i = 0; i < 4 && node; i++) {
+          const cb = node.querySelector(
+            'input[type="checkbox"]',
+          ) as HTMLInputElement | null;
+          if (cb) {
+            cb.click();
+            return cb.checked;
+          }
+          node = node.parentElement;
+        }
+      }
+      return null;
+    });
+    expect(checked).toBe(true);
+
+    await page.waitForTimeout(500);
+    await page
+      .getByRole("button", { name: "조회하기", exact: true })
+      .click({ force: true });
+    await page
+      .waitForLoadState("networkidle", { timeout: 15000 })
+      .catch(() => {});
+    await page.waitForTimeout(2000);
+
+    const counts = await page.evaluate(() => {
+      const text = document.body.innerText;
+      return {
+        결제완료: (text.match(/결제완료/g) || []).length,
+        결제실패: (text.match(/결제실패/g) || []).length,
+        결제취소: (text.match(/결제취소/g) || []).length,
+      };
+    });
+
+    expect(
+      counts.결제완료,
+      "예치금 주문에 '결제완료' 결제상태가 노출되어야 합니다 (QA-100 회귀 방지)",
+    ).toBeGreaterThan(0);
+
+    expect(
+      counts.결제실패 + counts.결제취소,
+      `예치금 주문 목록에 '결제실패/결제취소'가 노출되어서는 안 됩니다: ${JSON.stringify(counts)}`,
+    ).toBe(0);
+  });
+});
+
+// ##############################################################################
 // [추가 위치] 발주/입고 목록 (주문관리 목록 블록 아래에 추가)
 // ##############################################################################
 
