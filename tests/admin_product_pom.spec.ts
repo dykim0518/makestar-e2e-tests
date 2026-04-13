@@ -1965,3 +1965,151 @@ test.describe.serial("상품 등록", () => {
     });
   });
 });
+
+// ##############################################################################
+// 5. 포토카드 SKU 작업 관리 — QA-39: SKU명 검색 불가
+// Jira: https://makestar-product.atlassian.net/browse/QA-39
+// 재현경로: 입고~작업 관리 > 작업 현황 > SKU명 입력 후 검색 → 검색 불가
+// 기대결과: SKU명으로 검색 가능
+// ##############################################################################
+test.describe.serial("포토카드 SKU 작업 현황 — SKU명 검색 (QA-39)", () => {
+  const TARGET_URL =
+    "https://stage-new-admin.makeuni2026.com/photocard-sku/work/pending";
+
+  test.beforeEach(async ({ page }) => {
+    await page.goto(TARGET_URL);
+    await waitForPageStable(page);
+    await page
+      .waitForLoadState("networkidle", { timeout: 15000 })
+      .catch(() => {});
+  });
+
+  test("QA39-PAGE-01: 작업 현황 페이지 기본 요소 + 검색 입력 노출", async ({
+    page,
+  }) => {
+    await expect(
+      page.getByPlaceholder("SKU 코드, 이름을 입력해주세요"),
+      "SKU 코드/이름 검색 입력이 노출되어야 합니다",
+    ).toBeVisible({ timeout: ELEMENT_TIMEOUT });
+
+    await expect(
+      page.getByRole("button", { name: "검색", exact: false }),
+      "검색 버튼이 노출되어야 합니다",
+    ).toBeVisible({ timeout: ELEMENT_TIMEOUT });
+
+    // 테이블 헤더 — SKU명 컬럼 존재
+    await expect(
+      page.locator("table thead th").filter({ hasText: "SKU명" }),
+      "테이블 헤더에 'SKU명' 컬럼이 있어야 합니다",
+    ).toBeVisible({ timeout: ELEMENT_TIMEOUT });
+  });
+
+  test("QA39-SEARCH-01: 실제 SKU명으로 검색 시 결과 노출 (QA-39 회귀 방지)", async ({
+    page,
+  }) => {
+    // 1) 데이터 확보: 첫 행에서 SKU명 추출
+    await expect(
+      page.locator("table tbody tr").first(),
+      "기준선: 검색 전 목록에 데이터가 1건 이상 있어야 합니다",
+    ).toBeVisible({ timeout: ELEMENT_TIMEOUT });
+
+    const skuNameCol = await page
+      .locator("table thead th")
+      .allTextContents()
+      .then((cols) => cols.findIndex((c) => c.trim() === "SKU명"));
+    expect(skuNameCol, "SKU명 컬럼 인덱스를 찾아야 합니다").toBeGreaterThan(0);
+
+    const firstSkuName = (
+      await page
+        .locator("table tbody tr")
+        .first()
+        .locator("td")
+        .nth(skuNameCol)
+        .textContent()
+    )?.trim();
+    expect(
+      firstSkuName && firstSkuName.length > 0,
+      "첫 행의 SKU명을 추출할 수 있어야 합니다",
+    ).toBe(true);
+
+    // SKU명에서 검색 가능한 토큰 추출 (괄호/파이프 구분자 제외)
+    // 예: "(미사용)아이딧(IDID)|P_9506_IDID_19|볼빵빵ver." → "아이딧"
+    const searchToken =
+      firstSkuName!
+        .replace(/\([^)]*\)/g, "") // 괄호 안 내용 제거
+        .split("|")[0] // 파이프 첫 토큰
+        .trim()
+        .slice(0, 8) || firstSkuName!.slice(0, 5);
+
+    console.log(`  ℹ️ 추출 토큰: "${searchToken}" (원본: "${firstSkuName}")`);
+
+    // 2) 검색 실행
+    const skuInput = page.getByPlaceholder("SKU 코드, 이름을 입력해주세요");
+    await skuInput.fill(searchToken);
+    await page
+      .getByRole("button", { name: "검색", exact: false })
+      .click({ force: true });
+    await page
+      .waitForLoadState("networkidle", { timeout: 15000 })
+      .catch(() => {});
+    await page.waitForTimeout(1500);
+
+    // 3) 결과 검증: 결과가 있고, 모든 행의 SKU명에 검색 토큰 포함
+    const rowCount = await page.locator("table tbody tr").count();
+    expect(
+      rowCount,
+      `SKU명 "${searchToken}" 검색 시 결과가 있어야 합니다 (QA-39 회귀 방지)`,
+    ).toBeGreaterThan(0);
+
+    const resultSkuNames = await page
+      .locator("table tbody tr")
+      .evaluateAll(
+        (rows, idx) =>
+          rows.map((r) =>
+            (r as HTMLElement).querySelectorAll("td")[idx]?.textContent?.trim(),
+          ),
+        skuNameCol,
+      );
+
+    const mismatches = resultSkuNames.filter(
+      (name) => !name?.includes(searchToken),
+    );
+    expect(
+      mismatches.length,
+      `검색 결과의 모든 SKU명에 토큰이 포함되어야 합니다. 불일치: ${JSON.stringify(mismatches)}`,
+    ).toBe(0);
+
+    console.log(
+      `  ✅ QA-39 회귀 없음 — "${searchToken}" 검색 → ${rowCount}건 노출, 전부 포함`,
+    );
+  });
+
+  test("QA39-SEARCH-02: 존재하지 않는 SKU명 검색 시 빈 결과 표시", async ({
+    page,
+  }) => {
+    const noiseToken = `__NO_MATCH_${Date.now()}__`;
+    await page
+      .getByPlaceholder("SKU 코드, 이름을 입력해주세요")
+      .fill(noiseToken);
+    await page
+      .getByRole("button", { name: "검색", exact: false })
+      .click({ force: true });
+    await page
+      .waitForLoadState("networkidle", { timeout: 15000 })
+      .catch(() => {});
+    await page.waitForTimeout(1500);
+
+    // 데이터 행 0 또는 "결과 없음" 메시지
+    const rowCount = await page.locator("table tbody tr").count();
+    const hasNoResult = await page
+      .getByText(/검색결과가 없습니다|결과가 없|데이터가 없/)
+      .first()
+      .isVisible({ timeout: 2000 })
+      .catch(() => false);
+
+    expect(
+      rowCount === 0 || hasNoResult,
+      `존재하지 않는 SKU명 검색 시 결과 없음이 표시되어야 합니다 (rows=${rowCount}, noResultMsg=${hasNoResult})`,
+    ).toBe(true);
+  });
+});
