@@ -35,24 +35,6 @@ jobs:
             });
             console.log('CMR (prod) dispatched');
 
-      - name: Trigger CMR (stg)
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.actions.createWorkflowDispatch({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: 'playwright.yml',
-              ref: 'main',
-              inputs: {
-                suite: 'cmr',
-                environment: 'stg',
-                retries: '3',
-                notify_slack: 'true',
-              },
-            });
-            console.log('CMR (stg) dispatched');
-
       - name: Trigger AlbumBuddy (prod)
         uses: actions/github-script@v7
         with:
