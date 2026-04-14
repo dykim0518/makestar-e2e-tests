@@ -136,6 +136,7 @@ export default defineConfig({
         "**/admin_user_pom.spec.ts",
         "**/admin_artist_pom.spec.ts",
         "**/admin_isms_*.spec.ts",
+        "**/admin_excel*pom.spec.ts",
         "**/auto_*_pom.spec.ts",
       ],
       dependencies: ["admin-setup"], // Setup 프로젝트에 의존
