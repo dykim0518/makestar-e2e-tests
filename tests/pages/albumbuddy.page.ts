@@ -122,11 +122,7 @@ export class AlbumBuddyPage extends BasePage {
     this.aboutButton = page.getByRole("button", { name: "About" });
     this.pricingButton = page.getByRole("button", { name: "Pricing" });
     this.dashboardButton = page.getByRole("button", { name: "Dashboard" });
-    this.requestItemButton = page
-      .locator(
-        'button:has-text("Request item"), a:has-text("Request item"), [role="button"]:has-text("Request item")',
-      )
-      .first();
+    this.requestItemButton = page.getByText(/^\s*Request item\s*$/i).first();
 
     // 기타 요소
     this.showMoreButton = page.getByText("Show more").first();
@@ -293,14 +289,34 @@ export class AlbumBuddyPage extends BasePage {
   /**
    * 버튼 클릭으로 네비게이션
    */
-  async clickNavButton(buttonName: string): Promise<void> {
-    await this.page.evaluate((name) => {
-      const btn = Array.from(document.querySelectorAll("button")).find((b) =>
-        b.textContent?.includes(name),
-      );
-      if (btn) btn.click();
-    }, buttonName);
-    await this.wait(2000);
+  async clickNavButton(buttonName: string): Promise<boolean> {
+    const escapedName = escapeRegExp(buttonName);
+    const exactNamePattern = new RegExp(`^\\s*${escapedName}\\s*$`, "i");
+
+    await this.ensureNavigationMenuVisible(buttonName);
+
+    const candidates = [
+      this.page.getByRole("button", { name: exactNamePattern }).first(),
+      this.page.getByRole("link", { name: exactNamePattern }).first(),
+      this.page.getByText(exactNamePattern).first(),
+      this.page
+        .locator('button, a, [role="button"], [role="menuitem"]')
+        .filter({ hasText: exactNamePattern })
+        .first(),
+    ];
+
+    for (const candidate of candidates) {
+      const visible = await candidate
+        .isVisible({ timeout: this.timeouts.short })
+        .catch(() => false);
+      if (!visible) continue;
+
+      await candidate.click().catch(() => {});
+      await this.wait(2000);
+      return true;
+    }
+
+    return false;
   }
 
   // --------------------------------------------------------------------------
@@ -313,24 +329,26 @@ export class AlbumBuddyPage extends BasePage {
   async verifyNavButtons(): Promise<void> {
     const isMobile = await this.isMobileViewport();
     if (isMobile) {
-      const hasMenuToggle = await this.hasMobileMenuToggle();
-      const hasAnyNavEntryInDom =
-        (await this.page
-          .locator('button:has-text("About"), a:has-text("About")')
-          .count()) > 0 ||
-        (await this.page
-          .locator('button:has-text("Pricing"), a:has-text("Pricing")')
-          .count()) > 0 ||
-        (await this.page
-          .locator('button:has-text("Dashboard"), a:has-text("Dashboard")')
-          .count()) > 0 ||
-        (await this.requestItemButton.count()) > 0;
+      const hasVisibleNavEntry =
+        (await this.isNavigationEntryVisible("About", this.timeouts.short)) ||
+        (await this.isNavigationEntryVisible("Pricing", this.timeouts.short)) ||
+        (await this.isNavigationEntryVisible(
+          "Dashboard",
+          this.timeouts.short,
+        )) ||
+        (await this.isNavigationEntryVisible(
+          "Request item",
+          this.timeouts.short,
+        ));
 
-      expect(
-        hasMenuToggle || hasAnyNavEntryInDom,
-        "모바일에서는 메뉴 토글 또는 주요 네비게이션 엔트리가 DOM에 존재해야 합니다",
-      ).toBe(true);
-      return;
+      if (!hasVisibleNavEntry) {
+        const opened = await this.openMobileMenuFallback();
+        expect(opened, "모바일 메뉴를 열 수 있어야 합니다").toBe(true);
+        await this.waitForContentStable("body", {
+          timeout: this.timeouts.long,
+          stableTime: 400,
+        }).catch(() => {});
+      }
     }
 
     await this.ensureNavigationMenuVisible("About");
@@ -427,6 +445,44 @@ export class AlbumBuddyPage extends BasePage {
   }
 
   /**
+   * 상품 카드 수를 반환
+   */
+  async getVisibleProductCardCount(): Promise<number> {
+    const albumGridCards = this.page.locator(".album__grid > div > div");
+    const gridCount = await albumGridCards.count().catch(() => 0);
+    if (gridCount > 0) {
+      return gridCount;
+    }
+
+    return this.page
+      .locator('div:has(img[alt="image"]):has(p:has-text("$"))')
+      .count()
+      .catch(() => 0);
+  }
+
+  /**
+   * 홈/검색 타일 이미지 수를 반환
+   */
+  async getVisibleImageTileCount(): Promise<number> {
+    return this.page.evaluate(() => {
+      const images = Array.from(
+        document.querySelectorAll('img[alt="image"]'),
+      ) as HTMLImageElement[];
+
+      return images.filter((img) => {
+        const style = window.getComputedStyle(img);
+        const rect = img.getBoundingClientRect();
+        return (
+          style.display !== "none" &&
+          style.visibility !== "hidden" &&
+          rect.width > 0 &&
+          rect.height > 0
+        );
+      }).length;
+    });
+  }
+
+  /**
    * Request item 모달/페이지 확인
    */
   async clickRequestItemAndVerify(): Promise<{
@@ -438,13 +494,36 @@ export class AlbumBuddyPage extends BasePage {
     let triggered = false;
 
     if (visible) {
-      await this.requestItemButton.click();
-      triggered = true;
+      const requestItemCandidates = [
+        this.requestItemButton,
+        this.page.getByRole("button", { name: /^\s*Request item\s*$/i }).first(),
+        this.page.getByRole("link", { name: /^\s*Request item\s*$/i }).first(),
+      ];
+
+      for (const candidate of requestItemCandidates) {
+        const isVisible = await candidate
+          .isVisible({ timeout: this.timeouts.short })
+          .catch(() => false);
+        if (!isVisible) continue;
+
+        await candidate.click().catch(() => {});
+        triggered = true;
+        break;
+      }
     } else {
-      // 모바일에서 숨김 상태로 렌더링되는 CTA는 DOM click fallback으로 동작 검증
+      // 모바일에서 숨김 상태인 경우에도 정확히 Request item 엔트리만 대상으로 합니다.
       triggered = await this.page.evaluate(() => {
-        const target = Array.from(document.querySelectorAll("button, a")).find(
-          (el) => /request item/i.test((el.textContent || "").trim()),
+        const target = Array.from(
+          document.querySelectorAll("*"),
+        ).find(
+          (el) =>
+            /^request item$/i.test(
+              (el.textContent || "").replace(/\s+/g, " ").trim(),
+            ) &&
+            window.getComputedStyle(el as Element).display !== "none" &&
+            window.getComputedStyle(el as Element).visibility !== "hidden" &&
+            (el as HTMLElement).getBoundingClientRect().width > 0 &&
+            (el as HTMLElement).getBoundingClientRect().height > 0,
         ) as HTMLElement | undefined;
         if (!target) {
           return false;
@@ -465,11 +544,18 @@ export class AlbumBuddyPage extends BasePage {
       );
       return Array.from(modals).some((m) => {
         const style = window.getComputedStyle(m);
-        return style.display !== "none" && style.visibility !== "hidden";
+        const text = (m.textContent || "").replace(/\s+/g, " ");
+        return (
+          style.display !== "none" &&
+          style.visibility !== "hidden" &&
+          /request item|product url|item url|vendor|submit|album|log in|sign up|continue|enter your email/i.test(
+            text,
+          )
+        );
       });
     });
 
-    const urlChanged = !this.currentUrl.includes("/shop");
+    const urlChanged = /request/i.test(this.currentUrl);
 
     return { modalVisible, urlChanged, triggered };
   }
@@ -509,10 +595,26 @@ export class AlbumBuddyPage extends BasePage {
     if (visible) {
       return true;
     }
+
+    const roleVisible = await this.page
+      .getByRole("button", { name: /^\s*Request item\s*$/i })
+      .first()
+      .isVisible({ timeout: this.timeouts.short })
+      .catch(() => false);
+    if (roleVisible) {
+      return true;
+    }
+
     await this.ensureNavigationMenuVisible("Request item");
     return this.requestItemButton
       .isVisible({ timeout: this.timeouts.short })
-      .catch(() => false);
+      .catch(async () =>
+        this.page
+          .getByRole("button", { name: /^\s*Request item\s*$/i })
+          .first()
+          .isVisible({ timeout: this.timeouts.short })
+          .catch(() => false),
+      );
   }
 
   /**
@@ -546,6 +648,11 @@ export class AlbumBuddyPage extends BasePage {
       return true;
     }
 
+    const exactText = this.page.getByText(exactNamePattern).first();
+    if (await exactText.isVisible({ timeout }).catch(() => false)) {
+      return true;
+    }
+
     const genericTarget = this.page
       .locator('button, a, [role="button"], [role="menuitem"]')
       .filter({ hasText: exactNamePattern })
@@ -557,6 +664,25 @@ export class AlbumBuddyPage extends BasePage {
    * 접근성 이름이 없는 햄버거 버튼을 위한 모바일 메뉴 오픈 fallback
    */
   private async openMobileMenuFallback(): Promise<boolean> {
+    const combinedHeaderMenu = this.page.locator("button.main__header__right").first();
+    if (
+      await combinedHeaderMenu
+        .isVisible({ timeout: this.timeouts.short })
+        .catch(() => false)
+    ) {
+      const box = await combinedHeaderMenu.boundingBox().catch(() => null);
+      if (box) {
+        await combinedHeaderMenu.click({
+          position: {
+            // 이 버튼은 검색+메뉴 아이콘을 함께 감싸므로 오른쪽 끝을 눌러 햄버거를 타겟합니다.
+            x: Math.max(box.width - 16, 1),
+            y: Math.max(box.height / 2, 1),
+          },
+        });
+        return true;
+      }
+    }
+
     const namedMenuButton = this.page
       .getByRole("button", { name: /menu|navigation|more|open/i })
       .first();
@@ -600,7 +726,7 @@ export class AlbumBuddyPage extends BasePage {
         );
       });
 
-      const target = menuLike || visibleTopButtons[0];
+      const target = menuLike;
       if (!target) {
         return false;
       }
@@ -706,9 +832,135 @@ export class AlbumBuddyPage extends BasePage {
   /**
    * 로그인 상태 확인
    */
-  isLoggedIn(): boolean {
-    const url = this.currentUrl;
-    return !url.includes("login") && !url.includes("auth");
+  async isLoggedIn(): Promise<boolean> {
+    return this.isLoggedInState();
+  }
+
+  /**
+   * 현재 컨텍스트의 인증 세션 요약
+   */
+  async getAuthSessionSnapshot(): Promise<{
+    hasRefreshToken: boolean;
+    hasLoggedInUser: boolean;
+    hasAlbumBuddyIndexedDb: boolean;
+  }> {
+    const state = await this.page.context().storageState({ indexedDB: true });
+
+    const hasRefreshToken = state.cookies.some(
+      (cookie) =>
+        cookie.name === "refresh_token" &&
+        /makestar|makeuni/i.test(cookie.domain || ""),
+    );
+
+    const hasLoggedInUser = state.origins.some(
+      (origin) =>
+        /makestar\.com/i.test(origin.origin) &&
+        (origin.localStorage || []).some((entry) => entry.name === "LOGGED_IN_USER"),
+    );
+
+    const hasAlbumBuddyIndexedDb = state.origins.some((origin) => {
+      if (!/albumbuddy\.kr/i.test(origin.origin)) {
+        return false;
+      }
+
+      const indexedDbs = (
+        origin as typeof origin & {
+          indexedDB?: Array<{ name?: string }>;
+        }
+      ).indexedDB || [];
+
+      return indexedDbs.some((db) => /firebaseLocalStorageDb/i.test(db.name || ""));
+    });
+
+    return {
+      hasRefreshToken,
+      hasLoggedInUser,
+      hasAlbumBuddyIndexedDb,
+    };
+  }
+
+  /**
+   * Dashboard에서 로그인 CTA 노출 여부
+   */
+  async hasVisibleLoginEntry(): Promise<boolean> {
+    const getCandidates = () => [
+      this.page.getByRole("button", { name: /^\s*Login\s*$/i }).first(),
+      this.page.getByRole("link", { name: /^\s*Login\s*$/i }).first(),
+      this.page.getByRole("button", { name: /^\s*Sign in\s*$/i }).first(),
+      this.page.getByRole("link", { name: /^\s*Sign in\s*$/i }).first(),
+      this.page.getByText(/^\s*Login\s*$/i).first(),
+      this.page.getByText(/^\s*Sign in\s*$/i).first(),
+    ];
+
+    for (const candidate of getCandidates()) {
+      const visible = await candidate
+        .isVisible({ timeout: this.timeouts.short })
+        .catch(() => false);
+      if (visible) {
+        return true;
+      }
+    }
+
+    if (await this.isMobileViewport()) {
+      await this.ensureNavigationMenuVisible("Login");
+      for (const candidate of getCandidates()) {
+        const visible = await candidate
+          .isVisible({ timeout: this.timeouts.short })
+          .catch(() => false);
+        if (visible) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  private async getDashboardSessionIndicators(): Promise<{
+    hasNoItemsRegistered: boolean;
+    hasOrderRows: boolean;
+    hasMeaningfulCounters: boolean;
+  }> {
+    const pageText = await this.page.evaluate(() => document.body.innerText);
+    const counterLabels = [
+      "Waiting",
+      "Pending",
+      "Paid",
+      "Ordered",
+      "Shipment",
+      "Canceled",
+      "On hold",
+    ];
+    const hasMeaningfulCounters = counterLabels.some((label) =>
+      new RegExp(`\\b([1-9]\\d*)\\s+${escapeRegExp(label)}\\b`, "i").test(
+        pageText,
+      ),
+    );
+    const rowCount = await this.page.locator("table tr").count().catch(() => 0);
+
+    return {
+      hasNoItemsRegistered: /No items registered\./i.test(pageText),
+      hasOrderRows: rowCount > 1,
+      hasMeaningfulCounters,
+    };
+  }
+
+  /**
+   * 실제 로그인 상태 확인
+   */
+  async isLoggedInState(): Promise<boolean> {
+    const url = this.currentUrl.toLowerCase();
+    const session = await this.getAuthSessionSnapshot();
+    const pageText = await this.page.evaluate(() => document.body.innerText);
+
+    return (
+      session.hasRefreshToken &&
+      session.hasLoggedInUser &&
+      session.hasAlbumBuddyIndexedDb &&
+      !url.includes("login") &&
+      !url.includes("auth") &&
+      /my orders|my packages/i.test(pageText)
+    );
   }
 
   /**
@@ -722,13 +974,7 @@ export class AlbumBuddyPage extends BasePage {
     await this.wait(3000);
 
     const currentUrl = this.currentUrl;
-    const hasLoginElement = await this.page.evaluate(
-      () =>
-        document.body.innerText.toLowerCase().includes("sign in") ||
-        document.body.innerText.toLowerCase().includes("log in") ||
-        document.body.innerText.toLowerCase().includes("login") ||
-        document.body.innerText.includes("로그인"),
-    );
+    const hasLoginElement = await this.hasVisibleLoginEntry();
 
     return {
       needsLogin:
@@ -892,14 +1138,30 @@ export class AlbumBuddyPage extends BasePage {
   }> {
     const pageText = await this.page.evaluate(() => document.body.innerText);
 
-    // 주문 테이블 헤더 확인
+    // 데스크톱 테이블 헤더 확인
     const tableHeaders = ["Vendor", "Item", "Quantity", "Price"];
     const foundHeaders = tableHeaders.filter((h) => pageText.includes(h));
     const hasOrderTable = foundHeaders.length >= 2;
 
+    // 모바일은 카드형 목록으로 렌더링될 수 있으므로 개별 아이템 카드도 허용
+    const productImageCount = await this.page
+      .locator('img[alt="image"], img[alt="componentImage"]')
+      .count()
+      .catch(() => 0);
+    const quantityFieldCount = await this.page
+      .getByRole("textbox")
+      .count()
+      .catch(() => 0);
+    const hasMobileItemCard =
+      productImageCount > 0 &&
+      quantityFieldCount > 0 &&
+      /\$\s*\d+(\.\d+)?/.test(pageText);
+
     // 항목 컬럼 존재
     const hasItemColumns =
-      pageText.includes("No items registered") || hasOrderTable;
+      pageText.includes("No items registered") ||
+      hasOrderTable ||
+      hasMobileItemCard;
 
     // 비용 내역 확인
     const costItems = ["Item cost", "Assisted purchasing fee", "Total"];
@@ -963,31 +1225,63 @@ export class AlbumBuddyPage extends BasePage {
    */
   async search(
     query: string,
-  ): Promise<{ success: boolean; hasResults: boolean }> {
+  ): Promise<{
+    success: boolean;
+    hasResults: boolean;
+    resultCount: number;
+    finalUrl: string;
+  }> {
     try {
-      // AlbumBuddy의 검색 입력창 찾기 (홈페이지에 바로 노출됨)
-      const searchInput = this.page
+      let searchInput = this.page
         .locator(
-          'input[placeholder*="검색"], input[placeholder*="search" i], textbox[name*="search" i]',
+          'input[placeholder*="검색"], input[placeholder*="search" i], input[type="search"], textbox[name*="search" i]',
         )
         .first();
 
       if (!(await searchInput.isVisible({ timeout: 5000 }))) {
-        // 검색창이 보이지 않으면 검색 버튼 클릭
         await this.openSearch();
+        searchInput = this.page
+          .locator(
+            'input[placeholder*="검색"], input[placeholder*="search" i], input[type="search"], textbox[name*="search" i]',
+          )
+          .first();
+      }
+
+      const inputVisible = await searchInput
+        .isVisible({ timeout: 5000 })
+        .catch(() => false);
+      if (!inputVisible) {
+        return {
+          success: false,
+          hasResults: false,
+          resultCount: 0,
+          finalUrl: this.currentUrl,
+        };
       }
 
       await searchInput.fill(query);
       await this.wait(500);
-
-      // Enter 키로 검색 실행
       await searchInput.press("Enter");
-      await this.wait(3000);
+      await this.page
+        .waitForFunction(
+          (expected) => {
+            const url = window.location.href;
+            const text = (document.body?.innerText || "").replace(/\s+/g, " ");
+            return (
+              url.includes("/search/result") ||
+              url.toLowerCase().includes(encodeURIComponent(expected).toLowerCase()) ||
+              /there are no matching artists|total\s+\d+/i.test(text)
+            );
+          },
+          query,
+          { timeout: 10000 },
+        )
+        .catch(() => {});
+      await this.wait(1000);
 
-      // 검색 결과 확인 - 상품 카드가 있는지 확인
       const pageText = await this.page.evaluate(() => document.body.innerText);
+      const finalUrl = this.currentUrl;
 
-      // 검색 결과 없음 메시지 확인
       const noResultsIndicators = [
         "No results",
         "검색 결과가 없",
@@ -995,29 +1289,83 @@ export class AlbumBuddyPage extends BasePage {
         "not found",
         "0 result",
         "찾을 수 없",
+        "There are no matching artists",
+        "Total 0",
       ];
 
       const hasNoResults = noResultsIndicators.some((indicator) =>
         pageText.toLowerCase().includes(indicator.toLowerCase()),
       );
 
-      // 상품 카드가 있는지 확인 (가격이 있는 상품)
-      const hasProductCards =
-        pageText.includes("$") &&
-        (await this.page.locator('[cursor=pointer]:has-text("$")').count()) > 0;
+      const resultCount = await this.getVisibleProductCardCount();
+      const albumTotalMatch = pageText.match(/Album\s+Total\s+(\d+)/i);
+      const albumTotal = albumTotalMatch ? Number(albumTotalMatch[1]) : 0;
+      const onSearchResultPage =
+        finalUrl.includes("/search/result") ||
+        finalUrl.includes("/artist/") ||
+        finalUrl.includes("/buddy-shop") ||
+        finalUrl.toLowerCase().includes(encodeURIComponent(query).toLowerCase());
+      const hasResults = !hasNoResults && (albumTotal > 0 || resultCount > 0);
 
-      // 검색어가 결과에 포함되어 있는지 확인
-      const queryInResults = pageText
-        .toLowerCase()
-        .includes(query.toLowerCase());
-
-      // 결과가 있으려면: 결과 없음 메시지가 없고, 상품 카드가 있거나 검색어가 포함되어 있어야 함
-      const hasResults = !hasNoResults && (hasProductCards || queryInResults);
-
-      return { success: true, hasResults };
+      return {
+        success: onSearchResultPage || hasNoResults || hasResults,
+        hasResults,
+        resultCount: Math.max(albumTotal, resultCount),
+        finalUrl,
+      };
     } catch {
-      return { success: false, hasResults: false };
+      return {
+        success: false,
+        hasResults: false,
+        resultCount: 0,
+        finalUrl: this.currentUrl,
+      };
     }
+  }
+
+  /**
+   * 첫 상품의 검색 키워드 추출
+   */
+  async getFirstProductKeyword(): Promise<string> {
+    const artistKeyword = await this.page.evaluate(() => {
+      const imageTiles = Array.from(
+        document.querySelectorAll('img[alt="image"]'),
+      ) as HTMLImageElement[];
+
+      for (const image of imageTiles) {
+        const container = image.closest("div");
+        const text = (container?.textContent || "").replace(/\s+/g, " ").trim();
+        if (!text) continue;
+        if (text.includes("$")) continue;
+        if (text.length > 40) continue;
+        if (/show more|artists|trending/i.test(text)) continue;
+        return text;
+      }
+
+      return "";
+    });
+
+    if (artistKeyword) {
+      return artistKeyword;
+    }
+
+    const albumGridProduct = this.page.locator(".album__grid > div > div").first();
+    const visible = await albumGridProduct
+      .isVisible({ timeout: this.timeouts.medium })
+      .catch(() => false);
+    if (!visible) {
+      return "";
+    }
+
+    const rawText = ((await albumGridProduct.textContent().catch(() => "")) || "")
+      .replace(/\s+/g, " ")
+      .trim();
+    const productName = rawText.split("$")[0].trim();
+    if (!productName) {
+      return "";
+    }
+
+    return productName.substring(0, 40).trim();
   }
 
   /**
@@ -1180,16 +1528,42 @@ export class AlbumBuddyPage extends BasePage {
       };
     }
 
-    // 이미지 확인 (AlbumBuddy는 img[alt="image"] 또는 img[alt="componentImage"] 사용)
-    const hasImage = await this.page
-      .locator('img[alt="image"], img[alt="componentImage"]')
-      .first()
-      .isVisible({ timeout: 5000 })
-      .catch(() => false);
+    await this.page
+      .waitForFunction(() => {
+        const text = document.body.innerText || "";
+        const hasImage = document.querySelectorAll(
+          'img[alt="image"], img[alt="componentImage"]',
+        ).length > 0;
+        const hasPrice = /\$\s*\d+(\.\d+)?/.test(text);
+        const hasAction = /add to assisted purchasing|assisted/i.test(text);
+        return hasImage || hasPrice || hasAction;
+      })
+      .catch(() => {});
+
+    // 이미지 확인 (모바일에서는 viewport 밖이거나 lazy-load일 수 있어 visible만으로 보지 않음)
+    const productImages = this.page.locator(
+      'img[alt="image"], img[alt="componentImage"]',
+    );
+    const imageCount = await productImages.count().catch(() => 0);
+    let hasImage = false;
+    if (imageCount > 0) {
+      const firstImg = productImages.first();
+      const naturalWidth = await firstImg
+        .evaluate((img: HTMLImageElement) => img.naturalWidth)
+        .catch(() => 0);
+      const visible = await firstImg.isVisible({ timeout: 3000 }).catch(() => false);
+      hasImage = naturalWidth > 0 || visible;
+    }
 
     // 가격 확인 ($ 기호가 있는 요소)
     const pageText = await this.page.evaluate(() => document.body.innerText);
-    const hasPrice = pageText.includes("$") && /\$\s*\d+/.test(pageText);
+    const hasPrice =
+      /\$\s*\d+(\.\d+)?/.test(pageText) ||
+      (await this.page
+        .locator('text=/\\$\\s*\\d+(\\.\\d+)?/')
+        .first()
+        .isVisible({ timeout: 3000 })
+        .catch(() => false));
 
     // 타이틀/상품명 확인 (상품 제목이 포함된 요소)
     const hasTitle =

@@ -33,6 +33,14 @@ import { checkAuthFile } from "./helpers/auth-utils";
 // 상수 및 헬퍼
 // ============================================================================
 const AUTH_FILE = path.join(__dirname, "..", "ab-auth.json");
+const AB_AUTH_REQUIREMENTS = {
+  requiredCookies: [
+    { name: /refresh_token/i, domain: /makestar|makeuni/i },
+  ],
+  requiredLocalStorage: [
+    { origin: /makestar\.com/i, key: /^LOGGED_IN_USER$/i },
+  ],
+} as const;
 
 // ============================================================================
 // Health Check - 서비스 상태 확인
@@ -191,27 +199,27 @@ test.describe("홈페이지", () => {
         "홈페이지에 Artists 또는 추천 섹션이 있어야 합니다",
       ).toBe(true);
 
+      const beforeCount = await albumbuddy.getVisibleImageTileCount();
       const clicked = await albumbuddy.clickShowMore();
-      console.log(`Show more 버튼: ${clicked ? "클릭됨" : "없음"}`);
+      const afterCount = await albumbuddy.getVisibleImageTileCount();
+      console.log(
+        `Show more 버튼: ${clicked ? "클릭됨" : "없음"} (타일 ${beforeCount} -> ${afterCount})`,
+      );
 
       if (clicked) {
-        const contentLength = await page.evaluate(
-          () => document.body.innerText.length,
-        );
         expect(
-          contentLength,
-          "Show more 클릭 후 콘텐츠가 있어야 합니다",
-        ).toBeGreaterThan(100);
+          afterCount,
+          "Show more 클릭 후 표시된 타일 수가 증가해야 합니다",
+        ).toBeGreaterThan(beforeCount);
       } else {
-        // Show more 버튼이 없으면 상품이 이미 모두 표시되어 있는지 확인
-        const productCount = await page
-          .locator(".album__grid > div > div")
-          .count();
         expect(
-          productCount,
+          beforeCount,
           "Show more 없이도 상품이 표시되어야 합니다",
         ).toBeGreaterThan(0);
-        console.log(`Show more 없음 — 표시된 상품: ${productCount}개`);
+        await expect(albumbuddy.showMoreButton).not.toBeVisible({
+          timeout: 2000,
+        });
+        console.log(`Show more 없음 — 현재 표시된 상품: ${beforeCount}개`);
       }
     });
   });
@@ -238,19 +246,33 @@ test.describe("홈페이지", () => {
       );
     });
 
-    test("AB-SEARCH-02: 아티스트 검색 (BTS)", async ({ page }) => {
+    test("AB-SEARCH-02: 첫 상품명 검색 결과 확인", async ({ page }) => {
       albumbuddy = new AlbumBuddyPage(page);
       await albumbuddy.gotoHome();
 
-      const { success, hasResults } = await albumbuddy.search("BTS");
+      const searchKeyword = await albumbuddy.getFirstProductKeyword();
+      expect(
+        searchKeyword.length,
+        "검색 가능한 첫 상품명을 찾을 수 있어야 합니다",
+      ).toBeGreaterThan(0);
 
-      // 검색 기능이 동작해야 함
-      expect(success, "검색 기능이 정상적으로 동작해야 합니다").toBe(true);
+      const { success, hasResults, resultCount, finalUrl } =
+        await albumbuddy.search(searchKeyword);
+
+      expect(success, "검색 결과 페이지로 이동해야 합니다").toBe(true);
+      expect(
+        /\/search\/result|\/artist\/|\/buddy-shop/i.test(finalUrl),
+        `검색 결과 URL이어야 합니다 (현재 URL: ${finalUrl})`,
+      ).toBe(true);
 
       if (success) {
-        console.log(`검색 결과: ${hasResults ? "있음" : "없음"}`);
-        // BTS 검색 시 결과가 있어야 함 (유명 아티스트)
-        expect(hasResults, "BTS 검색 시 결과가 있어야 합니다").toBe(true);
+        console.log(
+          `검색 키워드: ${searchKeyword}, 검색 결과: ${hasResults ? "있음" : "없음"} (${resultCount}건)`,
+        );
+        expect(
+          hasResults,
+          `첫 상품명(${searchKeyword}) 검색 시 결과가 있어야 합니다`,
+        ).toBe(true);
       }
     });
 
@@ -583,7 +605,7 @@ test.describe("Dashboard", () => {
 
   // 로그인 상태 테스트
   test.describe("인증 세션 검증", () => {
-    const authStatus = checkAuthFile(AUTH_FILE);
+      const authStatus = checkAuthFile(AUTH_FILE, AB_AUTH_REQUIREMENTS);
 
     test.use({
       storageState: authStatus.available
@@ -591,17 +613,36 @@ test.describe("Dashboard", () => {
         : { cookies: [], origins: [] },
     });
 
-    test("AB-AUTH-03: 인증 세션 파일 유효성", async () => {
+    test("AB-AUTH-03: 인증 세션 파일 유효성", async ({ page }) => {
+      const albumbuddy = new AlbumBuddyPage(page);
+
       expect(
         authStatus.available,
         `인증 실패: ${authStatus.reason}\n` +
           `해결방법: npx playwright test tests/ab-save-auth.spec.ts -g "로그인" --headed --project=chromium`,
       ).toBe(true);
+
+      await albumbuddy.gotoDashboardPurchasing();
+      const session = await albumbuddy.getAuthSessionSnapshot();
+      const isLoggedIn = await albumbuddy.isLoggedIn();
+
+      expect(
+        session.hasRefreshToken,
+        "AlbumBuddy 세션에 Makestar refresh_token 쿠키가 있어야 합니다",
+      ).toBe(true);
+      expect(
+        session.hasLoggedInUser,
+        "AlbumBuddy 세션에 LOGGED_IN_USER 정보가 있어야 합니다",
+      ).toBe(true);
+      expect(
+        isLoggedIn,
+        `Dashboard에서 실제 로그인 상태로 인식되어야 합니다 (현재 URL: ${albumbuddy.currentUrl})`,
+      ).toBe(true);
     });
   });
 
   test.describe("Purchasing", () => {
-    const authStatus = checkAuthFile(AUTH_FILE);
+    const authStatus = checkAuthFile(AUTH_FILE, AB_AUTH_REQUIREMENTS);
 
     test.use({
       storageState: authStatus.available
@@ -618,6 +659,10 @@ test.describe("Dashboard", () => {
       const currentUrl = albumbuddy.currentUrl;
       expect(currentUrl).toContain("purchasing");
       expect(currentUrl.includes("login")).toBe(false);
+      expect(
+        await albumbuddy.isLoggedIn(),
+        "Purchasing 페이지에서 실제 로그인 상태여야 합니다",
+      ).toBe(true);
     });
 
     test("AB-PAGE-10: Purchasing 페이지 콘텐츠 로드", async ({ page }) => {
@@ -638,7 +683,7 @@ test.describe("Dashboard", () => {
         dashContent.hasStatusCounters,
         "Dashboard에 상태 카운터(Waiting, Pending 등)가 있어야 합니다",
       ).toBe(true);
-      expect(albumbuddy.isLoggedIn()).toBe(true);
+      expect(await albumbuddy.isLoggedIn()).toBe(true);
     });
 
     test("AB-PAGE-11: 구매 내역 UI 요소 확인", async ({ page }) => {
@@ -656,11 +701,12 @@ test.describe("Dashboard", () => {
         purchasingContent.hasCostBreakdown,
         "비용 내역(Item cost, Total 등)이 있어야 합니다",
       ).toBe(true);
+      expect(await albumbuddy.isLoggedIn()).toBe(true);
     });
   });
 
   test.describe("Package", () => {
-    const authStatus = checkAuthFile(AUTH_FILE);
+    const authStatus = checkAuthFile(AUTH_FILE, AB_AUTH_REQUIREMENTS);
 
     test.use({
       storageState: authStatus.available
@@ -679,6 +725,7 @@ test.describe("Dashboard", () => {
         currentUrl.includes("package") || currentUrl.includes("dashboard"),
         "Package 페이지로 이동해야 합니다",
       ).toBe(true);
+      expect(await albumbuddy.isLoggedIn()).toBe(true);
     });
 
     test("AB-PAGE-13: Package 페이지 콘텐츠 로드", async ({ page }) => {
@@ -694,7 +741,7 @@ test.describe("Dashboard", () => {
         dashContent.hasOrderTabs,
         "Package 페이지에 주문/패키지 탭이 있어야 합니다",
       ).toBe(true);
-      expect(albumbuddy.isLoggedIn()).toBe(true);
+      expect(await albumbuddy.isLoggedIn()).toBe(true);
     });
 
     test("AB-PAGE-14: Package 페이지 콘텐츠 확인", async ({ page }) => {
@@ -710,6 +757,7 @@ test.describe("Dashboard", () => {
         packageContent.hasPackageContent,
         "Package 관련 콘텐츠가 있어야 합니다",
       ).toBe(true);
+      expect(await albumbuddy.isLoggedIn()).toBe(true);
     });
   });
 });
