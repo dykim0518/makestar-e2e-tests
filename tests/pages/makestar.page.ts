@@ -1978,22 +1978,18 @@ export class MakestarPage extends BasePage {
 
   /** 장바구니 총 금액 반환 (정수, 원화 또는 센트) — EN/KO 다국어 지원 */
   async getCartTotalPrice(): Promise<number | null> {
-    // "Total price" 또는 "총 상품금액" 등 다국어 라벨 탐색
-    const totalLabel = this.page
-      .getByText(/Total price|총\s*상품금액|총\s*금액/i)
-      .first();
-    if (
-      await totalLabel
-        .isVisible({ timeout: this.timeouts.short })
-        .catch(() => false)
-    ) {
-      const parent = totalLabel.locator("xpath=..");
-      const parentText = await parent.textContent().catch(() => "");
-      if (parentText) {
-        return this.parsePriceText(parentText);
+    // 장바구니 반영 직후 Total이 잠깐 0/null 상태일 수 있어 짧게 재시도합니다.
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const price = await this.getCurrentPrice();
+      if (price !== null && price > 0) {
+        return price;
       }
+
+      await this.waitForNetworkStable().catch(() => {});
+      await this.waitForContentStable(400).catch(() => {});
     }
-    return null;
+
+    return await this.getCurrentPrice();
   }
 
   /** 가격 문자열에서 숫자를 추출 (달러→센트, 원화→정수, ₩ 기호 지원) */
