@@ -31,7 +31,7 @@ test.describe("POCAAlbum Admin Shop 테스트", () => {
   // ========================================================================
   // Shop 상품 목록 + 검색 + 토글
   // ========================================================================
-  test.describe("Shop 상품 CRUD", () => {
+  test.describe("Shop 상품 CRUD @feature:admin_pocaalbum.shop.list", () => {
     let shopListPage: PocaShopListPage;
 
     test.beforeEach(async ({ page }) => {
@@ -105,7 +105,7 @@ test.describe("POCAAlbum Admin Shop 테스트", () => {
   // ========================================================================
   // Shop 포인트상품 생성/삭제 (serial)
   // ========================================================================
-  test.describe.serial("Shop 포인트상품 생성/삭제", () => {
+  test.describe.serial("Shop 포인트상품 생성/삭제 @feature:admin_pocaalbum.shop.create", () => {
     let sharedShopTitle = "";
     let sharedShopCreated = false;
 

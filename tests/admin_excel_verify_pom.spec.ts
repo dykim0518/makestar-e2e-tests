@@ -98,7 +98,7 @@ const KEY_MATCH_TARGETS: KeyMatchTarget[] = [
   },
 ];
 
-test.describe("Admin 엑셀 키 컬럼 교집합 (API → Excel)", () => {
+test.describe("Admin 엑셀 키 컬럼 교집합 (API → Excel) @feature:admin_makestar.product.list", () => {
   for (const t of KEY_MATCH_TARGETS) {
     test(`${t.id}: ${t.name}`, async ({ page }) => {
       const capture = captureApi(page, t.listApiPattern);
@@ -207,7 +207,7 @@ const ORDER_VERIFY_TARGETS: OrderVerifyTarget[] = [
   },
 ];
 
-test.describe("Admin 주문 엑셀 → API 역검증", () => {
+test.describe("Admin 주문 엑셀 → API 역검증 @feature:admin_makestar.order.list", () => {
   for (const t of ORDER_VERIFY_TARGETS) {
     test(`${t.id}: ${t.name}`, async ({ page }) => {
       resetAuthCache();
@@ -291,7 +291,7 @@ test.describe("Admin 주문 엑셀 → API 역검증", () => {
 // 3) 필터 조합 검증
 // ===========================================================================
 
-test.describe("Admin 엑셀 필터 조합", () => {
+test.describe("Admin 엑셀 필터 조합 @feature:admin_makestar.order.list", () => {
   test("ORD-FILTER-01: 주문 상태='결제완료' 필터 → 엑셀에 이전 단계 상태 없음", async ({
     page,
   }) => {

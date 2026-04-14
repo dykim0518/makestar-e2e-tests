@@ -49,7 +49,7 @@ test.describe("POCAAlbum Admin 콘텐츠 테스트", () => {
   // ========================================================================
   // Section 5: FAVE 목록 기능
   // ========================================================================
-  test.describe("FAVE 목록 기능", () => {
+  test.describe("FAVE 목록 기능 @feature:admin_pocaalbum.fave.list", () => {
     let faveListPage: PocaFaveListPage;
 
     test.beforeEach(async ({ page }) => {
@@ -129,7 +129,7 @@ test.describe("POCAAlbum Admin 콘텐츠 테스트", () => {
   // ========================================================================
   // FAVE 팩 생성/삭제 (serial)
   // ========================================================================
-  test.describe.serial("FAVE 팩 생성/삭제", () => {
+  test.describe.serial("FAVE 팩 생성/삭제 @feature:admin_pocaalbum.fave.create", () => {
     let sharedFaveTitle = "";
     let sharedFaveCreated = false;
 
@@ -202,7 +202,7 @@ test.describe("POCAAlbum Admin 콘텐츠 테스트", () => {
   // ========================================================================
   // Section 6: BENEFIT 목록 기능
   // ========================================================================
-  test.describe("BENEFIT 목록 기능", () => {
+  test.describe("BENEFIT 목록 기능 @feature:admin_pocaalbum.benefit.list", () => {
     let benefitListPage: PocaBenefitListPage;
 
     test.beforeEach(async ({ page }) => {
@@ -252,7 +252,7 @@ test.describe("POCAAlbum Admin 콘텐츠 테스트", () => {
   // ========================================================================
   // BENEFIT 생성/삭제 (serial)
   // ========================================================================
-  test.describe.serial("BENEFIT 생성/삭제", () => {
+  test.describe.serial("BENEFIT 생성/삭제 @feature:admin_pocaalbum.benefit.create", () => {
     let sharedBenefitTitle = "";
     let sharedBenefitCreated = false;
 
@@ -325,7 +325,7 @@ test.describe("POCAAlbum Admin 콘텐츠 테스트", () => {
   // ========================================================================
   // Section 7: 알림 목록 기능
   // ========================================================================
-  test.describe("알림 목록 기능", () => {
+  test.describe("알림 목록 기능 @feature:admin_pocaalbum.notice.list", () => {
     let notifListPage: PocaNotificationListPage;
 
     test.beforeEach(async ({ page }) => {
@@ -384,7 +384,7 @@ test.describe("POCAAlbum Admin 콘텐츠 테스트", () => {
   // ========================================================================
   // 알림 생성/삭제 (serial)
   // ========================================================================
-  test.describe.serial("알림 생성/삭제", () => {
+  test.describe.serial("알림 생성/삭제 @feature:admin_pocaalbum.notice.create", () => {
     let sharedNotifTitle = "";
     let sharedNotifCreated = false;
 

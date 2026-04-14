@@ -44,7 +44,7 @@ test.describe("POCAAlbum Admin 앨범 테스트", () => {
   // ========================================================================
   // Section 2: 앨범 목록 기능
   // ========================================================================
-  test.describe("앨범 목록 기능", () => {
+  test.describe("앨범 목록 기능 @feature:admin_pocaalbum.album.list", () => {
     let albumListPage: PocaAlbumListPage;
 
     test.beforeEach(async ({ page }) => {
@@ -171,7 +171,7 @@ test.describe("POCAAlbum Admin 앨범 테스트", () => {
   // ========================================================================
   // Section 3: 앨범 CRUD (serial)
   // ========================================================================
-  test.describe.serial("앨범 CRUD", () => {
+  test.describe.serial("앨범 CRUD @feature:admin_pocaalbum.album.create", () => {
     test("PA-CREATE-01: 앨범 생성 폼 입력 및 등록", async ({ page }) => {
       const albumListPage = new PocaAlbumListPage(page);
       const albumCreatePage = new PocaAlbumCreatePage(page);

@@ -41,7 +41,7 @@ const TARGETS: Target[] = [
   // === 상품 ===
   {
     id: "CAT-EXCEL-01",
-    name: "대분류 목록 > 엑셀다운받기",
+    name: "대분류 목록 > 엑셀다운받기 @feature:admin_makestar.product.list",
     url: `${BASE}/product/new/list`,
     buttonText: "엑셀다운받기",
     exact: true,
@@ -49,7 +49,7 @@ const TARGETS: Target[] = [
   },
   {
     id: "PRD-EXCEL-01",
-    name: "상품 목록 > 엑셀다운받기",
+    name: "상품 목록 > 엑셀다운받기 @feature:admin_makestar.event.list",
     url: `${BASE}/event/list`,
     buttonText: "엑셀다운받기",
     exact: true,
@@ -57,7 +57,7 @@ const TARGETS: Target[] = [
   },
   {
     id: "PRD-SHIP-01",
-    name: "상품 목록 > 출고엑셀다운받기",
+    name: "상품 목록 > 출고엑셀다운받기 @feature:admin_makestar.event.list",
     url: `${BASE}/event/list`,
     buttonText: "출고엑셀다운받기",
     exact: true,
@@ -66,7 +66,7 @@ const TARGETS: Target[] = [
   // === 주문 ===
   {
     id: "ORD-SKU-01",
-    name: "주문관리 > 주문-SKU 엑셀 다운로드",
+    name: "주문관리 > 주문-SKU 엑셀 다운로드 @feature:admin_makestar.order.list",
     url: `${BASE}/order/list`,
     buttonText: "주문-SKU 엑셀 다운로드",
     exact: true,
@@ -74,7 +74,7 @@ const TARGETS: Target[] = [
   },
   {
     id: "ORD-V1-01",
-    name: "주문관리 > 주문 엑셀 다운로드",
+    name: "주문관리 > 주문 엑셀 다운로드 @feature:admin_makestar.order.list",
     url: `${BASE}/order/list`,
     buttonText: "주문 엑셀 다운로드",
     exact: true,
@@ -82,7 +82,7 @@ const TARGETS: Target[] = [
   },
   {
     id: "ORD-V2-01",
-    name: "주문관리 > 주문 엑셀 다운로드 V2",
+    name: "주문관리 > 주문 엑셀 다운로드 V2 @feature:admin_makestar.order.list",
     url: `${BASE}/order/list`,
     buttonText: "주문 엑셀 다운로드 V2",
     exact: true,
@@ -90,7 +90,7 @@ const TARGETS: Target[] = [
   },
   {
     id: "ORD-BASIC-01",
-    name: "주문관리 > 엑셀다운받기",
+    name: "주문관리 > 엑셀다운받기 @feature:admin_makestar.order.list",
     url: `${BASE}/order/list`,
     buttonText: "엑셀다운받기",
     exact: true,
@@ -99,7 +99,7 @@ const TARGETS: Target[] = [
   // === 회원 ===
   {
     id: "USR-B2C-01",
-    name: "회원목록 > B2C 회원 관리 > 엑셀다운받기",
+    name: "회원목록 > B2C 회원 관리 > 엑셀다운받기 @feature:admin_makestar.user.list",
     url: `${BASE}/user/list`,
     buttonText: "엑셀다운받기",
     exact: true,
@@ -107,7 +107,7 @@ const TARGETS: Target[] = [
   },
   {
     id: "USR-B2B-01",
-    name: "회원목록 > B2B 회원 관리 > 엑셀다운받기",
+    name: "회원목록 > B2B 회원 관리 > 엑셀다운받기 @feature:admin_makestar.user.list",
     url: `${BASE}/user/list`,
     buttonText: "엑셀다운받기",
     exact: true,
@@ -117,7 +117,7 @@ const TARGETS: Target[] = [
   // === 이벤트 ===
   {
     id: "EVT-WINNER-01",
-    name: "이벤트 당첨자 > 당첨자 선정 엑셀 다운로드",
+    name: "이벤트 당첨자 > 당첨자 선정 엑셀 다운로드 @feature:admin_makestar.eventwinner.detail",
     url: `${BASE}/event-winner/15636?eventTitle=IVE+THE+2ND+ALBUM+%3CREVIVE%2B%3E+MEET%26CALL+EVENT`,
     buttonText: "당첨자 선정 엑셀 다운로드",
     exact: false,
@@ -126,7 +126,7 @@ const TARGETS: Target[] = [
   },
   {
     id: "EVT-SALES-01",
-    name: "이벤트 당첨 관리 > 판매량 정보 다운로드",
+    name: "이벤트 당첨 관리 > 판매량 정보 다운로드 @feature:admin_makestar.eventwinningmanage.detail",
     url: `${BASE}/event-winning-manage/15761?name=NMIXX%201st%20Full%20Album%20[Blue%20Valentine]%20SPECIAL%20LUCKY%20DRAW%20EVENT&code=P_9723_NMIXX_78&status=SALES_END`,
     buttonText: "판매량 정보 다운로드",
     exact: false,

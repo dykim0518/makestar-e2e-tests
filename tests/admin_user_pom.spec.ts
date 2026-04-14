@@ -34,7 +34,7 @@ applyAdminTestConfig("회원관리");
 // ##############################################################################
 // 회원관리 목록
 // ##############################################################################
-test.describe.serial("회원관리 목록", () => {
+test.describe.serial("회원관리 목록 @feature:admin_makestar.user.list", () => {
   let userPage: UserListPage;
 
   test.beforeEach(async ({ page }) => {
@@ -140,7 +140,7 @@ test.describe.serial("회원관리 목록", () => {
 // ##############################################################################
 // 탭 기능
 // ##############################################################################
-test.describe.serial("탭 기능", () => {
+test.describe.serial("탭 기능 @feature:admin_makestar.user.list", () => {
   let userPage: UserListPage;
 
   test.beforeEach(async ({ page }) => {
@@ -192,7 +192,7 @@ test.describe.serial("탭 기능", () => {
 // ##############################################################################
 // 검색 기능
 // ##############################################################################
-test.describe.serial("검색 기능", () => {
+test.describe.serial("검색 기능 @feature:admin_makestar.user.list", () => {
   let userPage: UserListPage;
 
   test.beforeEach(async ({ page }) => {
@@ -307,7 +307,7 @@ test.describe.serial("검색 기능", () => {
 // ##############################################################################
 // 필터 기능
 // ##############################################################################
-test.describe.serial("필터 기능", () => {
+test.describe.serial("필터 기능 @feature:admin_makestar.user.list", () => {
   let userPage: UserListPage;
 
   test.beforeEach(async ({ page }) => {
@@ -430,7 +430,7 @@ test.describe.serial("필터 기능", () => {
 // ##############################################################################
 // 페이지네이션
 // ##############################################################################
-test.describe.serial("페이지네이션", () => {
+test.describe.serial("페이지네이션 @feature:admin_makestar.user.list", () => {
   let userPage: UserListPage;
 
   test.beforeEach(async ({ page }) => {
@@ -511,7 +511,7 @@ test.describe.serial("페이지네이션", () => {
 // ##############################################################################
 // 액션
 // ##############################################################################
-test.describe.serial("액션", () => {
+test.describe.serial("액션 @feature:admin_makestar.user.list", () => {
   let userPage: UserListPage;
 
   test.beforeEach(async ({ page }) => {
@@ -588,7 +588,7 @@ test.describe.serial("액션", () => {
 // ##############################################################################
 // 상세 페이지
 // ##############################################################################
-test.describe.serial("상세 페이지", () => {
+test.describe.serial("상세 페이지 @feature:admin_makestar.user.detail", () => {
   let userPage: UserListPage;
 
   test.beforeEach(async ({ page }) => {

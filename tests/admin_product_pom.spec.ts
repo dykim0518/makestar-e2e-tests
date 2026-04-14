@@ -84,7 +84,7 @@ let sharedSkuCode = ""; // SKU 생성 → 상품 등록 시 사용 (선택사항
 // ##############################################################################
 // 1. 대분류 (CAT) - 목록 검증
 // ##############################################################################
-test.describe("대분류 목록", () => {
+test.describe("대분류 목록 @feature:admin_makestar.product.list", () => {
   let categoryPage: CategoryListPage;
 
   // ============================================================================
@@ -250,7 +250,7 @@ test.describe("대분류 목록", () => {
 // ##############################################################################
 // 1. 대분류 (CAT) - 신규 생성
 // ##############################################################################
-test.describe.serial("대분류 생성", () => {
+test.describe.serial("대분류 생성 @feature:admin_makestar.product.create", () => {
   test("CAT-CREATE-01: 대분류 신규 생성 및 검증", async ({ page }) => {
     const categoryListPage = new CategoryListPage(page);
     const categoryCreatePage = new CategoryCreatePage(page);
@@ -385,7 +385,7 @@ test.describe.serial("대분류 생성", () => {
 // ##############################################################################
 // 2. SKU - 목록 검증
 // ##############################################################################
-test.describe.serial("SKU 목록", () => {
+test.describe.serial("SKU 목록 @feature:admin_makestar.sku.list", () => {
   let skuPage: SKUListPage;
 
   // ============================================================================
@@ -639,7 +639,7 @@ test.describe.serial("SKU 목록", () => {
 // ##############################################################################
 // 2. SKU - 신규 생성
 // ##############################################################################
-test.describe.serial("SKU 생성", () => {
+test.describe.serial("SKU 생성 @feature:admin_makestar.sku.create", () => {
   test("SKU-CREATE-01: SKU 신규 생성 및 검증", async ({ page }) => {
     const skuListPage = new SKUListPage(page);
     const skuCreatePage = new SkuCreatePage(page);
@@ -834,7 +834,7 @@ test.describe.serial("SKU 생성", () => {
 // ##############################################################################
 // 3. 상품 (PRD) - 목록 검증
 // ##############################################################################
-test.describe("상품 목록", () => {
+test.describe("상품 목록 @feature:admin_makestar.event.list", () => {
   let eventPage: EventListPage;
 
   // ============================================================================
@@ -993,7 +993,7 @@ test.describe("상품 목록", () => {
 // ##############################################################################
 // 3. 상품 (PRD) - 신규 등록
 // ##############################################################################
-test.describe.serial("상품 등록", () => {
+test.describe.serial("상품 등록 @feature:admin_makestar.event.create", () => {
   test("PRD-CREATE-01: 상품 신규 등록 및 검증", async ({ page }, testInfo) => {
     // 다단계 테스트 (대분류 확인/생성 → 상품등록 → 폼입력 → 저장) — 타임아웃 확장
     test.setTimeout(300_000);
@@ -1671,7 +1671,7 @@ test.describe.serial("상품 등록", () => {
   // 4. 전시 카테고리 — QA-84: 전시 카테고리 생성 불가
   // Jira: https://makestar-product.atlassian.net/browse/QA-84
   // ========================================================================
-  test.describe.serial("전시 카테고리 생성", () => {
+  test.describe.serial("전시 카테고리 생성 @feature:admin_makestar.displaycategory", () => {
     const DC_URL = "https://stage-new-admin.makeuni2026.com/display-category";
     const DC_SUFFIX = Date.now().toString().slice(-6);
     const DC_CATEGORY = {
@@ -1972,7 +1972,7 @@ test.describe.serial("상품 등록", () => {
 // 재현경로: 입고~작업 관리 > 작업 현황 > SKU명 입력 후 검색 → 검색 불가
 // 기대결과: SKU명으로 검색 가능
 // ##############################################################################
-test.describe.serial("포토카드 SKU 작업 현황 — SKU명 검색 (QA-39)", () => {
+test.describe.serial("포토카드 SKU 작업 현황 — SKU명 검색 (QA-39) @feature:admin_makestar.photocardsku.work", () => {
   const TARGET_URL =
     "https://stage-new-admin.makeuni2026.com/photocard-sku/work/pending";
 
