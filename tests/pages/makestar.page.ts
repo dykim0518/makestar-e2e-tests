@@ -62,17 +62,6 @@ export type WebVitalsResult = {
 export const MAKESTAR_TEXT_PATTERNS = {
   ENDED_TAB: ["종료된", "Ended", "Closed", "Past", "종료"] as const,
   ONGOING_TAB: ["진행중", "Ongoing", "진행", "ongoing"] as const,
-  PURCHASE_BTN: [
-    "구매",
-    "buy",
-    "purchase",
-    "Purchase",
-    "Buy",
-    "구매하기",
-    "product.purchase",
-    "Add to Cart",
-    "add to cart",
-  ] as const,
   OPTION_SELECT: [
     "옵션",
     "Option",
@@ -1005,6 +994,11 @@ export class MakestarPage extends BasePage {
     // 팝업 모달 처리 (Close, 닫기 등)
     await this.handleModal();
 
+    if (await this.cancelButton.isVisible({ timeout: 500 }).catch(() => false)) {
+      await this.cancelButton.click().catch(() => {});
+      await this.waitForContentStable(300).catch(() => {});
+    }
+
     // 검색 모달/오버레이가 로고를 가릴 수 있으므로 닫기 시도
     const overlaySelector =
       'div.fixed[class*="z-[40]"], div.fixed.w-\\[100vw\\], div[class*="bg-[rgba(0,0,0"]';
@@ -1139,6 +1133,27 @@ export class MakestarPage extends BasePage {
 
   /** 첫 번째 이벤트 카드 클릭 */
   async clickFirstEventCard(): Promise<void> {
+    const linkCandidates = [
+      this.page.locator('main a[href*="/product/"]').first(),
+      this.page.locator('a[href*="/product/"]').first(),
+      this.page
+        .locator('a[href*="/artist/"][href*="tab=Event"], a[href*="/artist/"][href*="#"]')
+        .first(),
+    ];
+
+    for (const candidate of linkCandidates) {
+      const visible = await candidate
+        .isVisible({ timeout: this.timeouts.short })
+        .catch(() => false);
+      if (!visible) continue;
+
+      await candidate.click({ timeout: this.timeouts.medium });
+      await this.waitForLoadState("domcontentloaded").catch(() => {});
+      await this.waitForNetworkStable(3000).catch(() => {});
+      console.log("✅ 이벤트 상품 클릭 완료");
+      return;
+    }
+
     const eventCard = await this.findVisibleElement(
       this.eventCardSelectors,
       this.timeouts.long,
@@ -1147,7 +1162,8 @@ export class MakestarPage extends BasePage {
       throw new Error("이벤트 카드를 찾을 수 없습니다");
     }
     await eventCard.element.click({ timeout: this.timeouts.medium });
-    await this.waitForLoadState("domcontentloaded");
+    await this.waitForLoadState("domcontentloaded").catch(() => {});
+    await this.waitForNetworkStable(3000).catch(() => {});
     console.log("✅ 이벤트 상품 클릭 완료");
   }
 
@@ -1161,10 +1177,11 @@ export class MakestarPage extends BasePage {
     const cardCount = await productCards.count();
     console.log(`   상품 카드 ${cardCount}개 발견`);
 
-    for (let i = 0; i < Math.min(cardCount, 5); i++) {
+    for (let i = 0; i < Math.min(cardCount, 8); i++) {
       const card = productCards.nth(i);
-      const parentText = await card
-        .locator("xpath=ancestor::*[3]")
+      const cardLink = card.locator("xpath=ancestor::a[1]").first();
+      const href = (await cardLink.getAttribute("href").catch(() => "")) || "";
+      const parentText = await cardLink
         .textContent()
         .catch(() => "");
 
@@ -1173,10 +1190,90 @@ export class MakestarPage extends BasePage {
         continue;
       }
 
+      if (!/\/product\//i.test(href)) {
+        console.log(`   상품 ${i + 1}: 상품 상세 링크 아님 (${href || "href 없음"})`);
+        continue;
+      }
+
       console.log(`   상품 ${i + 1}: 클릭 시도`);
-      await card.click();
-      return true;
+      await cardLink.click();
+      await this.waitForLoadState("domcontentloaded").catch(() => {});
+      await this.waitForNetworkStable(3000).catch(() => {});
+
+      if (/\/product\/\d+/i.test(this.currentUrl)) {
+        console.log(`   ✅ 상품 상세 진입 완료: ${this.currentUrl}`);
+        return true;
+      }
+
+      console.warn(`   ⚠️ 상품 ${i + 1}: 상세 페이지 진입 실패 (${this.currentUrl})`);
+      await this.goto(`${this.baseUrl}/shop`);
+      await this.waitForPageContent();
     }
+    return false;
+  }
+
+  private async hasActiveCartOrPurchaseCta(): Promise<boolean> {
+    for (const selector of this.addToCartSelectors) {
+      const button = this.page.locator(selector).first();
+      const visible = await button
+        .isVisible({ timeout: this.timeouts.short })
+        .catch(() => false);
+      if (!visible) continue;
+
+      const enabled = await button.isEnabled().catch(() => false);
+      if (enabled) {
+        return true;
+      }
+    }
+
+    const purchaseVisible = await this.purchaseButton
+      .isVisible({ timeout: this.timeouts.short })
+      .catch(() => false);
+    if (!purchaseVisible) {
+      return false;
+    }
+
+    return await this.purchaseButton.isEnabled().catch(() => false);
+  }
+
+  private async hasSalesEndedState(): Promise<boolean> {
+    return await this.page
+      .getByText(/This product's sales have ended|Sales Ended|판매 종료|판매가 종료/i)
+      .first()
+      .isVisible({ timeout: this.timeouts.short })
+      .catch(() => false);
+  }
+
+  async openFirstCartEligibleProduct(maxProducts: number = 8): Promise<boolean> {
+    const cardCount = await this.shopProductCard.count();
+    const attemptCount = Math.min(cardCount, maxProducts);
+
+    for (let i = 0; i < attemptCount; i++) {
+      const opened = await this.clickProductCardByIndex(i);
+      if (!opened) continue;
+
+      await this.handleModal().catch(() => {});
+      await this.waitForContentStable(300).catch(() => {});
+
+      if (await this.hasSalesEndedState()) {
+        console.log(`   상품 ${i + 1}: 판매 종료 상품 - 건너뜀`);
+        await this.returnToProductListing();
+        continue;
+      }
+
+      await this.setQuantity(1).catch(() => {});
+      await this.selectFirstOption().catch(() => false);
+      await this.waitForContentStable(300).catch(() => {});
+
+      if (await this.hasActiveCartOrPurchaseCta()) {
+        console.log(`   ✅ 장바구니 가능 상품 ${i + 1}번 선택`);
+        return true;
+      }
+
+      console.log(`   상품 ${i + 1}: 활성 장바구니/구매 CTA 없음 - 다음 상품 시도`);
+      await this.returnToProductListing();
+    }
+
     return false;
   }
 
@@ -1215,6 +1312,11 @@ export class MakestarPage extends BasePage {
     '[class*="dropdown"]',
   ] as const;
 
+  private readonly optionCardSelectors = [
+    '[role="dialog"] div[class*="rounded"][class*="border"]',
+    'div[class*="fixed"][class*="z-40"] div[class*="rounded"][class*="border"]',
+  ] as const;
+
   private readonly quantityInputSelectors = [
     'input[type="number"]',
     '[class*="quantity"] input',
@@ -1227,6 +1329,16 @@ export class MakestarPage extends BasePage {
     '[class*="plus"]',
     '[class*="increase"]',
     'button[aria-label*="increase"]',
+  ] as const;
+
+  private readonly addToCartSelectors = [
+    'button:has-text("장바구니 담기"):not([disabled])',
+    'button:has-text("Add to Cart"):not([disabled])',
+    'button:has-text("장바구니"):not([disabled])',
+    'button:has-text("Cart"):not([disabled])',
+    'button:has-text("cart"):not([disabled])',
+    '[role="dialog"] button:has-text("장바구니"):not([disabled])',
+    '[role="dialog"] button:has-text("Cart"):not([disabled])',
   ] as const;
 
   private readonly artistEntrySelectors = [
@@ -1624,7 +1736,17 @@ export class MakestarPage extends BasePage {
       }
     }
 
-    // 패턴 2: 드롭다운 방식 (일반 셀렉트/커스텀 드롭다운)
+    // 패턴 2: 모바일 옵션 카드 방식 (바텀시트)
+    const optionCards = await this.getVisibleOptionCards();
+    if (optionCards.length > 0) {
+      const selected = await this.selectOptionCard(optionCards[0]);
+      if (selected) {
+        console.log("   ✅ 첫 번째 옵션 선택 (option card)");
+        return true;
+      }
+    }
+
+    // 패턴 3: 드롭다운 방식 (일반 셀렉트/커스텀 드롭다운)
     const optionDropdown = await this.findVisibleElement(
       this.optionDropdownSelectors,
       this.timeouts.medium,
@@ -1727,32 +1849,100 @@ export class MakestarPage extends BasePage {
 
   /** 구매 버튼 클릭 */
   async clickPurchaseButton(): Promise<boolean> {
-    return await this.clickFirstVisibleText(
-      MAKESTAR_TEXT_PATTERNS.PURCHASE_BTN,
-      this.timeouts.long,
-    );
+    const patterns = [
+      /^\s*구매하기\s*$/i,
+      /^\s*구매\s*$/i,
+      /^\s*Buy Now\s*$/i,
+      /^\s*Buy\s*$/i,
+      /^\s*Purchase\s*$/i,
+    ];
+
+    for (const pattern of patterns) {
+      const candidates = [
+        {
+          locator: this.page.getByRole("button", { name: pattern }).last(),
+          label: `role=button ${pattern}`,
+        },
+        {
+          locator: this.page.locator("button").filter({ hasText: pattern }).last(),
+          label: `button ${pattern}`,
+        },
+        {
+          locator: this.page
+            .locator('[role="button"]')
+            .filter({ hasText: pattern })
+            .last(),
+          label: `[role="button"] ${pattern}`,
+        },
+      ];
+
+      for (const candidate of candidates) {
+        const visible = await candidate.locator
+          .isVisible({ timeout: this.timeouts.short })
+          .catch(() => false);
+        if (!visible) continue;
+
+        const enabled = await candidate.locator.isEnabled().catch(() => false);
+        if (!enabled) continue;
+
+        await candidate.locator.click();
+        console.log(`✅ 구매 CTA 클릭: ${candidate.label}`);
+        return true;
+      }
+    }
+
+    return false;
   }
 
   /** 장바구니 담기 버튼 클릭 */
   async clickAddToCartButton(): Promise<boolean> {
-    const selectors = [
-      'button:has-text("Add to Cart"):not([disabled])',
-      'button:has-text("장바구니"):not([disabled])',
-      'button:has-text("Cart"):not([disabled])',
-      'button:has-text("cart"):not([disabled])',
-    ];
+    const tryClickCartButton = async (): Promise<boolean> => {
+      for (const sel of this.addToCartSelectors) {
+        const btn = this.page.locator(sel).first();
+        const visible = await btn
+          .isVisible({ timeout: this.timeouts.short })
+          .catch(() => false);
+        if (!visible) continue;
 
-    for (const sel of selectors) {
-      const btn = this.page.locator(sel).first();
-      if (
-        await btn.isVisible({ timeout: this.timeouts.short }).catch(() => false)
-      ) {
+        const enabled = await btn.isEnabled().catch(() => false);
+        if (!enabled) continue;
+
         await btn.click();
-        console.log("✅ 장바구니 담기 버튼 클릭");
+        console.log(`✅ 장바구니 담기 버튼 클릭: ${sel}`);
         return true;
       }
+      return false;
+    };
+
+    if (await tryClickCartButton()) {
+      return true;
     }
-    return false;
+
+    // 모바일 상품 상세는 바텀시트/다이얼로그를 구매 CTA로 먼저 여는 경우가 있음.
+    const purchaseButtonVisible = await this.purchaseButton
+      .isVisible({ timeout: this.timeouts.short })
+      .catch(() => false);
+    if (!purchaseButtonVisible) {
+      return false;
+    }
+
+    const purchaseButtonEnabled = await this.purchaseButton
+      .isEnabled()
+      .catch(() => false);
+    if (!purchaseButtonEnabled) {
+      return false;
+    }
+
+    await this.purchaseButton.click();
+    await this.waitForNetworkStable(3000).catch(() => {});
+    await this.waitForContentStable(500).catch(() => {});
+
+    // 시트가 열린 뒤 옵션/수량 UI가 나타날 수 있어 한 번 더 맞춰줌.
+    await this.selectFirstOption().catch(() => false);
+    await this.setQuantity(1).catch(() => {});
+    await this.waitForContentStable(300).catch(() => {});
+
+    return await tryClickCartButton();
   }
 
   // --------------------------------------------------------------------------
@@ -1910,7 +2100,7 @@ export class MakestarPage extends BasePage {
 
   /** 로그인 상태 확인 (비동기) */
   async checkLoggedIn(): Promise<boolean> {
-    await this.waitForNetworkStable(2000); // 리다이렉트 대기
+    await this.waitForNetworkStable(2000).catch(() => {}); // 리다이렉트 대기
     const url = this.currentUrl;
     console.log(`📍 현재 URL: ${url}`);
 
@@ -1991,6 +2181,48 @@ export class MakestarPage extends BasePage {
 
   /** 현재 표시된 가격 추출 (숫자만) */
   async getCurrentPrice(): Promise<number | null> {
+    const bodyText = await this.page.locator("body").innerText().catch(() => "");
+    if (bodyText) {
+      const totalPriceMatch = bodyText.match(
+        /(?:Total price|총\s*상품금액|총\s*금액)[\s:]*([₩￦][\d,]+|\$[\d,]+(?:\.\d+)?|[\d,]+\s*원)/i,
+      );
+      if (totalPriceMatch) {
+        const parsed = this.parsePriceText(totalPriceMatch[1]);
+        if (parsed !== null) {
+          return parsed;
+        }
+      }
+    }
+
+    const summaryLabels = [
+      this.page.getByText(/총\s*상품금액|Total price|총\s*금액/i).first(),
+      this.page.locator('text=/총\\s*상품금액|Total price|총\\s*금액/i').first(),
+    ];
+
+    for (const label of summaryLabels) {
+      const visible = await label
+        .isVisible({ timeout: this.timeouts.short })
+        .catch(() => false);
+      if (!visible) continue;
+
+      const parentText = await label
+        .locator("xpath=ancestor::*[self::div or self::section][1]")
+        .textContent()
+        .catch(() => "");
+      if (parentText) {
+        const parsed = this.parsePriceText(parentText);
+        if (parsed !== null) {
+          return parsed;
+        }
+      }
+    }
+
+    const selectedSpinbuttonTotalPrice =
+      await this.getSelectedSpinbuttonTotalPrice();
+    if (selectedSpinbuttonTotalPrice !== null) {
+      return selectedSpinbuttonTotalPrice;
+    }
+
     const priceSelectors = [
       '[class*="price"]',
       '[class*="Price"]',
@@ -2004,10 +2236,9 @@ export class MakestarPage extends BasePage {
       if (await element.isVisible({ timeout: 2000 }).catch(() => false)) {
         const text = await element.textContent();
         if (text) {
-          // 숫자만 추출 ($ 기호, 원, ₩ 등 제거)
-          const priceMatch = text.replace(/[^\d]/g, "");
-          if (priceMatch) {
-            return parseInt(priceMatch, 10);
+          const parsed = this.parsePriceText(text);
+          if (parsed !== null) {
+            return parsed;
           }
         }
       }
@@ -2015,9 +2246,197 @@ export class MakestarPage extends BasePage {
     return null;
   }
 
+  private isMobileViewport(): boolean {
+    const viewportWidth = this.page.viewportSize()?.width ?? 1280;
+    return viewportWidth < 1024;
+  }
+
+  private async getVisibleOptionCards(): Promise<Locator[]> {
+    const cards: Locator[] = [];
+    const seenTexts = new Set<string>();
+
+    for (const selector of this.optionCardSelectors) {
+      const candidates = this.page.locator(selector);
+      const count = await candidates.count().catch(() => 0);
+
+      for (let i = 0; i < count; i++) {
+        const candidate = candidates.nth(i);
+        const visible = await candidate
+          .isVisible({ timeout: this.timeouts.short })
+          .catch(() => false);
+        if (!visible) continue;
+
+        const text = ((await candidate.textContent().catch(() => "")) || "")
+          .replace(/\s+/g, " ")
+          .trim();
+        if (!text) continue;
+        if (/총\s*상품금액|장바구니|구매하기|옵션 선택/i.test(text)) {
+          continue;
+        }
+        if (!(/[₩￦]/.test(text) || /\d[\d,]*\s*원/.test(text))) {
+          continue;
+        }
+        if (seenTexts.has(text)) continue;
+
+        seenTexts.add(text);
+        cards.push(candidate);
+      }
+
+      if (cards.length > 0) {
+        return cards;
+      }
+    }
+
+    return cards;
+  }
+
+  private async getSpinbuttonContextText(spinbutton: Locator): Promise<string> {
+    let fallbackText = "";
+
+    for (let depth = 1; depth <= 4; depth++) {
+      const container = spinbutton.locator(
+        `xpath=ancestor::*[self::div or self::li][${depth}]`,
+      );
+      const text = ((await container.textContent().catch(() => "")) || "")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (!text) continue;
+
+      if (!fallbackText || text.length > fallbackText.length) {
+        fallbackText = text;
+      }
+
+      if (
+        /[₩￦]/.test(text) ||
+        /\d[\d,]*\s*원/.test(text) ||
+        /\$[\d,]+(?:\.\d+)?/.test(text)
+      ) {
+        return text;
+      }
+    }
+
+    return fallbackText;
+  }
+
+  private async getSelectedSpinbuttonTotalPrice(): Promise<number | null> {
+    const spinbuttons = this.page.getByRole("spinbutton");
+    const spinCount = await spinbuttons.count().catch(() => 0);
+    let totalPrice = 0;
+    let hasSelectedOption = false;
+
+    for (let i = 0; i < spinCount; i++) {
+      const spinbutton = spinbuttons.nth(i);
+      const visible = await spinbutton
+        .isVisible({ timeout: this.timeouts.short })
+        .catch(() => false);
+      if (!visible) continue;
+
+      const quantity = parseInt(
+        (await spinbutton.inputValue().catch(() => "0")) || "0",
+        10,
+      );
+      if (Number.isNaN(quantity) || quantity <= 0) continue;
+
+      const rowText = await this.getSpinbuttonContextText(spinbutton);
+      const rowPrice = this.parsePriceText(rowText);
+      if (rowPrice === null) continue;
+
+      totalPrice += rowPrice * quantity;
+      hasSelectedOption = true;
+    }
+
+    return hasSelectedOption ? totalPrice : null;
+  }
+
+  private async selectOptionCard(card: Locator): Promise<boolean> {
+    const previousPrice = await this.getCurrentPrice();
+    await card.scrollIntoViewIfNeeded().catch(() => {});
+    await card.click({ force: true }).catch(() => {});
+    await this.waitForContentStable(300).catch(() => {});
+
+    const nextPrice = await this.getCurrentPrice();
+    if (nextPrice !== null && (previousPrice === null || nextPrice !== previousPrice)) {
+      return true;
+    }
+
+    const selectedClass = (await card.getAttribute("class").catch(() => "")) || "";
+    return /selected|active|accent|primary/i.test(selectedClass);
+  }
+
+  async ensureOptionSelectionVisible(): Promise<boolean> {
+    const firstSpinnerVisible = await this.page
+      .getByRole("spinbutton")
+      .first()
+      .isVisible({ timeout: this.timeouts.short })
+      .catch(() => false);
+    if (firstSpinnerVisible) return true;
+
+    const optionCards = await this.getVisibleOptionCards();
+    if (optionCards.length > 0) return true;
+
+    const optionDropdown = await this.findVisibleElement(
+      this.optionDropdownSelectors,
+      this.timeouts.short,
+    );
+    if (optionDropdown) return true;
+
+    if (!this.isMobileViewport()) {
+      return false;
+    }
+
+    const purchaseClicked = await this.clickPurchaseButton().catch(() => false);
+    if (!purchaseClicked) {
+      return false;
+    }
+
+    await this.waitForNetworkStable(2000).catch(() => {});
+    await this.waitForContentStable(400).catch(() => {});
+
+    if (/dialog=open/i.test(this.currentUrl)) {
+      return true;
+    }
+
+    const refreshedOptionCards = await this.getVisibleOptionCards();
+    return refreshedOptionCards.length > 0;
+  }
+
   /** 옵션 드롭다운 클릭 및 옵션 목록 반환 */
   async getOptionList(): Promise<string[]> {
     const options: string[] = [];
+
+    const spinbuttons = this.page.getByRole("spinbutton");
+    const spinCount = await spinbuttons.count().catch(() => 0);
+    for (let i = 0; i < spinCount; i++) {
+      const spinbutton = spinbuttons.nth(i);
+      const visible = await spinbutton
+        .isVisible({ timeout: this.timeouts.short })
+        .catch(() => false);
+      if (!visible) continue;
+
+      const rowText = await this.getSpinbuttonContextText(spinbutton);
+      options.push(
+        rowText?.replace(/\s+/g, " ").trim() || `option-${i + 1}`,
+      );
+    }
+
+    if (options.length > 0) {
+      return options;
+    }
+
+    const optionCards = await this.getVisibleOptionCards();
+    for (let i = 0; i < optionCards.length; i++) {
+      const text = ((await optionCards[i].textContent().catch(() => "")) || "")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (text) {
+        options.push(text);
+      }
+    }
+
+    if (options.length > 0) {
+      return options;
+    }
+
     const optionDropdown = await this.findVisibleElement(
       this.optionDropdownSelectors,
       this.timeouts.medium,
@@ -2046,6 +2465,54 @@ export class MakestarPage extends BasePage {
 
   /** 특정 인덱스의 옵션 선택 */
   async selectOptionByIndex(index: number): Promise<boolean> {
+    await this.ensureOptionSelectionVisible().catch(() => false);
+
+    const spinbutton = this.page.getByRole("spinbutton").nth(index);
+    const spinVisible = await spinbutton
+      .isVisible({ timeout: this.timeouts.short })
+      .catch(() => false);
+    if (!spinVisible) {
+      return false;
+    }
+
+    const previousValue = parseInt(
+      (await spinbutton.inputValue().catch(() => "0")) || "0",
+      10,
+    );
+    const container = spinbutton.locator("xpath=..");
+    const plusCandidates = [
+      container.locator("img").last(),
+      container.locator("button").last(),
+    ];
+
+    for (const plusButton of plusCandidates) {
+      const visible = await plusButton
+        .isVisible({ timeout: this.timeouts.short })
+        .catch(() => false);
+      if (!visible) continue;
+
+      await plusButton.click().catch(() => {});
+      await this.waitForContentStable(300).catch(() => {});
+
+      const nextValue = parseInt(
+        (await spinbutton.inputValue().catch(() => "0")) || "0",
+        10,
+      );
+      if (nextValue > previousValue) {
+        console.log(`   ✅ 옵션 ${index + 1} 선택 (spinbutton)`);
+        return true;
+      }
+    }
+
+    const optionCards = await this.getVisibleOptionCards();
+    if (index < optionCards.length) {
+      const selected = await this.selectOptionCard(optionCards[index]);
+      if (selected) {
+        console.log(`   ✅ 옵션 ${index + 1} 선택 (option card)`);
+        return true;
+      }
+    }
+
     const optionDropdown = await this.findVisibleElement(
       this.optionDropdownSelectors,
       this.timeouts.medium,
@@ -2062,9 +2529,10 @@ export class MakestarPage extends BasePage {
 
     if (index < count) {
       await optionElements.nth(index).click();
-      console.log(`   ✅ 옵션 ${index + 1} 선택`);
+      console.log(`   ✅ 옵션 ${index + 1} 선택 (dropdown)`);
       return true;
     }
+
     return false;
   }
 
@@ -2460,21 +2928,41 @@ export class MakestarPage extends BasePage {
 
   /** 최근 검색어 관련 요소 표시 확인 */
   async hasRecentSearchIndicators(keyword: string): Promise<boolean> {
-    const selectors = [
-      "text=/최근 검색어|Recent searches|최근 검색|Recent|검색 기록/i",
-      `text=${keyword}`,
-      '[class*="recent"]',
-      '[class*="history"]',
+    const sectionIndicators = [
+      this.page.getByText(/최근 검색어|Recent searches|최근 검색|검색 기록/i),
+      this.page.locator('[class*="recent"], [class*="history"]'),
     ];
-    for (const selector of selectors) {
-      const visible = await this.page
-        .locator(selector)
-        .first()
-        .isVisible({ timeout: 5000 })
+
+    const keywordPattern = new RegExp(
+      keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+      "i",
+    );
+
+    for (const indicator of sectionIndicators) {
+      const container = indicator.first();
+      const visible = await container
+        .isVisible({ timeout: this.timeouts.short })
         .catch(() => false);
-      if (visible) return true;
+      if (!visible) continue;
+
+      const text = (await container.textContent().catch(() => "")) || "";
+      if (keywordPattern.test(text)) {
+        return true;
+      }
     }
-    return false;
+
+    const recentLabelVisible = await this.page
+      .getByText(/최근 검색어|Recent searches|최근 검색|검색 기록/i)
+      .first()
+      .isVisible({ timeout: this.timeouts.short })
+      .catch(() => false);
+    if (!recentLabelVisible) return false;
+
+    return await this.page
+      .getByText(keyword, { exact: false })
+      .first()
+      .isVisible({ timeout: this.timeouts.short })
+      .catch(() => false);
   }
 
   /** 마이페이지 콘텐츠 존재 확인 */
@@ -2619,6 +3107,50 @@ export class MakestarPage extends BasePage {
       await this.page.context().addCookies(this.savedCookiesBeforeEmailLogin);
       this.savedCookiesBeforeEmailLogin = [];
     }
+  }
+
+  /**
+   * 현재 컨텍스트에 적용된 auth storageState 요약을 반환합니다.
+   * auth.json 기반 세션이 정상 주입되었는지 점검할 때 사용합니다.
+   */
+  async getAuthSessionSnapshot(): Promise<{
+    hasRefreshToken: boolean;
+    hasLoggedInUser: boolean;
+    email: string | null;
+  }> {
+    const state = await this.page.context().storageState();
+    const hasRefreshToken = state.cookies.some(
+      (cookie) =>
+        cookie.name === "refresh_token" &&
+        /makestar|makeuni/i.test(cookie.domain ?? ""),
+    );
+
+    let hasLoggedInUser = false;
+    let email: string | null = null;
+
+    for (const origin of state.origins) {
+      if (!/makestar\.com|makeuni/i.test(origin.origin)) continue;
+
+      const loggedInUser = origin.localStorage?.find(
+        (item) => item.name === "LOGGED_IN_USER",
+      );
+      if (!loggedInUser?.value) continue;
+
+      hasLoggedInUser = true;
+      try {
+        const parsed = JSON.parse(loggedInUser.value) as { email?: string };
+        email = parsed.email?.trim() || null;
+      } catch {
+        // localStorage 값이 손상된 경우에도 존재 여부는 유지
+      }
+      break;
+    }
+
+    return {
+      hasRefreshToken,
+      hasLoggedInUser,
+      email,
+    };
   }
 
   /**
