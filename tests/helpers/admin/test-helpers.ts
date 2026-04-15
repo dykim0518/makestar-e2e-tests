@@ -72,6 +72,9 @@ export function clearAuthFailed(): void {
   try {
     fs.unlinkSync(AUTH_FAIL_FILE);
   } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") {
+      return;
+    }
     console.warn(
       `[auth] 인증 실패 상태 초기화 오류: ${e instanceof Error ? e.message : String(e)}`,
     );
@@ -325,12 +328,40 @@ export async function verifyAuthentication(
     };
   }
 
-  // 2. 관리자 페이지가 정상적으로 로드되었는지 확인
-  // SKU 목록 페이지의 핵심 요소가 있는지 확인
+  // 2. 로그인 UI가 보이면 인증 실패로 간주
+  const loginUi = page.locator(
+    [
+      'button:has-text("Login")',
+      'button:has-text("로그인")',
+      'a:has-text("Login")',
+      'a:has-text("로그인")',
+      'input[type="password"]',
+      'input[autocomplete="current-password"]',
+    ].join(", "),
+  );
+  const hasLoginUi = await loginUi.first().isVisible().catch(() => false);
+  if (hasLoginUi) {
+    return {
+      success: false,
+      reason: "로그인 UI가 표시됨 - 저장된 세션이 실제 로그인 상태가 아닙니다.",
+    };
+  }
+
+  // 3. 관리자 페이지가 정상적으로 로드되었는지 확인
+  // 핵심 관리자 UI가 보이고 로그인 CTA가 없어야 성공으로 간주
   try {
-    // 페이지 제목 또는 핵심 UI 요소 확인 (3초 타임아웃)
     const hasAdminContent = await page
-      .locator('h1, h2, nav, table, [class*="header"], [class*="nav"]')
+      .locator(
+        [
+          "h1",
+          "h2",
+          "table",
+          'nav[aria-label="Breadcrumb"]',
+          'button:has-text("등록하기")',
+          'button:has-text("SKU 생성")',
+          'button:has-text("대분류 생성")',
+        ].join(", "),
+      )
       .first()
       .isVisible({ timeout: 3000 });
     if (hasAdminContent) {
@@ -338,7 +369,7 @@ export async function verifyAuthentication(
     }
   } catch {}
 
-  // 3. HTTP 에러 응답 확인 (타이틀이나 body에 명시적 에러 메시지가 있는 경우)
+  // 4. HTTP 에러 응답 확인 (타이틀이나 body에 명시적 에러 메시지가 있는 경우)
   const pageTitle = await page.title();
   if (
     pageTitle.includes("401") ||
@@ -353,9 +384,12 @@ export async function verifyAuthentication(
     };
   }
 
-  // 4. 어드민 도메인에 정상적으로 있으면 성공으로 간주
+  // 5. 어드민 도메인에 있더라도 핵심 UI가 확인되지 않으면 실패로 간주
   if (currentUrl.includes("stage-new-admin.makeuni2026.com")) {
-    return { success: true };
+    return {
+      success: false,
+      reason: `어드민 도메인에는 있으나 핵심 UI가 확인되지 않음: ${currentUrl}`,
+    };
   }
 
   return {

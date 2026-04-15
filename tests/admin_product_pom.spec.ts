@@ -80,6 +80,8 @@ applyAdminTestConfig("상품 메뉴");
 // ============================================================================
 let sharedCategoryName = ""; // 대분류 생성 → 상품 등록 시 사용
 let sharedSkuCode = ""; // SKU 생성 → 상품 등록 시 사용 (선택사항)
+const DEDICATED_TEST_ARTIST =
+  process.env.ADMIN_TEST_ARTIST ?? "SBS 드라마 <오늘부터 인간입니다만>";
 
 function buildSearchToken(source: string): string {
   const normalized = source
@@ -386,8 +388,8 @@ test.describe
       // 유통사 선택 ("메이크스타" 검색)
       await categoryCreatePage.selectDistributor("메이크스타");
 
-      // 아티스트 선택 ("테스트123")
-      await categoryCreatePage.selectArtist("테스트123");
+      // 아티스트 선택 (고정 테스트 아티스트)
+      await categoryCreatePage.selectArtist(DEDICATED_TEST_ARTIST);
 
       // 발매일 (오늘 날짜)
       await categoryCreatePage.fillReleaseDate(today);
@@ -768,7 +770,7 @@ test.describe.serial("SKU 생성 @feature:admin_makestar.sku.create", () => {
 
       // 3-3: 아티스트 선택 - POM 메서드 사용
       console.log("  3-3: 아티스트 선택");
-      await skuCreatePage.selectArtist("테스트123");
+      await skuCreatePage.selectArtist(DEDICATED_TEST_ARTIST);
 
       // 3-4: 카테고리 선택 (음반 > LP) - POM 메서드 사용
       console.log("  3-4: 카테고리 선택");
@@ -1080,7 +1082,7 @@ test.describe.serial("상품 등록 @feature:admin_makestar.event.create", () =>
           nameKr: fixedTestCategory,
           nameEn: "[Automation] Dedicated Category",
           distributor: "메이크스타",
-          artist: "테스트123",
+          artist: DEDICATED_TEST_ARTIST,
           releaseDate: today,
           imagePath: "fixtures/ta_sample.png",
         });
