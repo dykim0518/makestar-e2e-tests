@@ -46,7 +46,7 @@ fi
 
 echo "▶ 결과 ingest 중..."
 cd "$QA_HUB"
-npx tsx --env-file=.env.local scripts/ingest-results.ts "$RESULTS_FILE" "$SUITE"
+npx tsx --env-file=.env.local scripts/ingest-results.ts "$RESULTS_FILE" "$SUITE" --reconcile
 
 echo
 echo "✅ 완료. 대시보드: https://makestar-qa-hub.vercel.app/coverage"
