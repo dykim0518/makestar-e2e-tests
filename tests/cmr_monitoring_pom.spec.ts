@@ -57,7 +57,7 @@ const PERF_API_RESPONSE_THRESHOLD_MS =
 // 테스트 스위트
 // ============================================================================
 
-test.describe("기본 페이지", () => {
+test.describe("기본 페이지 @feature:cmr.home", () => {
   let makestar: MakestarPage;
 
   test.beforeEach(async ({ page }, testInfo) => {
@@ -267,7 +267,7 @@ test.describe("기본 페이지", () => {
 // ==========================================================================
 // GNB 네비게이션
 // ==========================================================================
-test.describe("GNB 네비게이션", () => {
+test.describe("GNB 네비게이션 @feature:cmr.home", () => {
   let makestar: MakestarPage;
 
   test.beforeEach(async ({ page }, testInfo) => {
@@ -364,7 +364,7 @@ test.describe("GNB 네비게이션", () => {
 // ==========================================================================
 // 검색 기능
 // ==========================================================================
-test.describe("검색 기능", () => {
+test.describe("검색 기능 @feature:cmr.home", () => {
   let makestar: MakestarPage;
 
   test.beforeEach(async ({ page }, testInfo) => {
@@ -492,7 +492,7 @@ test.describe("검색 기능", () => {
 // 네비게이션 검증 (폴백 없이 버튼 클릭만 테스트)
 // serial로 실행하여 네트워크 부하 감소 및 안정성 향상
 // ==========================================================================
-test.describe.serial("네비게이션 검증", () => {
+test.describe.serial("네비게이션 검증 @feature:cmr.home", () => {
   let makestar: MakestarPage;
 
   test.beforeEach(async ({ page }, testInfo) => {
@@ -604,7 +604,7 @@ test.describe.serial("네비게이션 검증", () => {
 // ==========================================================================
 // 마이페이지/회원 기능 (기능 검증 - URL 직접 이동 허용)
 // ==========================================================================
-test.describe("마이페이지/회원 기능", () => {
+test.describe("마이페이지/회원 기능 @feature:cmr.mypage", () => {
   let makestar: MakestarPage;
 
   test.beforeEach(async ({ page }, testInfo) => {
@@ -868,7 +868,7 @@ test.describe("마이페이지/회원 기능", () => {
 // ==========================================================================
 // 상품/장바구니 기능
 // ==========================================================================
-test.describe("상품/장바구니 기능", () => {
+test.describe("상품/장바구니 기능 @feature:cmr.cart", () => {
   let makestar: MakestarPage;
 
   test.beforeEach(async ({ page }, testInfo) => {
@@ -1300,7 +1300,7 @@ test.describe("상품/장바구니 기능", () => {
 // ==========================================================================
 // 아티스트/콘텐츠
 // ==========================================================================
-test.describe("아티스트/콘텐츠", () => {
+test.describe("아티스트/콘텐츠 @feature:cmr.artist.list", () => {
   let makestar: MakestarPage;
 
   test.beforeEach(async ({ page }, testInfo) => {
@@ -1430,7 +1430,7 @@ test.describe("아티스트/콘텐츠", () => {
 // ==========================================================================
 // 응답성/성능 모니터링
 // ==========================================================================
-test.describe("응답성/성능 모니터링", () => {
+test.describe("응답성/성능 모니터링 @feature:cmr.home", () => {
   let makestar: MakestarPage;
 
   test.beforeEach(async ({ page }, testInfo) => {

@@ -1130,50 +1130,35 @@ export class OrderListPage extends AdminBasePage {
   }
 
   private async resolveTab(tab: OrderTabKey): Promise<Locator> {
-    const label = this.getTabLabel(tab);
-    const exactRegex = new RegExp(`^\\s*${this.escapeRegExp(label)}\\s*$`);
-    const tabContainer = this.page
-      .locator("h1, h2")
-      .filter({ hasText: /주문관리|Order/i })
-      .first()
-      .locator("xpath=following-sibling::*[1]");
-
-    const resolved = await this.findFirstVisible([
-      this.page.getByRole("link", { name: label, exact: true }).first(),
-      this.page.getByRole("tab", { name: label, exact: true }).first(),
-      tabContainer.getByText(label, { exact: true }).first(),
-      tabContainer
-        .locator("div, button, a, span, p")
-        .filter({ hasText: exactRegex })
-        .first(),
-      this.page.getByRole("button", { name: label, exact: true }).first(),
-      this.page
-        .locator("main")
-        .locator("a, div, button, span, p")
-        .filter({ hasText: exactRegex })
-        .first(),
-    ]);
-
-    if (!resolved) {
-      throw new Error(`탭을 찾지 못했습니다: ${tab}`);
+    const labels = this.getTabLabels(tab);
+    for (const label of labels) {
+      const byText = this.page.getByText(label, { exact: true }).first();
+      if ((await byText.count()) > 0) {
+        return byText;
+      }
     }
+    throw new Error(
+      `탭을 찾지 못했습니다: ${tab} (tried: ${labels.join(", ")})`,
+    );
+  }
 
-    return resolved;
+  private getTabLabels(tab: OrderTabKey): string[] {
+    switch (tab) {
+      case "all":
+        return ["전체"];
+      case "b2c":
+        return ["B2C주문", "B2C 주문"];
+      case "b2b":
+        return ["B2B주문", "B2B 주문"];
+      case "project":
+        return ["프로젝트별 주문", "프로젝트별주문"];
+      default:
+        return ["전체"];
+    }
   }
 
   private getTabLabel(tab: OrderTabKey): string {
-    switch (tab) {
-      case "all":
-        return "전체";
-      case "b2c":
-        return "B2C주문";
-      case "b2b":
-        return "B2B주문";
-      case "project":
-        return "프로젝트별 주문";
-      default:
-        return "전체";
-    }
+    return this.getTabLabels(tab)[0];
   }
 
   private normalize(value: string): string {

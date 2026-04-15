@@ -34,7 +34,7 @@ applyAdminTestConfig("주문관리");
 // ##############################################################################
 // 주문관리 목록
 // ##############################################################################
-test.describe.serial("주문관리 목록", () => {
+test.describe.serial("주문관리 목록 @feature:admin_makestar.order.list", () => {
   let orderPage: OrderListPage;
 
   test.beforeEach(async ({ page }) => {
@@ -471,7 +471,8 @@ test.describe.serial("주문관리 목록", () => {
 // Jira: https://makestar-product.atlassian.net/browse/QA-102
 //       https://makestar-product.atlassian.net/browse/QA-100
 // ##############################################################################
-test.describe.serial("B2B 예치금 주문 회귀 (QA-102, QA-100)", () => {
+test.describe
+  .serial("B2B 예치금 주문 회귀 (QA-102, QA-100) @feature:admin_makestar.order.list", () => {
   const TARGET_URL =
     "https://stage-new-admin.makeuni2026.com/order/list?openedTab=b2b";
 
@@ -717,7 +718,8 @@ test.describe.serial("B2B 예치금 주문 회귀 (QA-102, QA-100)", () => {
 // ##############################################################################
 // 발주/입고 목록
 // ##############################################################################
-test.describe.serial("발주/입고 목록", () => {
+test.describe
+  .serial("발주/입고 목록 @feature:admin_makestar.purchase.list", () => {
   let purchasePage: PurchaseListPage;
   const sortFilterSnapshot = (
     filters: Array<{ label: string; value: string }>,
@@ -1112,7 +1114,8 @@ test.describe.serial("발주/입고 목록", () => {
 // ##############################################################################
 // 차트 집계 목록
 // ##############################################################################
-test.describe.serial("차트 집계 목록", () => {
+test.describe
+  .serial("차트 집계 목록 @feature:admin_makestar.chart.info", () => {
   let chartPage: ChartInfoListPage;
 
   test.beforeEach(async ({ page }) => {

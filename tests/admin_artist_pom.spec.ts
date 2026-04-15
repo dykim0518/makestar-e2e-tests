@@ -65,7 +65,7 @@ test.describe("아티스트 목록", () => {
   // ============================================================================
   // 페이지 로드 및 기본 요소
   // ============================================================================
-  test.describe("페이지 로드 및 기본 요소", () => {
+  test.describe("페이지 로드 및 기본 요소 @feature:admin_makestar.artist.list", () => {
     let artistPage: ArtistListPage;
 
     test.beforeEach(async ({ page }) => {
@@ -122,7 +122,7 @@ test.describe("아티스트 목록", () => {
   // ============================================================================
   // 데이터 정합성
   // ============================================================================
-  test.describe("데이터 정합성", () => {
+  test.describe("데이터 정합성 @feature:admin_makestar.artist.list", () => {
     let artistPage: ArtistListPage;
 
     test.beforeEach(async ({ page }) => {
@@ -270,7 +270,7 @@ test.describe("아티스트 목록", () => {
   // ============================================================================
   // 검색 기능
   // ============================================================================
-  test.describe("검색 기능", () => {
+  test.describe("검색 기능 @feature:admin_makestar.artist.list", () => {
     let artistPage: ArtistListPage;
 
     test.beforeEach(async ({ page }) => {
@@ -305,7 +305,7 @@ test.describe("아티스트 목록", () => {
   // ============================================================================
   // 노출여부 필터
   // ============================================================================
-  test.describe("노출여부 필터", () => {
+  test.describe("노출여부 필터 @feature:admin_makestar.artist.list", () => {
     let artistPage: ArtistListPage;
 
     test.beforeEach(async ({ page }) => {
@@ -338,7 +338,7 @@ test.describe("아티스트 목록", () => {
   // ============================================================================
   // 페이지네이션
   // ============================================================================
-  test.describe("페이지네이션", () => {
+  test.describe("페이지네이션 @feature:admin_makestar.artist.list", () => {
     let artistPage: ArtistListPage;
 
     test.beforeEach(async ({ page }) => {
@@ -425,7 +425,7 @@ test.describe("아티스트 목록", () => {
   // ============================================================================
   // 네비게이션
   // ============================================================================
-  test.describe("네비게이션", () => {
+  test.describe("네비게이션 @feature:admin_makestar.artist.create", () => {
     let artistPage: ArtistListPage;
 
     test.beforeEach(async ({ page }) => {

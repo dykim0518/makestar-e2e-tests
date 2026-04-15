@@ -104,7 +104,7 @@ test.describe("POCAAlbum Admin 읽기 전용 테스트", () => {
   // ========================================================================
   // Section 9: 신고내역 (Read Only)
   // ========================================================================
-  test.describe("신고내역", () => {
+  test.describe("신고내역 @feature:admin_pocaalbum.report.list", () => {
     let reportListPage: PocaReportListPage;
 
     test.beforeEach(async ({ page }) => {
@@ -255,7 +255,7 @@ test.describe("POCAAlbum Admin 읽기 전용 테스트", () => {
   // Section 12: 캐시 관리 — QA-78: 선택한 캐시 삭제 기능 동작 불가
   // Jira: https://makestar-product.atlassian.net/browse/QA-78
   // ========================================================================
-  test.describe.serial("캐시 관리", () => {
+  test.describe.serial("캐시 관리 @feature:admin_pocaalbum.cache.list", () => {
     const CACHE_URL =
       "https://stage-new-admin.makeuni2026.com/pocaalbum/system/cache/list";
 
