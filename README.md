@@ -67,15 +67,30 @@ npx playwright test -g "TC-HOME"
 HEADED=true npm run test:cmr
 ```
 
+### 커버리지 대시보드 업데이트 (Admin 로컬 실행 후)
+
+Admin 테스트는 CI에서 안 돌기 때문에, 로컬 실행 결과를 QA Hub 커버리지 대시보드에 반영하려면:
+
+```bash
+# 전체 admin 테스트 실행 + 결과 자동 ingest
+scripts/refresh-coverage.sh
+
+# 특정 spec만
+scripts/refresh-coverage.sh admin_order_pom admin_user_pom
+```
+
+- 결과는 [https://makestar-qa-hub.vercel.app/coverage](https://makestar-qa-hub.vercel.app/coverage)에 즉시 반영
+- `~/Projects/makestar-qa-hub/.env.local`의 `DATABASE_URL` 필요
+
 ## CI (GitHub Actions)
 
 `main`/`master` 브랜치에 push 또는 PR 시 자동 실행됩니다.
 
 ### 필요한 GitHub Secret
 
-| Secret | 설명 |
-|--------|------|
-| `AUTH_JSON` | `auth.json` 파일 내용 (로그인 세션) |
+| Secret         | 설명                                                    |
+| -------------- | ------------------------------------------------------- |
+| `AUTH_JSON`    | `auth.json` 파일 내용 (로그인 세션)                     |
 | `AB_AUTH_JSON` | `ab-auth.json` 파일 내용 (AlbumBuddy 로그인 세션, 선택) |
 
 Settings > Secrets and variables > Actions > New repository secret
@@ -83,6 +98,7 @@ Settings > Secrets and variables > Actions > New repository secret
 ### 수동 실행
 
 Actions 탭 > Playwright Tests > Run workflow
+
 - `suite`: `cmr | albumbuddy | admin | all`
   - `admin`: GitHub Hosted Runner에서는 실행 불가 (사내 VPN/IP allowlist 필요)
   - `all`: `cmr + albumbuddy` 실행, `admin`은 자동 제외
@@ -157,11 +173,11 @@ flowchart LR
 
 ## 테스트 목록 (CMR 모니터링)
 
-| 그룹 | TC ID | 설명 |
-|------|-------|------|
-| A. 기본 페이지 | TC-HOME ~ TC-PRODUCT | Home, Event, Product 페이지 |
-| B. GNB | TC-NAV-SHOP ~ TC-NAV-FUNDING | Shop, Funding 이동 |
-| C. 검색 | TC-SEARCH ~ TC-RECENT | 검색 UI, 결과, 필터 |
-| D. 마이페이지 | TC-MYPAGE ~ TC-RAFFLE | 주문, 배송지, 응모 |
-| E. 상품/장바구니 | TC-OPTION ~ TC-GUEST | 옵션, 품절, 장바구니 |
-| F. 아티스트 | TC-ARTIST ~ TC-FILTER | 프로필, 필터링 |
+| 그룹             | TC ID                        | 설명                        |
+| ---------------- | ---------------------------- | --------------------------- |
+| A. 기본 페이지   | TC-HOME ~ TC-PRODUCT         | Home, Event, Product 페이지 |
+| B. GNB           | TC-NAV-SHOP ~ TC-NAV-FUNDING | Shop, Funding 이동          |
+| C. 검색          | TC-SEARCH ~ TC-RECENT        | 검색 UI, 결과, 필터         |
+| D. 마이페이지    | TC-MYPAGE ~ TC-RAFFLE        | 주문, 배송지, 응모          |
+| E. 상품/장바구니 | TC-OPTION ~ TC-GUEST         | 옵션, 품절, 장바구니        |
+| F. 아티스트      | TC-ARTIST ~ TC-FILTER        | 프로필, 필터링              |
