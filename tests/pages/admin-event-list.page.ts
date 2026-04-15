@@ -63,14 +63,17 @@ export class EventListPage extends AdminBasePage {
   constructor(page: Page) {
     super(page, ADMIN_TIMEOUTS);
 
-    // 새 UI: 복합 필터 검색 방식
-    // 담당자 필드 (유일한 텍스트 입력 필드)
+    // 이름 검색 입력: 상세 검색 UI와 간단 검색 UI를 모두 지원
+    this.nameInput = page.locator(
+      'input[placeholder="이벤트 이름을 입력해주세요"], input[placeholder="검색하기"]',
+    );
+
+    // 레거시/호환성 담당자 필터
     this.managerInput = page.getByRole("textbox", {
       name: "담당자의 이름 또는 이메일을 정확히 입력해주세요",
     });
 
     // 레거시/호환성 검색 필드 (필터 기반)
-    this.nameInput = this.managerInput; // 새 UI에서는 담당자 필드로 대체
     this.productCodeInput = page.locator(
       'input[placeholder="상품 코드를 입력해주세요"]',
     );
@@ -91,8 +94,10 @@ export class EventListPage extends AdminBasePage {
     // 추가 검색 옵션
     this.simpleSearchButton = page.locator('button:has-text("간단하게 검색")');
 
-    // 검색 버튼 (새 UI: "조회하기")
-    this.searchButton = page.getByRole("button", { name: "조회하기" });
+    // 검색 실행 버튼/아이콘
+    this.searchButton = page.locator(
+      'button:has-text("조회하기"), .input__right__icons',
+    );
 
     // 액션 버튼 초기화 (새 UI에서는 "등록하기" 버튼)
     this.createProductButton = page.locator(
@@ -129,26 +134,16 @@ export class EventListPage extends AdminBasePage {
   // --------------------------------------------------------------------------
 
   /**
-   * 이벤트명으로 검색 (새 UI: 필터 기반 검색 - 테이블 데이터 검색)
-   * 참고: 새 UI에는 통합 검색 필드가 없으며, 테이블에서 직접 데이터를 찾음
+   * 상품명으로 검색
    */
-  async searchByName(name: string): Promise<boolean> {
-    // 페이지 안정화 대기
+  async searchByName(name: string): Promise<void> {
     await this.page.waitForLoadState("domcontentloaded");
-    await this.page
-      .locator("table")
-      .first()
-      .waitFor({ state: "visible", timeout: 5000 })
-      .catch(() => {});
-
-    // 새 UI에서는 테이블의 "이름" 컬럼에서 텍스트 검색
-    const nameCell = this.page
-      .locator("table")
-      .getByRole("cell")
-      .getByText(name, { exact: false });
-    const isFound = (await nameCell.count()) > 0;
-
-    return isFound;
+    await this.nameInput.waitFor({
+      state: "visible",
+      timeout: this.timeouts.medium,
+    });
+    await this.nameInput.fill(name);
+    await this.clickSearchButton();
   }
 
   /**
@@ -156,11 +151,14 @@ export class EventListPage extends AdminBasePage {
    */
   async searchByManager(manager: string): Promise<void> {
     await this.page.waitForLoadState("domcontentloaded");
-    await this.managerInput.fill(manager);
-    await this.searchButton.click();
-    await this.page
-      .waitForLoadState("networkidle", { timeout: 5000 })
-      .catch(() => {});
+    if (
+      await this.managerInput.isVisible({ timeout: 1000 }).catch(() => false)
+    ) {
+      await this.managerInput.fill(manager);
+    } else {
+      await this.nameInput.fill(manager);
+    }
+    await this.clickSearchButton();
   }
 
   /**
@@ -168,8 +166,12 @@ export class EventListPage extends AdminBasePage {
    * @param id 상품 ID
    */
   async searchById(id: string): Promise<void> {
-    await this.idInput.fill(id);
-    await this.clickSearchAndWait();
+    if (await this.idInput.isVisible({ timeout: 1000 }).catch(() => false)) {
+      await this.idInput.fill(id);
+    } else {
+      await this.nameInput.fill(id);
+    }
+    await this.clickSearchButton();
   }
 
   /**
@@ -201,9 +203,70 @@ export class EventListPage extends AdminBasePage {
    * 조회하기 버튼 클릭
    */
   async clickSearchButton(): Promise<void> {
-    await this.searchButton.click();
+    if (
+      await this.searchButton.isVisible({ timeout: 1000 }).catch(() => false)
+    ) {
+      await this.searchButton.click();
+    } else {
+      await this.nameInput.press("Enter").catch(() => {});
+    }
+    await this.waitForSearchComplete();
+  }
+
+  /**
+   * 검색 완료 대기 (스켈레톤 로딩 → 결과/빈 상태 정착)
+   *
+   * 새 UI는 검색 실행 중 조회 버튼이 disabled 되고 테이블 셀이 스켈레톤으로
+   * 채워진다. disabled 토글이 풀리고 네트워크가 안정될 때까지 기다린다.
+   */
+  async waitForSearchComplete(timeout: number = 10000): Promise<void> {
+    // 1) 검색 버튼 disabled 상태가 한번 뜬 뒤 다시 enabled 로 복귀할 때까지 대기
+    await this.page
+      .waitForFunction(
+        () => {
+          const btn = document.querySelector<HTMLButtonElement>(
+            ".input__right__icons button, button.input__right__icons",
+          );
+          if (!btn) return true;
+          return !btn.disabled;
+        },
+        undefined,
+        { timeout },
+      )
+      .catch(() => {});
+
+    // 2) 네트워크 안정화
     await this.page
       .waitForLoadState("networkidle", { timeout: 5000 })
+      .catch(() => {});
+
+    // 3) 테이블 또는 "검색결과 없음" 중 하나가 안착할 때까지 대기
+    await this.waitForTableOrNoResult(timeout).catch(() => {});
+
+    // 4) 첫 행의 td 텍스트가 실제로 채워질 때까지 대기 (스켈레톤 상태에서 즉시 읽히는 flaky 방지)
+    await this.page
+      .waitForFunction(
+        () => {
+          // noResult 메시지가 보이면 통과
+          const noResult = Array.from(document.querySelectorAll("*")).some(
+            (el) => (el.textContent ?? "").includes("검색결과가 없습니다"),
+          );
+          if (noResult) return true;
+
+          const rows = document.querySelectorAll("table tbody tr");
+          if (rows.length === 0) return false;
+
+          const firstRowTds = rows[0].querySelectorAll("td");
+          if (firstRowTds.length === 0) return false;
+
+          // 이름 컬럼(index 6) 또는 최소한 어느 데이터 셀에 텍스트가 있어야 함
+          return Array.from(firstRowTds).some(
+            (td) => (td.textContent ?? "").trim().length > 0,
+          );
+        },
+        undefined,
+        { timeout },
+      )
       .catch(() => {});
   }
 
@@ -268,7 +331,7 @@ export class EventListPage extends AdminBasePage {
       return; // filterByChannel 내에서 검색 실행
     }
 
-    await this.clickSearchAndWait();
+    await this.clickSearchButton();
   }
 
   /**

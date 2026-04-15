@@ -48,7 +48,7 @@
  * @see tests/pages/admin-event-create.page.ts
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect, type Locator } from "@playwright/test";
 import {
   CategoryListPage,
   CategoryCreatePage,
@@ -80,6 +80,71 @@ applyAdminTestConfig("상품 메뉴");
 // ============================================================================
 let sharedCategoryName = ""; // 대분류 생성 → 상품 등록 시 사용
 let sharedSkuCode = ""; // SKU 생성 → 상품 등록 시 사용 (선택사항)
+
+function buildSearchToken(source: string): string {
+  const normalized = source
+    .replace(/\[[^\]]*]/g, " ")
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/[|/_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const candidates = normalized
+    .split(" ")
+    .map((token) => token.trim())
+    .filter(
+      (token) =>
+        token.length >= 2 &&
+        !/^\d+$/.test(token) &&
+        ![
+          "상품",
+          "이벤트",
+          "B2B",
+          "B2C",
+          "판매대기",
+          "미노출",
+          "미정",
+        ].includes(token),
+    );
+
+  return (
+    candidates.find((token) => /[A-Za-z가-힣]/.test(token)) ??
+    candidates[0] ??
+    normalized
+  )
+    .slice(0, 12)
+    .trim();
+}
+
+function expectAllTextsContain(
+  texts: string[],
+  token: string,
+  message: string,
+): void {
+  expect(texts.length, `${message} - 검증할 결과가 없습니다.`).toBeGreaterThan(
+    0,
+  );
+  const mismatches = texts.filter((text) => !text.includes(token));
+  expect(
+    mismatches,
+    `${message} - 불일치 결과: ${JSON.stringify(mismatches.slice(0, 5))}`,
+  ).toHaveLength(0);
+}
+
+async function getColumnTexts(
+  rows: Locator,
+  cellIndex: number,
+): Promise<string[]> {
+  return await rows.evaluateAll(
+    (elements, index) =>
+      elements
+        .map((element) =>
+          (element.querySelectorAll("td")[index]?.textContent ?? "").trim(),
+        )
+        .filter(Boolean),
+    cellIndex,
+  );
+}
 
 // ##############################################################################
 // 1. 대분류 (CAT) - 목록 검증
@@ -163,10 +228,27 @@ test.describe("대분류 목록 @feature:admin_makestar.product.list", () => {
         "❌ 초기 테이블에 데이터가 없습니다.",
       ).toBeGreaterThan(0);
 
-      await categoryPage.searchByKeyword("스트레이 키즈");
-      const rowCount = await categoryPage.waitForTableData();
+      const categoryNamesBefore = await getColumnTexts(
+        categoryPage.tableRows,
+        3,
+      );
+      const searchToken = (categoryNamesBefore[0] ?? "").trim();
+      expect(
+        searchToken.length,
+        "❌ 검색 가능한 대분류 키워드를 추출하지 못했습니다.",
+      ).toBeGreaterThan(1);
 
-      expect(rowCount).toBeGreaterThanOrEqual(0);
+      await categoryPage.searchByKeyword(searchToken);
+      await waitForTableUpdate(categoryPage.page);
+      const rowTexts = await getColumnTexts(categoryPage.tableRows, 3);
+      expect(
+        rowTexts.length,
+        `❌ "${searchToken}" 검색 결과에 대분류 이름 컬럼이 없습니다.`,
+      ).toBeGreaterThan(0);
+      expect(
+        rowTexts.some((text) => text.includes(searchToken)),
+        `❌ 대분류 검색 결과 안에 "${searchToken}"가 포함된 항목이 없습니다.`,
+      ).toBe(true);
     });
 
     test("CAT-SEARCH-02: 검색 초기화", async () => {
@@ -238,11 +320,12 @@ test.describe("대분류 목록 @feature:admin_makestar.product.list", () => {
 
     test("CAT-ACTION-01: 대분류 생성 페이지 이동", async ({ page }) => {
       await categoryPage.goToCreateCategory();
-      const url = categoryPage.currentUrl;
-      expect(
-        url.includes("create") || url.includes("product"),
-        "대분류 생성 페이지로 이동하지 않았습니다.",
-      ).toBeTruthy();
+      await expect(page).toHaveURL(/\/product\/new\/create(\?.*)?$/, {
+        timeout: ELEMENT_TIMEOUT,
+      });
+      await expect(
+        page.getByRole("button", { name: "대분류 생성 완료" }),
+      ).toBeVisible({ timeout: ELEMENT_TIMEOUT });
     });
   });
 });
@@ -250,7 +333,8 @@ test.describe("대분류 목록 @feature:admin_makestar.product.list", () => {
 // ##############################################################################
 // 1. 대분류 (CAT) - 신규 생성
 // ##############################################################################
-test.describe.serial("대분류 생성 @feature:admin_makestar.product.create", () => {
+test.describe
+  .serial("대분류 생성 @feature:admin_makestar.product.create", () => {
   test("CAT-CREATE-01: 대분류 신규 생성 및 검증", async ({ page }) => {
     const categoryListPage = new CategoryListPage(page);
     const categoryCreatePage = new CategoryCreatePage(page);
@@ -324,60 +408,45 @@ test.describe.serial("대분류 생성 @feature:admin_makestar.product.create", 
     // Step 5: 목록에서 생성 결과 검증
     // -------------------------------------------------------------------------
     await test.step("Step 5: 생성 결과 검증", async () => {
-      // 목록 페이지 확인
       await expect(page).toHaveURL(/\/product\/new\/list/);
       await waitForPageStable(page);
 
-      // 검색 필드에 생성한 대분류명 입력하여 필터링
       const keywordInput = page.locator('input[placeholder="검색어 입력"]');
-      if (await keywordInput.isVisible({ timeout: 5000 }).catch(() => false)) {
+      expect(
+        await keywordInput.isVisible({ timeout: 5000 }).catch(() => false),
+        "❌ 생성 결과를 검증할 검색 필드가 보이지 않습니다.",
+      ).toBe(true);
+
+      let createdVisible = false;
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
         await keywordInput.fill(categoryNameKr);
         const searchBtn = page
           .locator('button:has-text("조회하기"), img[cursor="pointer"]')
           .first();
         await searchBtn.click();
+        await waitForTableUpdate(page);
         await waitForPageStable(page);
-      }
 
-      // 테이블 데이터 로드 대기
-      await page.waitForSelector("table tbody tr", {
-        timeout: ELEMENT_TIMEOUT,
-      });
-
-      // 생성한 대분류가 목록에 표시되는지 확인
-      const createdRow = page.locator(
-        `table tbody tr:has-text("${categoryNameKr}")`,
-      );
-      const isVisible = await createdRow
-        .isVisible({ timeout: ELEMENT_TIMEOUT })
-        .catch(() => false);
-
-      if (isVisible) {
-        console.log(`✅ 대분류 생성 완료: ${categoryNameKr}`);
-      } else {
-        // 검색 결과가 없으면 전체 목록에서 확인
-        console.log("ℹ️ 검색 결과에서 찾지 못함, 전체 목록 확인 중...");
-        const resetBtn = page
-          .locator('button:has-text("검색 초기화"), button:has-text("초기화")')
+        const createdRow = page
+          .locator(`table tbody tr:has-text("${categoryNameKr}")`)
           .first();
-        // isVisible과 isEnabled 모두 확인 후 클릭
-        const isBtnVisible = await resetBtn.isVisible().catch(() => false);
-        const isBtnEnabled = await resetBtn.isEnabled().catch(() => false);
-        if (isBtnVisible && isBtnEnabled) {
-          await resetBtn.click();
-          await waitForPageStable(page);
+        createdVisible = await createdRow
+          .isVisible({ timeout: ELEMENT_TIMEOUT })
+          .catch(() => false);
+        if (createdVisible) {
+          break;
         }
 
-        // 전체 테이블에서 확인
-        const allRows = await page.locator("table tbody tr").count();
-        console.log(`ℹ️ 전체 목록 행 수: ${allRows}`);
-
-        // 최소한 데이터가 존재하는지 확인
-        expect(allRows, "❌ 목록에 데이터가 없습니다.").toBeGreaterThan(0);
-        console.log(
-          `ℹ️ 대분류 생성 요청 완료 (목록 확인 필요): ${categoryNameKr}`,
-        );
+        if (attempt < 3) {
+          await page.reload({ waitUntil: "domcontentloaded" });
+          await waitForPageStable(page);
+        }
       }
+
+      expect(
+        createdVisible,
+        `❌ 생성한 대분류가 목록에 반영되지 않았습니다: ${categoryNameKr}`,
+      ).toBe(true);
     });
   });
 });
@@ -464,19 +533,41 @@ test.describe.serial("SKU 목록 @feature:admin_makestar.sku.list", () => {
     });
 
     test("SKU-SEARCH-01: SKU코드로 검색", async () => {
-      await skuPage.searchBySKUCode("SKU019573");
+      const skuCode = await skuPage.getFirstRowSKUCode();
+      expect(skuCode, "❌ 검색 기준 SKU코드를 찾지 못했습니다.").toBeTruthy();
+
+      await skuPage.searchBySKUCode(skuCode);
+      await waitForTableUpdate(skuPage.page);
       await skuPage.waitForTableData();
 
       const firstRow = skuPage.getFirstRow();
-      await expect(firstRow).toContainText("SKU019573", {
+      await expect(firstRow).toContainText(skuCode, {
         timeout: ELEMENT_TIMEOUT,
       });
     });
 
     test("SKU-SEARCH-02: 상품명으로 검색", async () => {
-      await skuPage.searchByProductName("에스파");
+      const productName = await skuPage.getFirstRowProductName();
+      const searchToken = buildSearchToken(productName);
+      expect(
+        searchToken.length,
+        "❌ 검색 가능한 SKU 상품명 토큰을 추출하지 못했습니다.",
+      ).toBeGreaterThan(1);
+
+      await skuPage.searchByProductName(searchToken);
+      await waitForTableUpdate(skuPage.page);
       const rowCount = await skuPage.waitForTableData();
-      expect(rowCount).toBeGreaterThanOrEqual(0);
+      expect(
+        rowCount,
+        `❌ "${searchToken}" 검색 결과가 없습니다.`,
+      ).toBeGreaterThan(0);
+
+      const productNames = await getColumnTexts(skuPage.tableRows, 2);
+      expectAllTextsContain(
+        productNames,
+        searchToken,
+        `❌ SKU 상품명 검색 결과가 "${searchToken}"를 포함해야 합니다.`,
+      );
     });
 
     test("SKU-SEARCH-03: 검색 초기화", async () => {
@@ -591,21 +682,12 @@ test.describe.serial("SKU 목록 @feature:admin_makestar.sku.list", () => {
     test("SKU-DETAIL-01: 상세 페이지 이동", async ({ page }) => {
       await skuPage.clickFirstRow(1);
 
-      const currentUrl = skuPage.currentUrl;
-      const urlPath = new URL(currentUrl).pathname;
-
-      const isDetailPage = urlPath.includes("/sku/") && urlPath !== "/sku/list";
-      const hasModalOrDetail = await page
-        .locator(
-          '[class*="modal"], [class*="dialog"], h1:has-text("SKU 수정"), h1:has-text("SKU 상세")',
-        )
-        .isVisible()
-        .catch(() => false);
-
-      expect(
-        isDetailPage || hasModalOrDetail || urlPath.includes("/sku/"),
-        "상세 페이지로 이동하지 않았습니다.",
-      ).toBeTruthy();
+      await expect(page).toHaveURL(/\/sku\/(?!list$)[^/?#]+/, {
+        timeout: ELEMENT_TIMEOUT,
+      });
+      await expect(
+        page.locator("h1, h2").filter({ hasText: /SKU/ }).first(),
+      ).toBeVisible({ timeout: ELEMENT_TIMEOUT });
     });
   });
 
@@ -725,108 +807,26 @@ test.describe.serial("SKU 생성 @feature:admin_makestar.sku.create", () => {
       console.log("  SKU 상세 페이지로 이동 완료");
     });
 
-    // Step 5: 목록에서 생성된 SKU 검증
-    await test.step("Step 5: 생성된 SKU 검증", async () => {
+    // Step 5: 상세 페이지에서 생성 결과 검증
+    await test.step("Step 5: 상세 페이지에서 생성 결과 검증", async () => {
       // 상세 페이지에서 SKU 코드 추출
       const currentUrl = page.url();
       const skuCodeMatch = currentUrl.match(/\/sku\/(SKU\d+)/);
       const createdSkuCode = skuCodeMatch ? skuCodeMatch[1] : null;
 
-      if (!createdSkuCode) {
-        console.warn("⚠️ SKU 코드를 추출할 수 없음");
-        expect(createdSkuCode).not.toBeNull();
-        return;
-      }
-
+      expect(createdSkuCode, "❌ SKU 코드를 추출할 수 없습니다.").toBeTruthy();
+      const safeSkuCode = createdSkuCode!;
       console.log(`  생성된 SKU 코드: ${createdSkuCode}`);
 
-      // 상세 페이지에서 SKU 정보 확인 (생성 성공 1차 검증)
-      const detailHeading = page.locator("h1").first();
-      const hasDetailPage = await detailHeading
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
-      if (hasDetailPage) {
-        const headingText = (await detailHeading.textContent()) || "";
-        console.log(`  상세 페이지 제목: ${headingText}`);
+      await expect(page).toHaveURL(new RegExp(`/sku/${safeSkuCode}$`), {
+        timeout: ELEMENT_TIMEOUT,
+      });
+      await expect(
+        page.locator("h1, h2").filter({ hasText: /SKU/ }).first(),
+      ).toBeVisible({ timeout: ELEMENT_TIMEOUT });
 
-        // 상세 페이지 URL에 SKU 코드가 있으면 생성 성공
-        if (currentUrl.includes(createdSkuCode)) {
-          console.log(
-            `✅ SKU 생성 성공 확인 (상세 페이지 진입): ${createdSkuCode}`,
-          );
-        }
-      }
-
-      // SKU 목록 페이지로 이동하여 2차 검증
-      await skuListPage.navigate();
-      await waitForPageStable(page);
-
-      // 검색 결과 확인 (재시도 포함)
-      let isFound = false;
-      const maxRetries = 3;
-
-      for (let attempt = 1; attempt <= maxRetries; attempt++) {
-        console.log(`  검색 시도 ${attempt}/${maxRetries}...`);
-
-        // 검색 필드 초기화 후 재입력
-        await skuListPage.skuCodeInput.clear();
-        await skuListPage.skuCodeInput.fill(createdSkuCode);
-
-        // 조회하기 버튼 클릭
-        await skuListPage.searchButton.first().click();
-
-        // 테이블 업데이트 대기 (검색 결과가 실제로 변경될 때까지)
-        try {
-          await page.waitForFunction(
-            (skuCode) => {
-              const rows = document.querySelectorAll("table tbody tr");
-              for (const row of rows) {
-                if (row.textContent?.includes(skuCode)) return true;
-              }
-              return false;
-            },
-            createdSkuCode,
-            { timeout: 10000 },
-          );
-          isFound = true;
-          break;
-        } catch {
-          // 검색 결과가 없으면 재시도 전 페이지 안정화 대기
-          if (attempt < maxRetries) {
-            console.warn(`  ⚠️ 검색 결과 없음, 재시도 대기 중...`);
-            await page.reload({ waitUntil: "domcontentloaded" });
-            await waitForPageStable(page);
-          }
-        }
-      }
-
-      // 검증 결과 처리
-      if (isFound) {
-        // 목록에서 해당 SKU 행 확인
-        const skuRow = page
-          .locator(`table tbody tr:has-text("${createdSkuCode}")`)
-          .first();
-        const rowText = (await skuRow.textContent()) || "";
-        console.log(`✅ SKU 생성 및 검증 완료: ${skuName}`);
-        console.log(`   SKU 코드: ${createdSkuCode}`);
-        console.log(`   목록 데이터: ${rowText.substring(0, 100)}...`);
-      } else {
-        // 검색으로 못 찾아도 상세 페이지 진입이 성공했으면 생성은 완료된 것임
-        console.log(
-          `⚠️ 목록 검색에서 SKU를 찾지 못함 (DB 인덱스 지연 가능성): ${createdSkuCode}`,
-        );
-        console.log(`ℹ️ 상세 페이지 URL 검증으로 생성 성공 확인됨`);
-
-        // 생성 성공은 상세 페이지 진입으로 이미 확인됨
-        // 목록 검색 실패는 DB 인덱싱 지연일 수 있으므로 경고만 표시
-        console.log(
-          `✅ SKU 생성 완료 (목록 반영 지연): ${skuName} (${createdSkuCode})`,
-        );
-      }
-
-      // 생성 자체는 상세 페이지 진입으로 확인되었으므로 테스트 통과
-      // (createdSkuCode가 존재하면 상세 페이지로 리다이렉트된 것)
-      expect(createdSkuCode, "❌ SKU 코드가 생성되지 않음").toBeTruthy();
+      sharedSkuCode = safeSkuCode;
+      console.log(`✅ SKU 생성 및 상세 페이지 검증 완료: ${skuName}`);
     });
   });
 });
@@ -873,13 +873,9 @@ test.describe("상품 목록 @feature:admin_makestar.event.list", () => {
     });
 
     test("PRD-PAGE-05: 검색 영역 표시 검증", async () => {
-      const hasSearchButton = await eventPage.searchButton
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
-      expect(
-        hasSearchButton,
-        "❌ 조회하기 버튼이 보이지 않습니다.",
-      ).toBeTruthy();
+      await expect(eventPage.nameInput).toBeVisible({
+        timeout: ELEMENT_TIMEOUT,
+      });
     });
 
     test("PRD-PAGE-06: 액션 버튼 표시 검증", async () => {
@@ -900,27 +896,55 @@ test.describe("상품 목록 @feature:admin_makestar.event.list", () => {
     });
 
     test("PRD-SEARCH-01: 상품명으로 검색", async () => {
-      const searchTerm = "Stray Kids";
-      const found = await eventPage.searchByName(searchTerm);
+      const productNamesBefore = await getColumnTexts(eventPage.tableRows, 6);
+      const searchToken = buildSearchToken(productNamesBefore[0] ?? "");
+      expect(
+        searchToken.length,
+        "❌ 검색 가능한 상품명 토큰을 추출하지 못했습니다.",
+      ).toBeGreaterThan(1);
 
-      console.log(`ℹ️ "${searchTerm}" 검색 결과: ${found ? "발견" : "없음"}`);
-      expect(typeof found).toBe("boolean");
-    });
-
-    test("PRD-SEARCH-02: 담당자 필터 검증", async () => {
-      const managerInput = eventPage.managerInput;
-      const isVisible = await managerInput
-        .isVisible({ timeout: 5000 })
+      await eventPage.searchByName(searchToken);
+      const hasNoResult = await eventPage.noResultMessage
+        .isVisible({ timeout: 3000 })
         .catch(() => false);
-      console.log(`ℹ️ 담당자 입력 필드 표시: ${isVisible}`);
-      expect(isVisible, "❌ 담당자 입력 필드가 보이지 않습니다.").toBeTruthy();
+      expect(
+        hasNoResult,
+        `❌ "${searchToken}" 검색 시 결과가 없어야 할 이유가 없습니다.`,
+      ).toBe(false);
+
+      const productNames = await getColumnTexts(eventPage.tableRows, 6);
+      expect(
+        productNames.length,
+        `❌ "${searchToken}" 검색 결과에 상품명 컬럼이 없습니다.`,
+      ).toBeGreaterThan(0);
+      expectAllTextsContain(
+        productNames,
+        searchToken,
+        `❌ 상품명 검색 결과가 "${searchToken}"를 포함해야 합니다.`,
+      );
     });
 
-    test("PRD-SEARCH-03: 검색 결과 테이블 표시 검증", async () => {
-      await eventPage.waitForTableData();
+    test("PRD-SEARCH-02: 검색어 입력 초기화", async () => {
+      await eventPage.nameInput.fill("임시검색어");
+      await eventPage.nameInput.clear();
+      await expect(eventPage.nameInput).toHaveValue("", {
+        timeout: ELEMENT_TIMEOUT,
+      });
+    });
+
+    test("PRD-SEARCH-03: 존재하지 않는 상품명 검색", async () => {
+      const randomString = `ZZZNOTEXIST_${Date.now()}`;
+      await eventPage.searchByName(randomString);
+
       const rowCount = await eventPage.getRowCount();
-      console.log(`ℹ️ 현재 테이블 행 수: ${rowCount}`);
-      expect(rowCount).toBeGreaterThanOrEqual(0);
+      const hasNoResult = await eventPage.noResultMessage
+        .isVisible({ timeout: 3000 })
+        .catch(() => false);
+
+      expect(
+        rowCount === 0 || hasNoResult,
+        `❌ 존재하지 않는 상품명 검색 시 결과가 남아 있습니다. rows=${rowCount}, noResult=${hasNoResult}`,
+      ).toBe(true);
     });
   });
 
@@ -981,11 +1005,12 @@ test.describe("상품 목록 @feature:admin_makestar.event.list", () => {
         timeout: ELEMENT_TIMEOUT,
       });
       await eventPage.goToCreateProduct();
-      const url = eventPage.currentUrl;
-      expect(
-        url.includes("create") || url.includes("event"),
-        "상품 등록 페이지로 이동하지 않았습니다.",
-      ).toBeTruthy();
+      await expect(page).toHaveURL(/\/event\/create$/, {
+        timeout: ELEMENT_TIMEOUT,
+      });
+      await expect(
+        page.getByRole("button", { name: "지금 등록하기" }),
+      ).toBeVisible({ timeout: ELEMENT_TIMEOUT });
     });
   });
 });
@@ -1671,7 +1696,8 @@ test.describe.serial("상품 등록 @feature:admin_makestar.event.create", () =>
   // 4. 전시 카테고리 — QA-84: 전시 카테고리 생성 불가
   // Jira: https://makestar-product.atlassian.net/browse/QA-84
   // ========================================================================
-  test.describe.serial("전시 카테고리 생성 @feature:admin_makestar.displaycategory", () => {
+  test.describe
+    .serial("전시 카테고리 생성 @feature:admin_makestar.displaycategory", () => {
     const DC_URL = "https://stage-new-admin.makeuni2026.com/display-category";
     const DC_SUFFIX = Date.now().toString().slice(-6);
     const DC_CATEGORY = {
@@ -1913,6 +1939,9 @@ test.describe.serial("상품 등록 @feature:admin_makestar.event.create", () =>
         await dialog.accept();
       });
 
+      const saveBtn = page.getByRole("button", { name: /변경내용 저장/ });
+      await expect(saveBtn).toBeVisible({ timeout: ELEMENT_TIMEOUT });
+
       const items = page.locator(".draggable-item");
       await expect(items.first()).toBeVisible({ timeout: ELEMENT_TIMEOUT });
       const firstText = await items.first().textContent();
@@ -1945,7 +1974,9 @@ test.describe.serial("상품 등록 @feature:admin_makestar.event.create", () =>
       await page.waitForTimeout(1500);
 
       const newFirstText = await items.first().textContent();
-      expect(newFirstText).not.toBe(firstText);
+      expect(newFirstText, "드래그로 순서가 변경되어야 합니다").not.toBe(
+        firstText,
+      );
 
       const backBtn = page
         .locator('svg:has(use[href="#icon-arrow-left-line"])')
@@ -1972,7 +2003,8 @@ test.describe.serial("상품 등록 @feature:admin_makestar.event.create", () =>
 // 재현경로: 입고~작업 관리 > 작업 현황 > SKU명 입력 후 검색 → 검색 불가
 // 기대결과: SKU명으로 검색 가능
 // ##############################################################################
-test.describe.serial("포토카드 SKU 작업 현황 — SKU명 검색 (QA-39) @feature:admin_makestar.photocardsku.work", () => {
+test.describe
+  .serial("포토카드 SKU 작업 현황 — SKU명 검색 (QA-39) @feature:admin_makestar.photocardsku.work", () => {
   const TARGET_URL =
     "https://stage-new-admin.makeuni2026.com/photocard-sku/work/pending";
 
