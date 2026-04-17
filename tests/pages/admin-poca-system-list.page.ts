@@ -13,15 +13,19 @@ export class PocaSystemListPage extends AdminBasePage {
 
   constructor(page: Page) {
     super(page, ADMIN_TIMEOUTS);
-    this.searchInput = page.locator('input[placeholder*="검색"]').first();
+    this.searchInput = page
+      .locator(
+        'input[placeholder*="검색"], input[placeholder*="키워드"], input[placeholder*="입력"]',
+      )
+      .first();
   }
 
   getPageUrl(): string {
-    return `${this.baseUrl}/pocaalbum/system/list`;
+    return `${this.baseUrl}/pocaalbum/system/cache/list`;
   }
 
   getHeadingText(): string {
-    return "시스템";
+    return "캐시";
   }
 
   /** 키워드로 시스템 설정 검색 */

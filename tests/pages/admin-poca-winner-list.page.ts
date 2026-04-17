@@ -13,15 +13,19 @@ export class PocaWinnerListPage extends AdminBasePage {
 
   constructor(page: Page) {
     super(page, ADMIN_TIMEOUTS);
-    this.searchInput = page.locator('input[placeholder*="검색"]').first();
+    this.searchInput = page
+      .locator(
+        'input[placeholder*="검색"], input[placeholder*="이메일"], input[placeholder*="입력"]',
+      )
+      .first();
   }
 
   getPageUrl(): string {
-    return `${this.baseUrl}/pocaalbum/winner/list`;
+    return `${this.baseUrl}/pocaalbum/winner/delivery/list?size=25`;
   }
 
   getHeadingText(): string {
-    return "당첨자";
+    return "배송 정보 리스트";
   }
 
   /** 키워드로 당첨자 검색 */

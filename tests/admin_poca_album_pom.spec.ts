@@ -36,6 +36,27 @@ import {
 // 공통 설정 (토큰검증 + 뷰포트체크 + 인증쿠키)
 applyAdminTestConfig("포카앨범");
 
+async function findAlbumRowWithRetries(
+  albumListPage: PocaAlbumListPage,
+  title: string,
+  attempts: number = 3,
+): Promise<number> {
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    await albumListPage.searchByKeyword(title);
+    const rowIndex = await albumListPage.findRowByText(title);
+    if (rowIndex >= 0) {
+      return rowIndex;
+    }
+
+    if (attempt < attempts) {
+      await albumListPage.page.reload({ waitUntil: "domcontentloaded" });
+      await waitForPageStable(albumListPage.page);
+    }
+  }
+
+  return -1;
+}
+
 test.describe("POCAAlbum Admin 앨범 테스트", () => {
   // 테스트 간 데이터 공유 (serial 모드용)
   let sharedAlbumTitle = "";
@@ -129,29 +150,27 @@ test.describe("POCAAlbum Admin 앨범 테스트", () => {
       const rowCount = await albumListPage.getRowCount();
       expect(rowCount, "❌ 테이블에 데이터가 없습니다").toBeGreaterThan(0);
 
-      const isNextVisible = await albumListPage.nextPageButton
-        .isVisible()
-        .catch(() => false);
-      const isNextEnabled = isNextVisible
-        ? await albumListPage.nextPageButton.isEnabled().catch(() => false)
-        : false;
+      const canGoNext = await albumListPage.canGoToNextPage();
 
-      if (!isNextVisible || !isNextEnabled) {
+      if (!canGoNext) {
         console.log(
           "ℹ️ Next 버튼 없거나 비활성 - 데이터가 1페이지만 존재 (정상)",
         );
-        return;
+        expect(
+          rowCount,
+          "단일 페이지 상태에서도 현재 목록 데이터는 유지되어야 합니다.",
+        ).toBeGreaterThan(0);
+      } else {
+        const firstRowBefore = await albumListPage.getFirstRow().textContent();
+        await albumListPage.goToNextPage();
+        await waitForPageStable(albumListPage.page, 5000);
+        const firstRowAfter = await albumListPage.getFirstRow().textContent();
+
+        expect(
+          firstRowBefore,
+          "페이지 이동 후 데이터가 변경되지 않았습니다",
+        ).not.toBe(firstRowAfter);
       }
-
-      const firstRowBefore = await albumListPage.getFirstRow().textContent();
-      await albumListPage.goToNextPage();
-      await waitForPageStable(albumListPage.page, 5000);
-      const firstRowAfter = await albumListPage.getFirstRow().textContent();
-
-      expect(
-        firstRowBefore,
-        "페이지 이동 후 데이터가 변경되지 않았습니다",
-      ).not.toBe(firstRowAfter);
     });
 
     test("PA-ACTION-01: 수정 버튼으로 상세 이동", async () => {
@@ -171,7 +190,7 @@ test.describe("POCAAlbum Admin 앨범 테스트", () => {
   // ========================================================================
   // Section 3: 앨범 CRUD (serial)
   // ========================================================================
-  test.describe.serial("앨범 CRUD @feature:admin_pocaalbum.album.create", () => {
+  test.describe.serial("앨범 CRUD @feature:admin_pocaalbum.album.create @suite:ops", () => {
     test("PA-CREATE-01: 앨범 생성 폼 입력 및 등록", async ({ page }) => {
       const albumListPage = new PocaAlbumListPage(page);
       const albumCreatePage = new PocaAlbumCreatePage(page);
@@ -261,7 +280,7 @@ test.describe("POCAAlbum Admin 앨범 테스트", () => {
 
     test("PA-CREATE-02: 생성된 앨범 목록에서 검증", async ({ page }) => {
       expect(
-        sharedAlbumCreated || sharedAlbumTitle,
+        sharedAlbumCreated && sharedAlbumTitle.length > 0,
         "❌ PA-CREATE-01에서 앨범이 생성되지 않음",
       ).toBeTruthy();
 
@@ -269,20 +288,15 @@ test.describe("POCAAlbum Admin 앨범 테스트", () => {
       await albumListPage.navigate();
       await waitForPageStable(page);
 
-      await albumListPage.searchByKeyword(sharedAlbumTitle);
-
-      const rowIndex = await albumListPage.findRowByText(sharedAlbumTitle);
-      if (rowIndex >= 0) {
-        console.log(`✅ 목록에서 앨범 발견: 행 ${rowIndex}`);
-      } else {
-        console.log(
-          `⚠️ 목록에서 앨범 미발견: ${sharedAlbumTitle} (DB 반영 지연 가능)`,
-        );
-      }
+      const rowIndex = await findAlbumRowWithRetries(
+        albumListPage,
+        sharedAlbumTitle,
+      );
+      console.log(`✅ 목록에서 앨범 발견: 행 ${rowIndex}`);
       expect(
-        sharedAlbumCreated || rowIndex >= 0,
-        "앨범이 생성되지 않았고 목록에서도 찾을 수 없습니다",
-      ).toBeTruthy();
+        rowIndex,
+        `❌ 생성한 앨범이 목록에 반영되지 않았습니다: ${sharedAlbumTitle}`,
+      ).toBeGreaterThanOrEqual(0);
     });
 
     test("PA-DETAIL-01: 생성된 앨범 상세 진입 확인", async ({ page }) => {
@@ -295,13 +309,14 @@ test.describe("POCAAlbum Admin 앨범 테스트", () => {
       await albumListPage.navigate();
       await waitForPageStable(page);
 
-      await albumListPage.searchByKeyword(sharedAlbumTitle);
-      const rowIndex = await albumListPage.findRowByText(sharedAlbumTitle);
-
-      if (rowIndex < 0) {
-        console.warn("⚠️ 목록에서 앨범을 찾을 수 없어 상세 진입 건너뜀");
-        return;
-      }
+      const rowIndex = await findAlbumRowWithRetries(
+        albumListPage,
+        sharedAlbumTitle,
+      );
+      expect(
+        rowIndex,
+        `❌ 상세 진입 대상 앨범을 목록에서 찾을 수 없습니다: ${sharedAlbumTitle}`,
+      ).toBeGreaterThanOrEqual(0);
 
       await albumListPage.clickEdit(rowIndex);
 
@@ -310,9 +325,11 @@ test.describe("POCAAlbum Admin 앨범 테스트", () => {
       console.log(`  상세 URL: ${currentUrl}`);
 
       const pageContent = (await page.textContent("body")) || "";
-      if (pageContent.includes(sharedAlbumTitle)) {
-        console.log(`✅ 상세 페이지에서 앨범 제목 확인: ${sharedAlbumTitle}`);
-      }
+      expect(
+        pageContent.includes(sharedAlbumTitle),
+        `❌ 상세 페이지에 생성한 앨범 제목이 표시되지 않습니다: ${sharedAlbumTitle}`,
+      ).toBe(true);
+      console.log(`✅ 상세 페이지에서 앨범 제목 확인: ${sharedAlbumTitle}`);
     });
 
     test("PA-CREATE-03: 유튜브 앨범 생성 (QA-75 커버)", async ({ page }) => {
@@ -427,7 +444,7 @@ test.describe("POCAAlbum Admin 앨범 테스트", () => {
       });
     });
 
-    test("PA-UPDATE-01: 앨범 상세 진입 후 제목 수정", async ({ page }) => {
+    test("PA-UPDATE-01: 앨범 발행 상세 진입 후 필수 발행 필드 노출", async ({ page }) => {
       expect(
         sharedAlbumCreated,
         "❌ PA-CREATE-01에서 앨범이 생성되지 않음",
@@ -437,79 +454,42 @@ test.describe("POCAAlbum Admin 앨범 테스트", () => {
       await albumListPage.navigate();
       await waitForPageStable(page);
 
-      await albumListPage.searchByKeyword(sharedAlbumTitle);
-      const rowIndex = await albumListPage.findRowByText(sharedAlbumTitle);
-
-      if (rowIndex < 0) {
-        console.warn("⚠️ 목록에서 앨범을 찾을 수 없어 수정 건너뜀");
-        return;
-      }
+      const rowIndex = await findAlbumRowWithRetries(
+        albumListPage,
+        sharedAlbumTitle,
+      );
+      expect(
+        rowIndex,
+        `❌ 수정 대상 앨범을 목록에서 찾을 수 없습니다: ${sharedAlbumTitle}`,
+      ).toBeGreaterThanOrEqual(0);
 
       await albumListPage.clickEdit(rowIndex);
       await waitForPageStable(page);
 
-      // 제목 필드 찾기 및 수정
-      const titleInput = page
-        .locator(
-          'input[placeholder*="제목"], input[placeholder*="앨범명"], input[placeholder*="타이틀"]',
-        )
-        .first();
-      const isTitleVisible = await titleInput
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
+      const publishHeading = page.getByRole("heading", { name: "앨범 정보" });
+      await expect(
+        publishHeading,
+        "❌ 앨범 발행 상세 헤딩이 노출되지 않습니다",
+      ).toBeVisible({ timeout: 5000 });
 
-      if (!isTitleVisible) {
-        console.warn(
-          "⚠️ 제목 필드를 찾을 수 없음 - 수정 페이지 구조 확인 필요",
-        );
-        return;
-      }
+      await expect(
+        page.getByText(sharedAlbumTitle, { exact: false }),
+        `❌ 생성한 앨범명(${sharedAlbumTitle})이 상세 화면에 보이지 않습니다`,
+      ).toBeVisible({ timeout: 5000 });
 
-      // 제목에 "(수정됨)" 추가
-      const updatedTitle = sharedAlbumTitle + " (수정됨)";
-      await titleInput.clear();
-      await titleInput.fill(updatedTitle);
+      const publishCountInput = page.getByPlaceholder("발행 수").first();
+      await expect(
+        publishCountInput,
+        "❌ 발행 수 입력 필드가 보이지 않습니다",
+      ).toBeVisible({ timeout: 5000 });
 
-      // 저장 버튼 클릭
-      const saveBtn = page
-        .locator(
-          'button:has-text("저장"), button:has-text("수정"), button:has-text("등록")',
-        )
-        .first();
-      const isSaveVisible = await saveBtn
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
+      const publishButton = page.getByRole("button", { name: "발행하기" });
+      await expect(
+        publishButton,
+        "❌ 발행하기 버튼이 보이지 않습니다",
+      ).toBeVisible({ timeout: 5000 });
 
-      if (!isSaveVisible) {
-        console.warn("⚠️ 저장 버튼을 찾을 수 없음 - UI 구조 확인 필요");
-        return;
-      }
-
-      page.once("dialog", (dialog) => dialog.accept());
-      await saveBtn.click();
-
-      // 목록 이동 또는 성공 메시지 대기
-      try {
-        await page.waitForURL(/\/pocaalbum\/album/, { timeout: 10000 });
-      } catch {
-        console.log("ℹ️ 저장 후 URL 변경 미확인 - 현재 URL:", page.url());
-      }
-
-      // 목록에서 수정된 제목 확인
-      await albumListPage.navigate();
-      await waitForPageStable(page);
-      await albumListPage.searchByKeyword(updatedTitle);
-      const updatedRow = await albumListPage.findRowByText(updatedTitle);
-
-      if (updatedRow >= 0) {
-        console.log(`✅ 수정된 앨범 확인: ${updatedTitle}`);
-        // 후속 테스트를 위해 타이틀 업데이트
-        sharedAlbumTitle = updatedTitle;
-      } else {
-        console.log(
-          `⚠️ 수정된 앨범 미발견 (DB 반영 지연 가능): ${updatedTitle}`,
-        );
-      }
+      console.log(`✅ 발행 상세 화면 확인: ${sharedAlbumTitle}`);
     });
 
     // PA-ACTION-02 삭제 테스트 제거: 앨범 상세에 삭제 기능 미제공 (UI 미존재)

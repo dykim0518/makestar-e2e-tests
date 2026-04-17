@@ -75,6 +75,7 @@ export class PocaDashboardPage extends AdminBasePage {
 
   readonly sidebar: Locator;
   readonly sidebarTitle: Locator;
+  readonly sidebarEmail: Locator;
 
   // --------------------------------------------------------------------------
   // 대시보드 로케이터
@@ -86,10 +87,17 @@ export class PocaDashboardPage extends AdminBasePage {
   constructor(page: Page, timeouts: TimeoutConfig = ADMIN_TIMEOUTS) {
     super(page, timeouts);
 
-    // 사이드바 (fixed 좌측 패널)
-    this.sidebar = page.locator(".fixed.min-h-screen").first();
-    this.sidebarTitle = this.sidebar
-      .locator('.btn__area, :text("포카앨범 관리시스템")')
+    // 현재 사이드바는 텍스트 기반 구조가 가장 안정적이다.
+    this.sidebarTitle = page.getByRole("button", {
+      name: "포카앨범 관리시스템",
+    });
+    this.sidebar = page
+      .locator("div")
+      .filter({ has: this.sidebarTitle })
+      .first();
+    this.sidebarEmail = page
+      .locator("div")
+      .filter({ hasText: /@/ })
       .first();
 
     // 대시보드
@@ -157,18 +165,16 @@ export class PocaDashboardPage extends AdminBasePage {
 
   /** 사이드바가 펼쳐지고 메뉴 항목이 렌더링될 때까지 대기 */
   async ensureSidebarLoaded(): Promise<boolean> {
-    // 1. 사이드바 컨테이너 대기
-    const sidebarVisible = await this.sidebar
+    const sidebarVisible = await this.sidebarTitle
       .isVisible({ timeout: this.timeouts.medium })
       .catch(() => false);
     if (!sidebarVisible) {
-      console.warn("⚠️ 사이드바 컨테이너가 보이지 않습니다");
+      console.warn("⚠️ 사이드바 타이틀이 보이지 않습니다");
       return false;
     }
 
-    // 2. 메뉴 항목이 있는지 확인 (최대 10초 대기)
-    const firstMenuSpan = this.sidebar
-      .locator("li span, li a, li button")
+    const firstMenuSpan = this.page
+      .locator("li.relative span.title-sb-medium")
       .first();
     const menuExists = await firstMenuSpan
       .isVisible({ timeout: this.timeouts.long })
@@ -176,37 +182,28 @@ export class PocaDashboardPage extends AdminBasePage {
 
     if (menuExists) return true;
 
-    // 3. 메뉴가 없으면 사이드바 토글 버튼 클릭 시도
     const toggleBtn = this.sidebar
       .locator("button")
-      .filter({ has: this.page.locator("img") })
       .first();
     if (await toggleBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
       console.log("ℹ️ 사이드바 토글 클릭 시도");
-      await toggleBtn.click();
-      // 토글 후 메뉴 렌더링 대기
+      await this.clickWithRecovery(toggleBtn, {
+        timeout: this.timeouts.medium,
+      });
       const afterToggle = await firstMenuSpan
         .isVisible({ timeout: this.timeouts.medium })
         .catch(() => false);
       if (afterToggle) return true;
     }
 
-    // 4. 사이드바 내 ul > li 안에 텍스트가 있는 메뉴 항목 검색
-    const menuInList = this.sidebar.locator(
-      `ul li :text-is("${POCA_SIDEBAR_MENUS[0]}")`,
-    );
-    return await menuInList.isVisible({ timeout: 3000 }).catch(() => false);
+    return false;
   }
 
   /** 사이드바 메뉴 항목 로케이터 (다중 전략) */
   getSidebarMenuItem(menuName: PocaSidebarMenu): Locator {
-    // 전략 1: 사이드바 내 span (기존)
-    // 전략 2: 사이드바 내 모든 텍스트 요소
-    // 전략 3: 페이지 전체에서 검색
-    return this.sidebar
-      .locator(
-        `span:text-is("${menuName}"), a:text-is("${menuName}"), :text-is("${menuName}")`,
-      )
+    return this.page
+      .locator("li.relative span.title-sb-medium")
+      .filter({ hasText: menuName })
       .first();
   }
 
@@ -214,14 +211,28 @@ export class PocaDashboardPage extends AdminBasePage {
   async clickSidebarMenu(menuName: PocaSidebarMenu): Promise<void> {
     const menuItem = this.getSidebarMenuItem(menuName);
     await expect(menuItem).toBeVisible({ timeout: this.timeouts.long });
-    await menuItem.click();
+
+    const clickable = menuItem
+      .locator(
+        'xpath=ancestor::li[contains(@class,"relative")][1]//div[contains(@class,"cursor-pointer")][1]',
+      )
+      .first();
+
+    if (await clickable.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await this.clickWithRecovery(clickable, {
+        timeout: this.timeouts.medium,
+      });
+      return;
+    }
+
+    await this.clickWithRecovery(menuItem, {
+      timeout: this.timeouts.medium,
+    });
   }
 
   /** 사이드바 메뉴 텍스트 목록 반환 */
   async getSidebarMenuTexts(): Promise<string[]> {
-    const menuSpans = this.sidebar.locator(
-      'span[class*="title-sb-medium"], li span, li a',
-    );
+    const menuSpans = this.page.locator("li.relative span.title-sb-medium");
     const count = await menuSpans.count();
     const texts: string[] = [];
     for (let i = 0; i < count; i++) {
@@ -319,7 +330,7 @@ export class PocaDashboardPage extends AdminBasePage {
 
   /** 사용자 이메일 반환 */
   async getUserEmail(): Promise<string> {
-    const emailEl = this.sidebar.locator(':text("@")').first();
+    const emailEl = this.sidebarEmail;
     return (await emailEl.textContent())?.trim() || "";
   }
 

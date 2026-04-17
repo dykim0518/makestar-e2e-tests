@@ -13,7 +13,11 @@ export class PocaReportListPage extends AdminBasePage {
 
   constructor(page: Page) {
     super(page, ADMIN_TIMEOUTS);
-    this.searchInput = page.locator('input[placeholder*="검색"]').first();
+    this.searchInput = page
+      .locator(
+        'input[placeholder*="검색"], input[placeholder*="키워드"], input[placeholder*="입력"]',
+      )
+      .first();
   }
 
   getPageUrl(): string {
@@ -21,7 +25,7 @@ export class PocaReportListPage extends AdminBasePage {
   }
 
   getHeadingText(): string {
-    return "신고";
+    return "신고내역 리스트";
   }
 
   /** 키워드로 신고내역 검색 */

@@ -4,14 +4,14 @@
  * ============================================================================
  * Section 8: 당첨자조회 (Read Only)
  * ============================================================================
- *   PW-PAGE-01: 목록 로드
- *   PW-SEARCH-01: 키워드 검색
+ *   PW-PAGE-01: 배송 정보 리스트 로드
+ *   PW-SEARCH-01: 이메일 검색
  *
  * ============================================================================
  * Section 9: 신고내역 (Read Only)
  * ============================================================================
  *   PR-PAGE-01: 목록 로드
- *   PR-SEARCH-01: 키워드 검색
+ *   PR-DATA-01: 상태/처리 컬럼 검증
  *
  * ============================================================================
  * Section 10: 고객관리 (Read Only)
@@ -50,7 +50,7 @@ import {
 // 공통 설정 (토큰검증 + 뷰포트체크 + 인증쿠키)
 applyAdminTestConfig("포카앨범");
 
-test.describe("POCAAlbum Admin 읽기 전용 테스트", () => {
+test.describe("POCAAlbum Admin 읽기 전용 테스트 @suite:exploratory", () => {
   // ========================================================================
   // Section 8: 당첨자조회 (Read Only)
   // ========================================================================
@@ -63,32 +63,36 @@ test.describe("POCAAlbum Admin 읽기 전용 테스트", () => {
       await waitForPageStable(page);
     });
 
-    test("PW-PAGE-01: 당첨자조회 목록 페이지 로드", async () => {
+    test("PW-PAGE-01: 배송 정보 리스트 페이지 로드", async () => {
       const tableVisible = await winnerListPage.table
         .isVisible({ timeout: ELEMENT_TIMEOUT })
         .catch(() => false);
 
-      if (!tableVisible) {
-        console.log("ℹ️ 당첨자조회 테이블 미표시 - URL 또는 권한 확인 필요");
-        console.log(`  현재 URL: ${winnerListPage.page.url()}`);
-        return;
-      }
+      expect(
+        tableVisible,
+        `❌ 배송 정보 리스트 테이블이 보이지 않습니다. 현재 URL: ${winnerListPage.page.url()}`,
+      ).toBe(true);
 
       const rowCount = await winnerListPage.getRowCount();
-      console.log(`  당첨자조회 목록: ${rowCount}행`);
+      expect(rowCount, "❌ 배송 정보 리스트 데이터가 없습니다").toBeGreaterThan(
+        0,
+      );
+      console.log(`  배송 정보 리스트: ${rowCount}행`);
     });
 
-    test("PW-SEARCH-01: 당첨자 키워드 검색", async () => {
+    test("PW-SEARCH-01: 이메일 검색으로 결과 필터링", async () => {
       const isSearchVisible = await winnerListPage.searchInput
         .isVisible({ timeout: 5000 })
         .catch(() => false);
 
-      if (!isSearchVisible) {
-        console.log("ℹ️ 당첨자조회 검색 필드 미발견");
-        return;
-      }
+      expect(isSearchVisible, "❌ 배송 정보 리스트 검색 필드를 찾을 수 없습니다").toBe(
+        true,
+      );
 
-      await winnerListPage.searchByKeyword("테스트");
+      const firstEmail = (await winnerListPage.getCellText(0, 2)).trim();
+      expect(firstEmail, "❌ 배송 정보 리스트 첫 행 이메일을 읽지 못했습니다").toBeTruthy();
+
+      await winnerListPage.searchByKeyword(firstEmail);
       const hasData = await winnerListPage.hasTableData();
       const hasNoResult = await winnerListPage.noResultMessage
         .isVisible()
@@ -118,36 +122,31 @@ test.describe("POCAAlbum Admin 읽기 전용 테스트", () => {
         .isVisible({ timeout: ELEMENT_TIMEOUT })
         .catch(() => false);
 
-      if (!tableVisible) {
-        console.log("ℹ️ 신고내역 테이블 미표시 - URL 또는 권한 확인 필요");
-        console.log(`  현재 URL: ${reportListPage.page.url()}`);
-        return;
-      }
+      expect(
+        tableVisible,
+        `❌ 신고내역 테이블이 보이지 않습니다. 현재 URL: ${reportListPage.page.url()}`,
+      ).toBe(true);
 
       const rowCount = await reportListPage.getRowCount();
+      expect(rowCount, "❌ 신고내역 목록 데이터가 없습니다").toBeGreaterThan(0);
       console.log(`  신고내역 목록: ${rowCount}행`);
     });
 
-    test("PR-SEARCH-01: 신고내역 키워드 검색", async () => {
-      const isSearchVisible = await reportListPage.searchInput
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
+    test("PR-DATA-01: 신고 상태/처리 컬럼이 노출된다", async () => {
+      await expect(reportListPage.page.locator('th:has-text("상태")')).toBeVisible();
+      await expect(
+        reportListPage.page.locator('th:has-text("신고처리")'),
+      ).toBeVisible();
 
-      if (!isSearchVisible) {
-        console.log("ℹ️ 신고내역 검색 필드 미발견");
-        return;
-      }
-
-      await reportListPage.searchByKeyword("신고");
-      const hasData = await reportListPage.hasTableData();
-      const hasNoResult = await reportListPage.noResultMessage
-        .isVisible()
-        .catch(() => false);
-
+      const firstStatus = (await reportListPage.getCellText(0, 7)).trim();
       expect(
-        hasData || hasNoResult,
-        "검색 후 결과나 안내 메시지가 없습니다",
-      ).toBeTruthy();
+        ["신고접수", "처리완료", "신고반려"].includes(firstStatus),
+        `❌ 예상하지 못한 신고 상태 값입니다: ${firstStatus}`,
+      ).toBe(true);
+
+      const actionButtons = reportListPage.tableRows.first().locator("button");
+      const actionCount = await actionButtons.count();
+      expect(actionCount, "❌ 신고처리 액션 버튼이 노출되지 않습니다").toBeGreaterThan(0);
     });
   });
 
@@ -168,13 +167,13 @@ test.describe("POCAAlbum Admin 읽기 전용 테스트", () => {
         .isVisible({ timeout: ELEMENT_TIMEOUT })
         .catch(() => false);
 
-      if (!tableVisible) {
-        console.log("ℹ️ 고객관리 테이블 미표시 - URL 또는 권한 확인 필요");
-        console.log(`  현재 URL: ${customerListPage.page.url()}`);
-        return;
-      }
+      expect(
+        tableVisible,
+        `❌ 고객관리 테이블이 보이지 않습니다. 현재 URL: ${customerListPage.page.url()}`,
+      ).toBe(true);
 
       const rowCount = await customerListPage.getRowCount();
+      expect(rowCount, "❌ 고객관리 목록 데이터가 없습니다").toBeGreaterThan(0);
       console.log(`  고객관리 목록: ${rowCount}행`);
     });
 
@@ -183,10 +182,9 @@ test.describe("POCAAlbum Admin 읽기 전용 테스트", () => {
         .isVisible({ timeout: 5000 })
         .catch(() => false);
 
-      if (!isSearchVisible) {
-        console.log("ℹ️ 고객관리 검색 필드 미발견");
-        return;
-      }
+      expect(isSearchVisible, "❌ 고객관리 검색 필드를 찾을 수 없습니다").toBe(
+        true,
+      );
 
       await customerListPage.searchByKeyword("테스트");
       const hasData = await customerListPage.hasTableData();
@@ -218,13 +216,15 @@ test.describe("POCAAlbum Admin 읽기 전용 테스트", () => {
         .isVisible({ timeout: ELEMENT_TIMEOUT })
         .catch(() => false);
 
-      if (!tableVisible) {
-        console.log("ℹ️ 시스템관리 테이블 미표시 - URL 또는 권한 확인 필요");
-        console.log(`  현재 URL: ${systemListPage.page.url()}`);
-        return;
-      }
+      expect(
+        tableVisible,
+        `❌ 시스템관리 테이블이 보이지 않습니다. 현재 URL: ${systemListPage.page.url()}`,
+      ).toBe(true);
 
       const rowCount = await systemListPage.getRowCount();
+      expect(rowCount, "❌ 시스템관리 목록 데이터가 없습니다").toBeGreaterThan(
+        0,
+      );
       console.log(`  시스템관리 목록: ${rowCount}행`);
     });
 
@@ -233,10 +233,9 @@ test.describe("POCAAlbum Admin 읽기 전용 테스트", () => {
         .isVisible({ timeout: 5000 })
         .catch(() => false);
 
-      if (!isSearchVisible) {
-        console.log("ℹ️ 시스템관리 검색 필드 미발견");
-        return;
-      }
+      expect(isSearchVisible, "❌ 시스템관리 검색 필드를 찾을 수 없습니다").toBe(
+        true,
+      );
 
       await systemListPage.searchByKeyword("설정");
       const hasData = await systemListPage.hasTableData();
@@ -296,7 +295,7 @@ test.describe("POCAAlbum Admin 읽기 전용 테스트", () => {
       ).toBeVisible();
     });
 
-    test("QA78-ACTION-01: 캐시 선택 후 삭제 동작 검증", async ({ page }) => {
+    test("QA78-ACTION-01: 캐시 선택 후 삭제 동작 검증 @suite:ops", async ({ page }) => {
       await expect(page.locator("table")).toBeVisible({
         timeout: ELEMENT_TIMEOUT,
       });

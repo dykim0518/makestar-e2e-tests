@@ -15,7 +15,7 @@
 
 import { test, expect } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
-import { OrderListPage } from "./pages";
+import { CategoryListPage, OrderListPage, UserListPage } from "./pages";
 import { setupAuthCookies, resetAuthCache } from "./helpers/admin/auth-helper";
 import { initPageWithRecovery } from "./helpers/admin";
 import { clickAndDownloadExcel } from "./helpers/admin/excel-export";
@@ -59,6 +59,19 @@ function findColumn(headers: string[], preferred: string): string | null {
   return null;
 }
 
+async function waitForCapturedResponses(
+  capture: ReturnType<typeof captureApi>,
+  label: string,
+  timeout = 15000,
+): Promise<void> {
+  await expect
+    .poll(() => capture.matched().length, {
+      timeout,
+      message: `[${label}] API 응답 캡처 실패`,
+    })
+    .toBeGreaterThan(0);
+}
+
 // ===========================================================================
 // 1) 키 컬럼 교집합 검증 (API 최신 N건 → Excel 존재)
 // ===========================================================================
@@ -68,7 +81,6 @@ type KeyMatchTarget = {
   name: string;
   url: string;
   buttonText: string;
-  preAction?: "user-b2b-tab";
   listApiPattern: RegExp;
   apiIdGetter: (row: any) => string | number | null;
   excelIdHeader: string;
@@ -104,20 +116,16 @@ test.describe("Admin 엑셀 키 컬럼 교집합 (API → Excel) @feature:admin_
       const capture = captureApi(page, t.listApiPattern);
 
       resetAuthCache();
-      await setupAuthCookies(page);
-      await page.goto(t.url, { waitUntil: "domcontentloaded" });
-      await page
-        .waitForLoadState("networkidle", { timeout: 15000 })
-        .catch(() => {});
-      await page.waitForTimeout(5000);
-
-      if (t.preAction === "user-b2b-tab") {
-        const tab = page.locator('div:text-is("B2B 회원 관리")').first();
-        await tab.waitFor({ state: "visible", timeout: 10000 });
-        await tab.click();
-        await page.waitForTimeout(3000);
+      if (t.id === "CAT-KEY-01") {
+        await initPageWithRecovery(CategoryListPage, page, "대분류");
+      } else if (t.id === "USR-KEY-B2C") {
+        await initPageWithRecovery(UserListPage, page, "회원관리");
+      } else {
+        await setupAuthCookies(page);
+        await page.goto(t.url, { waitUntil: "domcontentloaded" });
       }
-      await page.waitForTimeout(2000);
+
+      await waitForCapturedResponses(capture, t.id, 20000);
 
       const apiResponses = capture.matched();
       expect(apiResponses.length, "API 응답 캡처 실패").toBeGreaterThan(0);
@@ -211,12 +219,7 @@ test.describe("Admin 주문 엑셀 → API 역검증 @feature:admin_makestar.ord
   for (const t of ORDER_VERIFY_TARGETS) {
     test(`${t.id}: ${t.name}`, async ({ page }) => {
       resetAuthCache();
-      await setupAuthCookies(page);
-      await page.goto(`${BASE}/order/list`, { waitUntil: "domcontentloaded" });
-      await page
-        .waitForLoadState("networkidle", { timeout: 15000 })
-        .catch(() => {});
-      await page.waitForTimeout(5000);
+      await initPageWithRecovery(OrderListPage, page, "주문관리");
 
       const button = await findButton(page, t.buttonText, true);
       await expect(button).toBeVisible({ timeout: 20000 });
@@ -308,7 +311,6 @@ test.describe("Admin 엑셀 필터 조합 @feature:admin_makestar.order.list", (
 
     await orderPage.selectStatusOptionByValue("orderStatus", preferred);
     await orderPage.clickSearchAndWait();
-    await page.waitForTimeout(2000);
 
     const btn = await findButton(page, "주문 엑셀 다운로드 V2", true);
     await expect(btn).toBeVisible({ timeout: 20000 });
@@ -375,7 +377,6 @@ test.describe("Admin 엑셀 필터 조합 @feature:admin_makestar.order.list", (
 
     await orderPage.resetFiltersAndWait();
     await orderPage.searchByKeyword(targetOrderNo);
-    await page.waitForTimeout(2000);
 
     const btn = await findButton(page, "주문 엑셀 다운로드 V2", true);
     const dl = await clickAndDownloadExcel(page, btn, { timeoutMs: 90_000 });

@@ -13,15 +13,19 @@ export class PocaCustomerListPage extends AdminBasePage {
 
   constructor(page: Page) {
     super(page, ADMIN_TIMEOUTS);
-    this.searchInput = page.locator('input[placeholder*="검색"]').first();
+    this.searchInput = page
+      .locator(
+        'input[placeholder*="검색"], input[placeholder*="키워드"], input[placeholder*="입력"]',
+      )
+      .first();
   }
 
   getPageUrl(): string {
-    return `${this.baseUrl}/pocaalbum/customer/list`;
+    return `${this.baseUrl}/pocaalbum/user/list?size=25`;
   }
 
   getHeadingText(): string {
-    return "고객";
+    return "회원 관리";
   }
 
   /** 키워드로 고객 검색 */
