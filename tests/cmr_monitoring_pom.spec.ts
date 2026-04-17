@@ -530,15 +530,8 @@ test.describe.serial("네비게이션 검증 @feature:cmr.home", () => {
   }) => {
     test.setTimeout(TEST_TIMEOUT);
 
-    await makestar.handleModal();
-    await makestar
-      .waitForContentStable("body", { timeout: 3000 })
-      .catch(() => {});
-
-    // GNB Shop 버튼 클릭 (POM 로케이터 사용)
-    await expect(makestar.shopButton).toBeVisible({ timeout: 5000 });
-    await makestar.shopButton.click();
-    await makestar.waitForLoadState("domcontentloaded");
+    await makestar.handleModalAndWaitForContent();
+    await makestar.navigateToShop();
     await makestar
       .waitForContentStable("body", { timeout: 3000 })
       .catch(() => {});
@@ -554,15 +547,8 @@ test.describe.serial("네비게이션 검증 @feature:cmr.home", () => {
   }) => {
     test.setTimeout(TEST_TIMEOUT);
 
-    await makestar.handleModal();
-    await makestar
-      .waitForContentStable("body", { timeout: 3000 })
-      .catch(() => {});
-
-    // GNB Event 버튼 클릭 (POM 로케이터 사용)
-    await expect(makestar.eventButton).toBeVisible({ timeout: 5000 });
-    await makestar.eventButton.click();
-    await makestar.waitForLoadState("domcontentloaded");
+    await makestar.handleModalAndWaitForContent();
+    await makestar.navigateToEvent();
     await makestar
       .waitForContentStable("body", { timeout: 3000 })
       .catch(() => {});
@@ -581,15 +567,8 @@ test.describe.serial("네비게이션 검증 @feature:cmr.home", () => {
   }) => {
     test.setTimeout(TEST_TIMEOUT);
 
-    await makestar.handleModal();
-    await makestar
-      .waitForContentStable("body", { timeout: 3000 })
-      .catch(() => {});
-
-    // GNB Funding 버튼 클릭 (POM 로케이터 사용)
-    await expect(makestar.fundingButton).toBeVisible({ timeout: 5000 });
-    await makestar.fundingButton.click();
-    await makestar.waitForLoadState("domcontentloaded");
+    await makestar.handleModalAndWaitForContent();
+    await makestar.navigateToFunding();
     await makestar
       .waitForContentStable("body", { timeout: 3000 })
       .catch(() => {});
@@ -992,6 +971,24 @@ test.describe("상품/장바구니 기능 @feature:cmr.cart", () => {
   test("CMR-ACTION-03: 장바구니 담기 및 수량 변경 검증", async ({ page }) => {
     test.setTimeout(TEST_TIMEOUT * 1.5);
 
+    const openCartEligibleProductFromShop = async (): Promise<boolean> => {
+      for (let attempt = 1; attempt <= 2; attempt += 1) {
+        await makestar.gotoShop();
+        await makestar.waitForPageContent();
+
+        const opened = await makestar.openFirstCartEligibleProduct();
+        if (opened) {
+          return true;
+        }
+
+        console.warn(
+          `   ⚠️ 장바구니 가능 상품 탐색 실패 (시도 ${attempt}/2), 재시도`,
+        );
+      }
+
+      return false;
+    };
+
     // Step 0: 장바구니 초기화
     await test.step("Step 0: 장바구니 초기화", async () => {
       await makestar.gotoCart();
@@ -1001,12 +998,7 @@ test.describe("상품/장바구니 기능 @feature:cmr.cart", () => {
 
     // Step 1: Shop 페이지 이동 및 첫 번째 상품 선택
     await test.step("Step 1: Shop 페이지 이동", async () => {
-      // Cart 페이지에는 GNB 메인 네비가 없으므로 로고 클릭으로 홈 복귀
-      await makestar.clickLogoToHome();
-      await makestar.navigateToShop();
-      await makestar.waitForPageContent();
-
-      const openedProduct = await makestar.openFirstCartEligibleProduct();
+      const openedProduct = await openCartEligibleProductFromShop();
       expect(
         openedProduct,
         "장바구니 담기 가능한 상품 상세 페이지로 진입해야 합니다",
@@ -1049,141 +1041,72 @@ test.describe("상품/장바구니 기능 @feature:cmr.cart", () => {
     });
   });
 
-  test("CMR-ACTION-05: 장바구니 수량 증가 시 가격 반영 검증", async ({
-    page,
-  }, testInfo) => {
-    // 모바일 UA: 옵션 선택 spinbutton/장바구니 버튼이 없고 구매하기 바텀시트 방식
-    if (testInfo.project.name === "mobile-chrome") {
-      console.log(
-        "   ℹ️ 모바일에서는 장바구니 UI가 데스크톱과 다름 — 데스크톱 전용 테스트",
-      );
-      expect(true).toBeTruthy();
-      return;
-    }
+  test("CMR-ACTION-05: 장바구니 수량 증가 시 가격 반영 검증", async () => {
     test.setTimeout(TEST_TIMEOUT * 2);
 
-    // Step 0: 장바구니 초기화
-    await test.step("Step 0: 장바구니 초기화", async () => {
+    const ensureCartHasItem = async (): Promise<boolean> => {
       await makestar.gotoCart();
       await makestar.waitForContentStable();
-      await makestar.clearCart();
-    });
+      await makestar.waitForNetworkStable().catch(() => {});
 
-    // Step 1: Shop → 구매 가능 상품 찾기 → 장바구니 담기
-    await test.step("Step 1: 상품을 장바구니에 담기", async () => {
-      // Cart 페이지에는 GNB 메인 네비가 없으므로 로고 클릭으로 홈 복귀
-      await makestar.clickLogoToHome();
-      await makestar.navigateToShop();
-      await makestar.waitForPageContent();
+      const existingItemCount = await makestar.getCartItemCount();
+      if (existingItemCount > 0) {
+        console.log(`   기존 장바구니 아이템 재사용 (${existingItemCount}개)`);
+        return true;
+      }
 
-      // Shop 상품 중 구매 가능한 상품을 찾아 장바구니에 담기 (최대 8개 시도)
-      const productCount = await makestar.shopProductCard.count();
-      let confirmed = false;
-      let authRedirectCount = 0;
-
-      for (let i = 0; i < Math.min(8, productCount); i++) {
-        // 품절 상품 건너뛰기
-        const card = makestar.shopProductCard.nth(i);
-        const cardText = await card
-          .locator("xpath=ancestor::a[1]")
-          .textContent()
-          .catch(() => "");
-        if (cardText && /sold out|품절/i.test(cardText)) {
-          console.warn(`   ⚠️ 상품 ${i + 1}: 품절 - 건너뜀`);
-          continue;
-        }
-
-        console.log(`   🔍 상품 ${i + 1}: 클릭 시도`);
-        await card.click();
-        await makestar.waitForLoadState("domcontentloaded");
-        await makestar.waitForContentStable();
-        await makestar.handleModal();
-
-        // 상품 상세 페이지 도달 확인
-        const currentUrl = makestar.currentUrl;
-        if (!/\/product\/\d+/i.test(currentUrl)) {
-          console.warn(`   ⚠️ 상품 ${i + 1}: 상세 페이지 아님 (${currentUrl})`);
-          await makestar.clickLogoToHome();
-          await makestar.navigateToShop();
-          await makestar.waitForPageContent();
-          continue;
-        }
-
-        // 옵션 선택 (spinbutton 패턴: 수량 0→1 / 드롭다운 패턴: 첫 번째 옵션)
-        const optionSelected = await makestar.selectFirstOption();
-        console.log(
-          `   옵션 선택 결과: ${optionSelected ? "성공" : "실패 (옵션 없는 상품)"}`,
-        );
-
-        // 드롭다운 패턴일 경우에만 별도 수량 설정
-        if (!optionSelected) {
-          await makestar.setQuantity(1);
-        }
-
-        // Add to Cart 버튼 클릭
-        const clicked = await makestar.clickAddToCartButton();
-        if (clicked) {
-          await makestar.waitForNetworkStable();
-
-          // 로그인 리다이렉트 체크
-          if (
-            makestar.currentUrl.includes("auth") ||
-            makestar.currentUrl.includes("login")
-          ) {
-            authRedirectCount++;
-            console.log(
-              `   ⚠️ 로그인 리다이렉트 감지 (${authRedirectCount}회) — 다음 상품 시도`,
-            );
-
-            if (authRedirectCount >= 3) {
-              console.log(
-                `   ❌ 연속 ${authRedirectCount}회 리다이렉트 — 세션 만료 확정, 조기 중단`,
-              );
-              break;
-            }
-
-            // 로그인 페이지에는 로고가 없으므로 goto()로 직접 Shop 복귀
-            await makestar.goto(`${makestar.baseUrl}/shop`);
-            await makestar.waitForPageContent();
-            continue;
-          }
-
-          await makestar.handleModal();
-
-          // 장바구니에 실제 담겼는지 확인
-          await makestar.gotoCart();
-          await makestar.waitForContentStable();
-          const itemCount = await makestar.getCartItemCount();
-          if (itemCount > 0) {
-            confirmed = true;
-            console.log(
-              `   ✅ 상품 ${i + 1}번째 장바구니 담기 확인 (${itemCount}개)`,
-            );
-            break;
-          }
-        }
-
-        // 실패 → Shop으로 돌아가서 다음 상품 시도
-        console.log(
-          `   ⚠️ 상품 ${i + 1}번째 장바구니 담기 실패, 다음 상품 시도`,
-        );
-        await makestar.clickLogoToHome();
-        await makestar.navigateToShop();
+      for (let attempt = 1; attempt <= 2; attempt += 1) {
+        await makestar.gotoShop();
         await makestar.waitForPageContent();
-      }
 
-      if (!confirmed && authRedirectCount > 0) {
-        throw new Error(
-          `인증 세션 만료: ${authRedirectCount}회 로그인 리다이렉트 — auth.json 갱신 필요`,
+        const openedProduct = await makestar.openFirstCartEligibleProduct();
+        if (!openedProduct) {
+          console.warn(
+            `   ⚠️ 장바구니 가능 상품 상세 진입 실패 (시도 ${attempt}/2)`,
+          );
+          continue;
+        }
+
+        const clicked = await makestar.clickAddToCartButton();
+        if (!clicked) {
+          console.warn(
+            `   ⚠️ 장바구니 담기 버튼 클릭 실패 (시도 ${attempt}/2)`,
+          );
+          continue;
+        }
+
+        await makestar.waitForNetworkStable().catch(() => {});
+        await makestar.handleModal();
+        await makestar.gotoCart();
+        await makestar.waitForContentStable();
+
+        const itemCount = await makestar.getCartItemCount();
+        if (itemCount > 0) {
+          console.log(`   ✅ 장바구니 반영 확인 (${itemCount}개)`);
+          return true;
+        }
+
+        console.warn(
+          `   ⚠️ 장바구니 반영 확인 실패 (시도 ${attempt}/2), 재시도`,
         );
       }
-      expect(confirmed).toBeTruthy();
+
+      return false;
+    };
+
+    // Step 0: 장바구니 준비
+    await test.step("Step 0: 가격 검증용 장바구니 아이템 준비", async () => {
+      const confirmed = await ensureCartHasItem();
+      expect(
+        confirmed,
+        "가격 검증에 사용할 장바구니 아이템을 준비하지 못했습니다",
+      ).toBe(true);
     });
 
-    // Step 2: 장바구니 이동 및 기준 수량·가격 확인
+    // Step 1: 장바구니 이동 및 기준 수량·가격 확인
     let baseQty = 0;
     let basePrice = 0;
-    await test.step("Step 2: 장바구니에서 기준 수량·가격 확인", async () => {
+    await test.step("Step 1: 장바구니에서 기준 수량·가격 확인", async () => {
       await makestar.gotoCart();
       await makestar.waitForContentStable();
       await makestar.waitForNetworkStable();
@@ -1203,8 +1126,8 @@ test.describe("상품/장바구니 기능 @feature:cmr.cart", () => {
       console.log(`   ✅ 기준 Total price: ${basePrice}`);
     });
 
-    // Step 3: + 버튼으로 수량 증가 및 수량 변동 확인
-    await test.step("Step 3: 수량 증가 (+버튼 클릭)", async () => {
+    // Step 2: + 버튼으로 수량 증가 및 수량 변동 확인
+    await test.step("Step 2: 수량 증가 (+버튼 클릭)", async () => {
       // 클릭 직전 수량 재확인 (병렬 워커 간섭 대비)
       const qtyBefore = await makestar.getCartQuantity();
       baseQty = qtyBefore;
@@ -1214,16 +1137,13 @@ test.describe("상품/장바구니 기능 @feature:cmr.cart", () => {
       const increased = await makestar.increaseQuantity();
       expect(increased).toBeTruthy();
 
-      // 수량이 증가할 때까지 대기 (장바구니 전용 로케이터 — EN/KO 다국어 지원)
-      const cartQuantityInput = page
-        .getByRole("textbox", { name: /Quantity|수량/i })
-        .first();
-      await expect(cartQuantityInput).not.toHaveValue(String(qtyBefore), {
-        timeout: 10000,
-      });
-      const qtyAfter = await makestar.getCartQuantity();
-      expect(qtyAfter).toBeGreaterThan(qtyBefore);
-      console.log(`   ✅ 수량 증가 완료: ${qtyBefore} → ${qtyAfter}`);
+      // 데스크톱/모바일 공통 수량 컨트롤 기준으로 실제 증가할 때까지 대기
+      await expect
+        .poll(async () => await makestar.getCartQuantity(), { timeout: 10000 })
+        .toBeGreaterThan(qtyBefore);
+      const updatedQty = await makestar.getCartQuantity();
+      expect(updatedQty).toBeGreaterThan(qtyBefore);
+      console.log(`   ✅ 수량 증가 완료: ${qtyBefore} → ${updatedQty}`);
     });
 
     // Step 4: 변경된 가격 검증

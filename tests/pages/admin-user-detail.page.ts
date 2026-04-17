@@ -141,29 +141,64 @@ export class UserDetailPage extends AdminBasePage {
   async getInfoValueByLabel(label: string): Promise<string> {
     const value = await this.page
       .evaluate((targetLabel: string) => {
-        // 레이블 <p> 요소 찾기
-        const candidates = document.querySelectorAll("p.title-sb-medium");
-        for (const el of candidates) {
-          if (el.textContent?.trim() !== targetLabel) continue;
+        const knownLabels = [
+          "이름",
+          "닉네임",
+          "가입계정",
+          "생년월일",
+          "거주국가",
+          "E-Mail",
+          "전화번호",
+          "성별",
+          "회원상태",
+          "활동상태",
+          "가입일",
+          "가입서비스",
+          "배송정보 수신",
+          "마케팅 제공동의",
+        ];
 
-          // 레이블 컨테이너(w-[160px])의 nextSibling에서 값 추출
-          // p → div(flex) → div(w-[160px]) → nextSibling(div.grow)
-          const labelContainer = el.closest('div[class*="w-[160px]"]');
-          if (labelContainer?.nextElementSibling) {
-            return labelContainer.nextElementSibling.textContent?.trim() || "";
-          }
+        const normalize = (text: string | null | undefined) =>
+          (text ?? "").replace(/\s+/g, " ").trim();
 
-          // fallback: 조상을 거슬러 올라가며 nextSibling 탐색
+        const isUsefulValue = (text: string) =>
+          text.length > 0 &&
+          text !== targetLabel &&
+          !text.includes(targetLabel) &&
+          text.length < 120 &&
+          !knownLabels.some((knownLabel) =>
+            knownLabel !== targetLabel && text.includes(knownLabel),
+          );
+
+        const leafElements: Element[] = Array.from(
+          document.querySelectorAll("main *"),
+        ).filter((el) => el.children.length === 0);
+
+        for (const el of leafElements) {
+          if (normalize(el.textContent) !== targetLabel) continue;
+
           let ancestor: Element | null = el;
-          for (let i = 0; i < 5; i++) {
-            ancestor = ancestor?.parentElement ?? null;
-            if (ancestor?.nextElementSibling) {
-              const text =
-                ancestor.nextElementSibling.textContent?.trim() || "";
-              if (text.length > 0 && text !== targetLabel) return text;
+          for (let depth = 0; depth < 6 && ancestor; depth += 1) {
+            const sibling = ancestor.nextElementSibling;
+            if (sibling) {
+              const text = normalize(sibling.textContent);
+              if (isUsefulValue(text)) return text;
             }
+
+            const parent: Element | null = ancestor.parentElement;
+            if (parent) {
+              const siblings: Element[] = Array.from(parent.children);
+              const currentIndex = siblings.indexOf(ancestor);
+              if (currentIndex >= 0) {
+                for (const candidate of siblings.slice(currentIndex + 1)) {
+                  const text = normalize(candidate.textContent);
+                  if (isUsefulValue(text)) return text;
+                }
+              }
+            }
+
+            ancestor = parent;
           }
-          return "";
         }
         return "";
       }, label)

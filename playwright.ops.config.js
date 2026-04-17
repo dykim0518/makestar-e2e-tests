@@ -2,25 +2,21 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
- * CI gate 전용 Playwright 설정
+ * 변경성/운영용 Playwright 설정
  *
- * 로컬 설정(playwright.config.js)과 분리하여 gate 실행에 최적화.
- * - globalSetup 없음 (브라우저 로그인 불가)
- * - auth.json은 GitHub Secrets에서 주입됨
- * - headless 고정, chromium만 사용
- * - @suite:ops 태그가 붙은 변경성 테스트는 제외
- * - @suite:exploratory 태그가 붙은 탐색성/비계약 테스트는 제외
- *
- * 사용법: npx playwright test --config=playwright.ci.config.js
+ * - @suite:ops 태그가 붙은 테스트만 실행
+ * - @suite:exploratory 태그가 붙은 탐색성 테스트는 제외
+ * - 생성/수정/삭제 계열은 재시도하지 않음
+ * - self-hosted 또는 로컬 수동 실행 전용
  */
 export default defineConfig({
   testDir: './tests',
   testIgnore: ['**/backup/**', '**/save-auth*', '**/ab-save-auth*'],
-  grepInvert: /@suite:ops|@suite:exploratory/,
+  grepInvert: /@suite:exploratory/,
 
-  fullyParallel: true,
+  fullyParallel: false,
   forbidOnly: true,
-  retries: 2,
+  retries: 0,
   workers: 1,
 
   reporter: [
@@ -30,7 +26,7 @@ export default defineConfig({
     ['./lib/live-reporter.js'],
   ],
 
-  timeout: 90000,
+  timeout: 120000,
 
   use: {
     trace: 'on-first-retry',
@@ -43,24 +39,6 @@ export default defineConfig({
 
   projects: [
     {
-      name: 'cmr-monitoring',
-      testMatch: ['**/cmr_monitoring_pom.spec.ts'],
-      use: {
-        ...devices['Desktop Chrome'],
-        viewport: { width: 1920, height: 1080 },
-        storageState: './auth.json',
-      },
-    },
-    {
-      name: 'albumbuddy-monitoring',
-      testMatch: ['**/ab_monitoring_pom.spec.ts'],
-      use: {
-        ...devices['Desktop Chrome'],
-        viewport: { width: 1920, height: 1080 },
-        storageState: './ab-auth.json',
-      },
-    },
-    {
       name: 'admin-setup',
       testMatch: ['**/admin_auth_pom.spec.ts'],
       retries: 0,
@@ -71,7 +49,7 @@ export default defineConfig({
       },
     },
     {
-      name: 'admin-gate',
+      name: 'admin-ops',
       testMatch: [
         '**/admin_product_pom.spec.ts',
         '**/admin_order_pom.spec.ts',
@@ -83,6 +61,7 @@ export default defineConfig({
         '**/admin_poca_readonly_pom.spec.ts',
         '**/admin_poca_shop_pom.spec.ts',
       ],
+      grep: /@suite:ops/,
       dependencies: ['admin-setup'],
       use: {
         ...devices['Desktop Chrome'],

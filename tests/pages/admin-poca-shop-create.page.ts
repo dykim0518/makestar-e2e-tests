@@ -89,34 +89,33 @@ export class PocaShopCreatePage extends AdminBasePage {
       .catch(() => false);
 
     if (isTriggerInContainer) {
-      await trigger.click();
+      await this.clickWithRecovery(trigger, { timeout: 5000 });
     } else {
       // 형제 div에서 트리거 찾기 (라벨과 드롭다운이 같은 레벨)
       const siblingTrigger = label
         .locator("xpath=following::div[contains(@class,'selection-input')]")
         .first();
-      await siblingTrigger.click();
+      await this.clickWithRecovery(siblingTrigger, { timeout: 5000 });
     }
 
     // 포탈로 렌더된 드롭다운 패널 대기 (height:0으로 렌더되어 isVisible이 false)
     const dropdown = this.page.locator(".selection-dropdown-container");
     await dropdown.waitFor({ state: "attached", timeout: 5000 });
 
-    // 옵션 클릭 (force: true — 패널 height:0 대응)
     const option = dropdown
       .locator(".menu-item__label")
       .filter({ hasText: optionText });
     const optionCount = await option.count();
 
     if (optionCount > 0) {
-      await option.first().click({ force: true });
+      await this.clickAttachedElement(option.first(), { timeout: 5000 });
     } else {
       const firstItem = dropdown.locator(".menu-item__label").first();
       const firstText = await firstItem.textContent();
       console.log(
         `  ⚠️ "${optionText}" 미발견, 첫 번째 옵션 "${firstText}" 선택`,
       );
-      await firstItem.click({ force: true });
+      await this.clickAttachedElement(firstItem, { timeout: 5000 });
     }
 
     // 커버 오버레이 닫기
@@ -125,7 +124,7 @@ export class PocaShopCreatePage extends AdminBasePage {
       .isVisible({ timeout: 1000 })
       .catch(() => false);
     if (coverVisible) {
-      await this.page.keyboard.press("Escape");
+      await this.pressEscape();
       await cover.waitFor({ state: "hidden", timeout: 3000 }).catch(() => {});
     }
   }
@@ -234,7 +233,9 @@ export class PocaShopCreatePage extends AdminBasePage {
     this.page.once("dialog", (dialog) => dialog.accept());
 
     await this.createButton.scrollIntoViewIfNeeded();
-    await this.createButton.click({ force: true });
+    await this.clickWithRecovery(this.createButton, {
+      timeout: this.timeouts.medium,
+    });
 
     await this.page
       .waitForURL(/\/pocaalbum\/shop/, { timeout: 15000 })

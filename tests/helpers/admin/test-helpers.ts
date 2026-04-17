@@ -9,8 +9,10 @@ import { test, expect, Page } from "@playwright/test";
 import * as fs from "fs";
 import * as path from "path";
 import { setupAuthCookies, resetAuthCache } from "./auth-helper";
+const { getBrowserAuthState } = require("../../../scripts/auth-state");
 
 type StoredCookie = { name: string; value: string; expires?: number };
+const PROJECT_ROOT = path.join(__dirname, "..", "..", "..");
 
 // ============================================================================
 // 인증 실패 상태 파일 (worker 간 공유용)
@@ -85,99 +87,28 @@ export function clearAuthFailed(): void {
 // 토큰 유효성 검사 함수
 // ============================================================================
 export function isTokenValidSync(): boolean {
-  const authFile = path.join(__dirname, "..", "..", "..", "auth.json");
-  const tokensFile = path.join(
-    __dirname,
-    "..",
-    "..",
-    "..",
-    "admin-tokens.json",
-  );
-  const bufferTime = 60 * 1000; // 1분 여유
-  const now = Date.now();
+  const authState = getBrowserAuthState({ cwd: PROJECT_ROOT, bufferMs: 60 * 1000 });
 
-  // 1. admin-tokens.json 확인
-  try {
-    const tokens = JSON.parse(fs.readFileSync(tokensFile, "utf-8"));
-    const expiresAt = new Date(tokens.expiresAt).getTime();
-    if (expiresAt - bufferTime > now) {
-      return true;
-    }
-  } catch (e) {
-    console.warn(
-      `[auth] admin-tokens.json 읽기 실패: ${e instanceof Error ? e.message : String(e)}`,
-    );
+  if (authState.parseError) {
+    console.warn(`[auth] auth.json 파싱 실패: ${authState.parseError.message}`);
+    return false;
   }
 
-  // 2. auth.json의 refresh_token 쿠키 확인
-  try {
-    const auth = JSON.parse(fs.readFileSync(authFile, "utf-8"));
-    const rtCookie = auth.cookies?.find(
-      (c: StoredCookie) => c.name === "refresh_token",
-    );
-    if (rtCookie?.value) {
-      const payload = JSON.parse(
-        Buffer.from(rtCookie.value.split(".")[1], "base64").toString(),
-      );
-      const expiresAt = payload.exp * 1000;
-      if (expiresAt - bufferTime > now) {
-        return true;
-      }
-    }
-  } catch (e) {
-    console.warn(
-      `[auth] auth.json refresh_token 검증 실패: ${e instanceof Error ? e.message : String(e)}`,
-    );
-  }
-
-  return false;
+  return authState.valid;
 }
 
 /**
  * 토큰 남은 시간 반환 (시간, 분)
  */
 export function getTokenRemaining(): { hours: number; minutes: number } {
-  const authFile = path.join(__dirname, "..", "..", "..", "auth.json");
-  const tokensFile = path.join(
-    __dirname,
-    "..",
-    "..",
-    "..",
-    "admin-tokens.json",
-  );
-  const now = Date.now();
-  let expiresAt = 0;
-
-  try {
-    const tokens = JSON.parse(fs.readFileSync(tokensFile, "utf-8"));
-    expiresAt = new Date(tokens.expiresAt).getTime();
-  } catch (err) {
+  const authState = getBrowserAuthState({ cwd: PROJECT_ROOT, bufferMs: 0 });
+  if (authState.parseError) {
     console.warn(
-      `[auth] admin-tokens.json 읽기 실패 (getTokenRemaining): ${err instanceof Error ? err.message : String(err)}`,
+      `[auth] auth.json 파싱 실패 (getTokenRemaining): ${authState.parseError.message}`,
     );
   }
 
-  try {
-    const auth = JSON.parse(fs.readFileSync(authFile, "utf-8"));
-    const rtCookie = auth.cookies?.find(
-      (c: StoredCookie) => c.name === "refresh_token",
-    );
-    if (rtCookie?.value) {
-      const payload = JSON.parse(
-        Buffer.from(rtCookie.value.split(".")[1], "base64").toString(),
-      );
-      const rtExpires = payload.exp * 1000;
-      if (rtExpires > expiresAt) {
-        expiresAt = rtExpires;
-      }
-    }
-  } catch (err) {
-    console.warn(
-      `[auth] auth.json 파싱 실패 (getTokenRemaining): ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
-
-  const remaining = expiresAt - now;
+  const remaining = authState.remainingMs || 0;
   if (remaining <= 0) return { hours: 0, minutes: 0 };
 
   const hours = Math.floor(remaining / (1000 * 60 * 60));
@@ -258,7 +189,22 @@ export async function selectMultiselectOption(
 
   // 3. 옵션 선택
   if (await optionSelector.isVisible({ timeout: 3000 }).catch(() => false)) {
-    await optionSelector.click({ force: true });
+    await optionSelector.scrollIntoViewIfNeeded().catch(() => {});
+    await optionSelector.click({ timeout: 3000 }).catch(async () => {
+      const handle = await optionSelector.elementHandle();
+      if (!handle) {
+        throw new Error(
+          `멀티셀렉트 옵션 "${optionText}" elementHandle을 찾지 못했습니다.`,
+        );
+      }
+      try {
+        await handle.evaluate((el) => {
+          (el as HTMLElement).click();
+        });
+      } finally {
+        await handle.dispose().catch(() => {});
+      }
+    });
     // 선택 완료 후 태그가 생성될 때까지 대기
     try {
       await multiselect
@@ -524,7 +470,7 @@ export function applyAdminTestConfig(testName?: string) {
     test("토큰 유효성 검증", () => {
       expect(
         tokenValid,
-        "⚠️ 토큰이 만료되었습니다! npx playwright test --project=admin-setup --project=admin-pc",
+        "⚠️ 토큰이 만료되었습니다! 먼저 npm run auth:refresh 로 auth.json을 갱신하세요.",
       ).toBe(true);
     });
   }
@@ -543,7 +489,7 @@ export function applyAdminTestConfig(testName?: string) {
   test.beforeEach(async ({ page }, testInfo) => {
     const viewport = testInfo.project.use.viewport;
     expect(
-      viewport === null || viewport.width >= 1024,
+      viewport == null || viewport.width >= 1024,
       "이 테스트는 데스크톱 뷰포트(너비 1024 이상)에서만 실행됩니다",
     ).toBeTruthy();
 

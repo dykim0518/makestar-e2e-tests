@@ -5,10 +5,10 @@ Makestar.com 서비스 E2E 모니터링 테스트 (Playwright + Page Object Mode
 ## 프로젝트 구조
 
 ```
-├── playwright.config.js          # 로컬 실행용 설정
+├── playwright.config.ts          # 로컬 실행용 설정
 ├── playwright.ci.config.js       # CI 전용 설정
-├── global-setup.js               # 테스트 전 토큰 검증/갱신
-├── auto-refresh-token.js         # 토큰 자동 갱신 모듈
+├── global-setup.js               # 테스트 전 auth 상태 검증
+├── auto-refresh-token.js         # 로컬 수동 세션 유틸리티
 ├── .github/workflows/
 │   └── playwright.yml            # GitHub Actions CI 워크플로우
 └── tests/
@@ -46,13 +46,28 @@ npx playwright test tests/save-auth.spec.ts --headed
 
 # AlbumBuddy 세션
 npx playwright test tests/ab-save-auth.spec.ts --headed --project=chromium
+
+# Makestar/Admin auth.json 갱신 + GitHub Secret 동기화
+npm run auth:refresh
 ```
 
 ### 테스트 실행
 
 ```bash
+# gate 기본 회귀 (push/PR 기준)
+npm run test:gate
+
+# 변경성/운영성 시나리오
+npm run test:ops
+
 # CMR 모니터링
 npm run test:cmr
+
+# Admin gate만 실행
+npm run test:admin:gate
+
+# Admin ops만 실행
+npm run test:admin:ops
 
 # Admin 테스트 (인증 Setup 포함)
 npm run test:admin
@@ -66,6 +81,19 @@ npx playwright test -g "TC-HOME"
 # 브라우저 표시 모드
 HEADED=true npm run test:cmr
 ```
+
+### 품질 가드
+
+```bash
+# false green 방지 검사
+npm run check:false-green
+
+# 현재 tsconfig 기준 타입 검사
+npm run typecheck
+```
+
+- `check:false-green`: spec 내부의 조용한 `return`, runtime `skip/fixme`, placeholder pass를 막습니다.
+- `typecheck`: 현재 `tsconfig.json` 기준으로 레포 전체 타입 오류가 없는지 확인합니다.
 
 ### 커버리지 대시보드 업데이트 (Admin 로컬 실행 후)
 
@@ -99,9 +127,10 @@ Settings > Secrets and variables > Actions > New repository secret
 
 Actions 탭 > Playwright Tests > Run workflow
 
-- `suite`: `cmr | albumbuddy | admin | all`
-  - `admin`: GitHub Hosted Runner에서는 실행 불가 (사내 VPN/IP allowlist 필요)
-  - `all`: `cmr + albumbuddy` 실행, `admin`은 자동 제외
+- `suite`: `gate | cmr | albumbuddy | admin-gate | admin-ops`
+  - `gate`: hosted runner 기본 자동 실행용 (`cmr + albumbuddy`)
+  - `admin-gate`: self-hosted 수동 실행용 읽기 중심 Admin suite
+  - `admin-ops`: self-hosted 수동 실행용 생성/수정/삭제 Admin suite
 - `project`: Playwright 프로젝트 직접 지정(선택)
 - `spec`: 특정 스펙 파일 경로(선택)
 - `grep`: 특정 테스트 패턴 (예: `TC-HOME`, `TC-SEARCH`)
@@ -114,8 +143,18 @@ Actions 탭 > Playwright Tests > Run workflow
 - 프로젝트별 실행:
   - `cmr-monitoring`: `cmr_monitoring_pom.spec.ts`
   - `albumbuddy-monitoring`: `ab_monitoring_pom.spec.ts`
-- `admin-setup` + `admin-pc`: Admin 시나리오
-- globalSetup 비활성 (CI에서 수동 로그인 불가)
+  - `admin-setup` + `admin-gate`: self-hosted gate 시나리오
+- CI에서는 `globalSetup` 없이 `scripts/ci-refresh-auth.js` + `scripts/validate-auth.js`로 auth 상태만 검증
+- 브라우저 수동 로그인 복구는 CI에서 하지 않음
+
+## 실행 원칙
+
+- `push`/`pull_request` 자동 실행의 기본값은 `gate`입니다.
+- 생성/수정/삭제/충전/캐시 삭제처럼 상태를 바꾸는 시나리오는 `@suite:ops`로 분리하고 self-hosted 수동 실행만 허용합니다.
+- 로컬에서는 필요할 때 `npm run test:admin`처럼 전체 실행을 계속 사용할 수 있습니다.
+- 테스트 본문 안에서 환경 문제를 `skip`으로 숨기지 않습니다.
+- 실행 중 기대한 화면/데이터가 없으면 `fail`, 환경 자격이 없는 케이스만 workflow/project 레벨에서 제외합니다.
+- spec 내부 조용한 `return`과 placeholder pass는 `check:false-green`에서 차단합니다.
 
 ## 비개발자 실행/결과 확인 가이드
 

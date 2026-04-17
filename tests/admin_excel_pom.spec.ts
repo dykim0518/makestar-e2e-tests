@@ -13,9 +13,16 @@
 
 import { test, expect } from "@playwright/test";
 import type { Locator, Page } from "@playwright/test";
+import {
+  EventListPage,
+  OrderListPage,
+  UserListPage,
+  CategoryListPage,
+} from "./pages";
 import { setupAuthCookies, resetAuthCache } from "./helpers/admin/auth-helper";
 import { clickAndDownloadExcel } from "./helpers/admin/excel-export";
 import { parseExcelOrZip } from "./helpers/excel-parser";
+import { initPageWithRecovery } from "./helpers/admin";
 
 const BASE =
   process.env.MAKESTAR_BASE_URL || "https://stage-new-admin.makeuni2026.com";
@@ -159,10 +166,8 @@ async function findButton(
 
 async function runPreAction(page: Page, action: PreAction) {
   if (action === "user-b2b-tab") {
-    const tab = page.locator('div:text-is("B2B 회원 관리")').first();
-    await tab.waitFor({ state: "visible", timeout: 10000 });
-    await tab.click();
-    await page.waitForTimeout(3000);
+    const userPage = new UserListPage(page);
+    await userPage.selectTab("B2B회원관리");
   } else if (action === "event-winner-menu") {
     // "엑셀다운로드" 트리거 먼저 열기
     const trigger = page
@@ -172,7 +177,10 @@ async function runPreAction(page: Page, action: PreAction) {
       .first();
     await trigger.waitFor({ state: "visible", timeout: 10000 });
     await trigger.click();
-    await page.waitForTimeout(1500);
+    await page
+      .locator(`button:has-text("당첨자 선정 엑셀 다운로드")`)
+      .first()
+      .waitFor({ state: "visible", timeout: 10000 });
   } else if (action === "sales-tab") {
     const tab = page
       .locator(
@@ -181,7 +189,11 @@ async function runPreAction(page: Page, action: PreAction) {
       .first();
     if ((await tab.count()) > 0) {
       await tab.click();
-      await page.waitForTimeout(3000);
+      await page
+        .locator('button:has-text("판매량 정보 다운로드")')
+        .first()
+        .waitFor({ state: "visible", timeout: 10000 })
+        .catch(() => {});
     }
   }
 }
@@ -194,12 +206,21 @@ test.describe("Admin 엑셀 다운로드 검증", () => {
   for (const t of TARGETS) {
     test(`${t.id}: ${t.name}`, async ({ page }) => {
       resetAuthCache();
-      await setupAuthCookies(page);
-      await page.goto(t.url, { waitUntil: "domcontentloaded" });
-      await page
-        .waitForLoadState("networkidle", { timeout: 15000 })
-        .catch(() => {});
-      await page.waitForTimeout(5000);
+      if (t.id.startsWith("CAT-")) {
+        await initPageWithRecovery(CategoryListPage, page, "대분류");
+      } else if (t.id.startsWith("PRD-")) {
+        await initPageWithRecovery(EventListPage, page, "상품목록");
+      } else if (t.id.startsWith("ORD-")) {
+        await initPageWithRecovery(OrderListPage, page, "주문관리");
+      } else if (t.id.startsWith("USR-")) {
+        await initPageWithRecovery(UserListPage, page, "회원관리");
+      } else {
+        await setupAuthCookies(page);
+        await page.goto(t.url, { waitUntil: "domcontentloaded" });
+        await page
+          .waitForLoadState("networkidle", { timeout: 15000 })
+          .catch(() => {});
+      }
 
       if (t.preAction) await runPreAction(page, t.preAction);
 

@@ -117,6 +117,7 @@ export class MakestarPage extends BasePage {
 
   // 장바구니 요소
   readonly cartItem: Locator;
+  readonly cartQuantityInputs: Locator;
   readonly cartCheckbox: Locator;
   readonly cartDeleteButton: Locator;
 
@@ -199,6 +200,9 @@ export class MakestarPage extends BasePage {
 
     // 장바구니 요소 초기화
     this.cartItem = page.locator('img[alt="album"]');
+    this.cartQuantityInputs = page.locator(
+      'input[placeholder="Quantity"], input[placeholder="수량"], input[type="number"], input[name*="quantity"]',
+    );
     this.cartCheckbox = page.locator('input[type="checkbox"]');
     this.cartDeleteButton = page.locator('button:has-text("Delete")');
 
@@ -299,8 +303,7 @@ export class MakestarPage extends BasePage {
   /** 장바구니 페이지로 이동 */
   async gotoCart(): Promise<void> {
     await this.goto(`${this.baseUrl}/cart`);
-    await this.waitForLoadState("domcontentloaded");
-    await this.handleModal();
+    await this.waitForCartReady();
   }
 
   /** 주문내역 페이지로 이동 (리다이렉트 대응 포함) */
@@ -399,8 +402,10 @@ export class MakestarPage extends BasePage {
       for (const text of closeTexts) {
         const closeBtn = overlayLocator.locator(`text=${text}`).first();
         if (await closeBtn.isVisible({ timeout: 500 }).catch(() => false)) {
-          await closeBtn.click({ force: true }).catch(() => {});
-          await this._page.waitForTimeout(300);
+          await this.clickWithRecovery(closeBtn, {
+            timeout: this.timeouts.short,
+          }).catch(() => {});
+          await this.settleInteractiveUi({ timeout: this.timeouts.short });
           dismissed = true;
           console.log(`✅ 오버레이 닫기: "${text}" 클릭`);
           break;
@@ -410,8 +415,8 @@ export class MakestarPage extends BasePage {
       if (dismissed) continue;
 
       // 3) Escape 키 시도
-      await this._page.keyboard.press("Escape");
-      await this._page.waitForTimeout(300);
+      await this.pressEscape();
+      await this.settleInteractiveUi({ timeout: this.timeouts.short });
 
       // 4) 여전히 있으면 locator 기반으로 개별 제거 (evaluate 사용하지 않아 context 파괴에 안전)
       const stillCount = await overlayLocator.count().catch(() => 0);
@@ -431,10 +436,16 @@ export class MakestarPage extends BasePage {
   async navigateToEvent(): Promise<void> {
     await this.dismissAllBlockingModals();
     try {
-      await this.eventButton.click({ timeout: 5000 });
+      await this.clickWithRecovery(this.eventButton, {
+        timeout: this.timeouts.medium,
+        escapeCount: 1,
+      });
     } catch {
       await this.dismissAllBlockingModals();
-      await this.eventButton.click({ timeout: 5000 });
+      await this.clickWithRecovery(this.eventButton, {
+        timeout: this.timeouts.medium,
+        escapeCount: 1,
+      });
     }
     await this.waitForLoadState("domcontentloaded");
     await this.handleModal();
@@ -444,10 +455,16 @@ export class MakestarPage extends BasePage {
   async navigateToShop(): Promise<void> {
     await this.dismissAllBlockingModals();
     try {
-      await this.shopButton.click({ timeout: 5000 });
+      await this.clickWithRecovery(this.shopButton, {
+        timeout: this.timeouts.medium,
+        escapeCount: 1,
+      });
     } catch {
       await this.dismissAllBlockingModals();
-      await this.shopButton.click({ timeout: 5000 });
+      await this.clickWithRecovery(this.shopButton, {
+        timeout: this.timeouts.medium,
+        escapeCount: 1,
+      });
     }
     await this.waitForLoadState("domcontentloaded");
     await this.handleModal();
@@ -457,10 +474,16 @@ export class MakestarPage extends BasePage {
   async navigateToFunding(): Promise<void> {
     await this.dismissAllBlockingModals();
     try {
-      await this.fundingButton.click({ timeout: 5000 });
+      await this.clickWithRecovery(this.fundingButton, {
+        timeout: this.timeouts.medium,
+        escapeCount: 1,
+      });
     } catch {
       await this.dismissAllBlockingModals();
-      await this.fundingButton.click({ timeout: 5000 });
+      await this.clickWithRecovery(this.fundingButton, {
+        timeout: this.timeouts.medium,
+        escapeCount: 1,
+      });
     }
     await this.waitForLoadState("domcontentloaded");
     await this.handleModal();
@@ -610,23 +633,17 @@ export class MakestarPage extends BasePage {
         await googleBtn.click({ timeout: 5000 });
         console.log("📍 3단계: Google 로그인 버튼 클릭");
 
-        // Google OAuth 완료 후 리다이렉트 대기 (폴링 방식, 최대 20초)
-        let oauthSuccess = false;
-        for (let i = 0; i < 20; i++) {
-          await this.page.waitForTimeout(1000);
-          const url = this.page.url();
-          console.log(`  [${i + 1}초] URL: ${url}`);
-
-          if (
-            !url.includes("auth.") &&
-            !url.includes("/login") &&
-            !url.includes("accounts.google")
-          ) {
-            console.log("📍 4단계: OAuth 완료, 리다이렉트됨");
-            oauthSuccess = true;
-            break;
-          }
-        }
+        // Google OAuth 완료 후 리다이렉트 대기
+        const oauthSuccess = await this.page
+          .waitForURL(
+            (url) =>
+              !url.href.includes("auth.") &&
+              !url.href.includes("/login") &&
+              !url.href.includes("accounts.google"),
+            { timeout: 20000 },
+          )
+          .then(() => true)
+          .catch(() => false);
 
         if (!oauthSuccess) {
           return {
@@ -635,6 +652,8 @@ export class MakestarPage extends BasePage {
             reason: "Google OAuth 실패 (수동 로그인 필요)",
           };
         }
+
+        console.log(`📍 4단계: OAuth 완료, 리다이렉트됨 (${this.page.url()})`);
       } else {
         return {
           success: false,
@@ -1042,6 +1061,7 @@ export class MakestarPage extends BasePage {
 
     // 검색 버튼 클릭 전 모달 처리 (모달이 버튼을 가릴 수 있음)
     await this.handleModal();
+    await this.dismissAllBlockingModals();
 
     // 페이지 오류 상태 확인 및 복구
     const errorButton = this.page.locator('button:has-text("Back to Home")');
@@ -1049,10 +1069,13 @@ export class MakestarPage extends BasePage {
       console.warn("⚠️ 페이지 오류 발견, 홈으로 복귀 후 재시도");
       await this.gotoHome();
       await this.handleModal();
+      await this.dismissAllBlockingModals();
     }
 
-    // 페이지 로딩 대기 (조건부 대기)
-    await this.waitForContentStable(500);
+    // 홈 화면은 캐러셀/배너로 body mutation이 계속 발생할 수 있으므로
+    // 검색 버튼 자체를 기준으로 대기한다.
+    await this.waitForLoadState("domcontentloaded");
+    await this.waitForNetworkStable(2000).catch(() => {});
 
     // 검색 버튼이 보이는지 확인
     const isSearchButtonVisible = await this.searchButton
@@ -1062,12 +1085,15 @@ export class MakestarPage extends BasePage {
       console.warn("⚠️ 검색 버튼이 보이지 않아 페이지 새로고침");
       await this.reload();
       await this.handleModal();
-      await this.waitForContentStable(500);
+      await this.dismissAllBlockingModals();
+      await this.waitForLoadState("domcontentloaded");
+      await this.waitForNetworkStable(2000).catch(() => {});
     }
 
     // 재시도 로직: 최대 3번 시도
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
+        await this.dismissAllBlockingModals();
         await this.searchButton.click();
         await expect(this.searchInput).toBeVisible({
           timeout: this.timeouts.medium,
@@ -1078,7 +1104,9 @@ export class MakestarPage extends BasePage {
         if (attempt < 3) {
           console.warn(`⚠️ 검색 UI 열기 시도 ${attempt} 실패, 재시도...`);
           await this.handleModal();
-          await this.waitForContentStable(500);
+          await this.dismissAllBlockingModals();
+          await this.waitForLoadState("domcontentloaded");
+          await this.waitForNetworkStable(1000).catch(() => {});
         } else {
           throw error;
         }
@@ -1245,6 +1273,7 @@ export class MakestarPage extends BasePage {
   }
 
   async openFirstCartEligibleProduct(maxProducts: number = 8): Promise<boolean> {
+    await this.waitForShopProductGrid().catch(() => {});
     const cardCount = await this.shopProductCard.count();
     const attemptCount = Math.min(cardCount, maxProducts);
 
@@ -1358,6 +1387,12 @@ export class MakestarPage extends BasePage {
 
   private readonly shopCategoryFallbacks = ["BEST", "ALBUM", "All"] as const;
   private readonly artistKeywordFallbacks = ["SEVENTEEN", "BTS"] as const;
+  private readonly cartEmptyPatterns = [
+    /Your cart is empty/i,
+    /No items in cart/i,
+    /장바구니가 비어/i,
+    /장바구니에 담긴 상품이 없습니다/i,
+  ] as const;
 
   private isProductDetailUrl(url: string): boolean {
     return /\/product\/\d+/i.test(url) || /\/shop\/\d+/i.test(url);
@@ -1365,6 +1400,135 @@ export class MakestarPage extends BasePage {
 
   private isArtistProfileUrl(url: string): boolean {
     return /\/artist(\/|$|\?)/i.test(url);
+  }
+
+  private resolveAppUrl(href: string): string {
+    return new URL(href, this.baseUrl).toString();
+  }
+
+  private parseCartItemCountFromText(text: string): number | null {
+    const match = text.match(/Total\s+(\d+)\s+items?/i);
+    if (match) {
+      return parseInt(match[1], 10);
+    }
+    return null;
+  }
+
+  private hasCartEmptyText(text: string): boolean {
+    return this.cartEmptyPatterns.some((pattern) => pattern.test(text));
+  }
+
+  private async getVisibleCartQuantityInputCount(): Promise<number> {
+    return await this.cartQuantityInputs
+      .evaluateAll((nodes) =>
+        nodes.filter((node) => {
+          const element = node as HTMLElement;
+          const style = window.getComputedStyle(element);
+          const rect = element.getBoundingClientRect();
+          return (
+            style.display !== "none" &&
+            style.visibility !== "hidden" &&
+            rect.width > 0 &&
+            rect.height > 0
+          );
+        }).length,
+      )
+      .catch(() => 0);
+  }
+
+  private async waitForShopProductGrid(
+    timeout: number = this.timeouts.long,
+  ): Promise<void> {
+    await this.dismissAllBlockingModals().catch(() => {});
+    await expect
+      .poll(
+        async () => {
+          const imageCount = await this.shopProductCard.count().catch(() => 0);
+          if (imageCount > 0) {
+            return imageCount;
+          }
+
+          return await this.page
+            .locator('a[href*="/product/"]')
+            .count()
+            .catch(() => 0);
+        },
+        { timeout, intervals: [250, 500, 1000] },
+      )
+      .toBeGreaterThan(0);
+  }
+
+  private async waitForCartReady(
+    timeout: number = this.timeouts.long,
+  ): Promise<void> {
+    await this.page.waitForURL(/\/cart(?:[/?#]|$)/i, { timeout }).catch(() => {});
+    await this.waitForLoadState("domcontentloaded").catch(() => {});
+    await this.waitForNetworkStable(5000).catch(() => {});
+    await this.handleModal().catch(() => {});
+
+    await expect
+      .poll(
+        async () => {
+          const bodyText = await this.page
+            .locator("body")
+            .innerText()
+            .catch(() => "");
+          const parsedCount = this.parseCartItemCountFromText(bodyText);
+          const quantityInputCount = await this.getVisibleCartQuantityInputCount();
+          const hasCartControls =
+            /Delete|Total price|총\s*상품금액|Quantity|수량|Payment|결제/i.test(
+              bodyText,
+            );
+
+          if (parsedCount !== null || quantityInputCount > 0) {
+            return "items";
+          }
+          if (this.hasCartEmptyText(bodyText)) {
+            return "empty";
+          }
+          if (hasCartControls) {
+            return "controls";
+          }
+          return "pending";
+        },
+        { timeout, intervals: [250, 500, 1000] },
+      )
+      .not.toBe("pending");
+  }
+
+  private async clickVisibleCartDeleteButton(
+    preferLast: boolean = false,
+  ): Promise<boolean> {
+    const deleteButtons = this.page.locator(
+      'button:has-text("Delete"), button:has-text("삭제")',
+    );
+    const count = await deleteButtons.count().catch(() => 0);
+    if (count === 0) {
+      return false;
+    }
+
+    const indexes = preferLast
+      ? Array.from({ length: count }, (_, offset) => count - 1 - offset)
+      : Array.from({ length: count }, (_, index) => index);
+
+    for (const index of indexes) {
+      const button = deleteButtons.nth(index);
+      const visible = await button
+        .isVisible({ timeout: this.timeouts.short })
+        .catch(() => false);
+      if (!visible) continue;
+
+      const enabled = await button.isEnabled().catch(() => false);
+      if (!enabled) continue;
+
+      await this.clickWithRecovery(button, {
+        timeout: this.timeouts.medium,
+        escapeCount: 1,
+      }).catch(() => {});
+      return true;
+    }
+
+    return false;
   }
 
   private async isSoldOutProductCard(card: Locator): Promise<boolean> {
@@ -1384,40 +1548,44 @@ export class MakestarPage extends BasePage {
   }
 
   private async clickProductCardByIndex(index: number): Promise<boolean> {
-    const card = this.shopProductCard.nth(index);
+    const productLink = this.page.locator('a[href*="/product/"]').nth(index);
     if (
-      !(await card
+      !(await productLink
         .isVisible({ timeout: this.timeouts.short })
         .catch(() => false))
     ) {
       return false;
     }
 
-    const isSoldOut = await this.isSoldOutProductCard(card);
-    if (isSoldOut) {
+    const productText = await productLink.textContent().catch(() => "");
+    if (productText && /sold out/i.test(productText)) {
       console.log(`   상품 ${index + 1}: 품절 - 건너뜀`);
       return false;
     }
 
-    const clickTargets = [
-      card.locator("xpath=ancestor::a[1]"),
-      card.locator("xpath=ancestor::button[1]"),
-      card.locator(
-        'xpath=ancestor::div[contains(@class, "cursor-pointer")][1]',
-      ),
-      card,
-    ];
+    const detailHref = await productLink
+      .getAttribute("href")
+      .catch(() => null);
 
-    for (const target of clickTargets) {
-      if (
-        !(await target
-          .isVisible({ timeout: this.timeouts.short })
-          .catch(() => false))
-      ) {
-        continue;
-      }
+    await this.dismissAllBlockingModals().catch(() => {});
+    await productLink.scrollIntoViewIfNeeded().catch(() => {});
+    await this.clickWithRecovery(productLink, {
+      timeout: this.timeouts.medium,
+      escapeCount: 1,
+    }).catch(() => {});
+    await this.waitForLoadState("domcontentloaded").catch(() => {});
+    await this.waitForContentStable("body", {
+      stableTime: 400,
+      timeout: this.timeouts.medium,
+    }).catch(() => {});
 
-      await target.click({ timeout: this.timeouts.medium }).catch(() => {});
+    if (this.isProductDetailUrl(this.currentUrl)) {
+      console.log(`✅ 상품 ${index + 1}번 상품 링크 클릭`);
+      return true;
+    }
+
+    if (detailHref && /\/(?:product|shop)\//i.test(detailHref)) {
+      await this.goto(this.resolveAppUrl(detailHref));
       await this.waitForLoadState("domcontentloaded").catch(() => {});
       await this.waitForContentStable("body", {
         stableTime: 400,
@@ -1425,7 +1593,7 @@ export class MakestarPage extends BasePage {
       }).catch(() => {});
 
       if (this.isProductDetailUrl(this.currentUrl)) {
-        console.log(`✅ 상품 ${index + 1}번 카드 클릭 (구매 가능)`);
+        console.log(`✅ 상품 ${index + 1}번 상세 링크 직접 이동`);
         return true;
       }
     }
@@ -1753,8 +1921,10 @@ export class MakestarPage extends BasePage {
     );
     if (!optionDropdown) return false;
 
-    await optionDropdown.element.click();
-    await this.wait(this.timeouts.short);
+    await this.clickWithRecovery(optionDropdown.element, {
+      timeout: this.timeouts.medium,
+    });
+    await this.settleInteractiveUi({ timeout: this.timeouts.short });
 
     // 옵션 컨테이너 내부에서 검색 (페이지 전역 li 검색 시 GNB 링크를 클릭하는 버그 방지)
     const firstOption = optionDropdown.element
@@ -1908,6 +2078,9 @@ export class MakestarPage extends BasePage {
         if (!enabled) continue;
 
         await btn.click();
+        await this.waitForNetworkStable(3000).catch(() => {});
+        await this.waitForContentStable(400).catch(() => {});
+        await this.handleModal().catch(() => {});
         console.log(`✅ 장바구니 담기 버튼 클릭: ${sel}`);
         return true;
       }
@@ -1951,6 +2124,23 @@ export class MakestarPage extends BasePage {
 
   /** 장바구니 아이템 개수 반환 */
   async getCartItemCount(): Promise<number> {
+    await this.waitForCartReady(this.timeouts.medium).catch(() => {});
+
+    const bodyText = await this.page.locator("body").innerText().catch(() => "");
+    const parsedCount = this.parseCartItemCountFromText(bodyText);
+    if (parsedCount !== null) {
+      return parsedCount;
+    }
+
+    const quantityInputCount = await this.getVisibleCartQuantityInputCount();
+    if (quantityInputCount > 0) {
+      return quantityInputCount;
+    }
+
+    if (this.hasCartEmptyText(bodyText)) {
+      return 0;
+    }
+
     return await this.cartItem.count();
   }
 
@@ -2016,6 +2206,7 @@ export class MakestarPage extends BasePage {
   /** 장바구니 비우기 */
   async clearCart(): Promise<void> {
     for (let attempt = 0; attempt < 3; attempt++) {
+      await this.waitForCartReady(this.timeouts.medium).catch(() => {});
       const itemCount = await this.getCartItemCount();
       if (itemCount === 0) {
         console.log("   장바구니 비어있음");
@@ -2034,26 +2225,39 @@ export class MakestarPage extends BasePage {
         }
       }
 
-      // Delete 버튼 클릭
-      if (
-        await this.cartDeleteButton
-          .first()
-          .isVisible({ timeout: 2000 })
-          .catch(() => false)
-      ) {
-        await this.cartDeleteButton.first().click();
-        await this.waitForNetworkStable(3000).catch(() => {});
-
-        // 모달 내 Delete 버튼 클릭
-        const allDeleteBtns = this.cartDeleteButton;
-        if ((await allDeleteBtns.count()) >= 2) {
-          await allDeleteBtns.last().click();
-          await this.waitForNetworkStable(2000).catch(() => {});
-          await this.reload();
-          await this.waitForContentStable(500);
-        }
+      const clickedPrimaryDelete =
+        await this.clickVisibleCartDeleteButton(false);
+      if (!clickedPrimaryDelete) {
+        await this.reload();
+        await this.waitForCartReady(this.timeouts.medium).catch(() => {});
+        continue;
       }
+
+      await this.waitForNetworkStable(3000).catch(() => {});
+      await this.waitForContentStable(400).catch(() => {});
+
+      await this.clickVisibleCartDeleteButton(true).catch(() => false);
+      await this.waitForNetworkStable(2000).catch(() => {});
+      await this.waitForContentStable(400).catch(() => {});
+
+      await expect
+        .poll(async () => await this.getCartItemCount(), {
+          timeout: 10000,
+          intervals: [250, 500, 1000],
+        })
+        .toBeLessThan(itemCount);
+
+      await this.reload();
+      await this.waitForCartReady(this.timeouts.medium).catch(() => {});
     }
+
+    const remainingItemCount = await this.getCartItemCount();
+    if (remainingItemCount > 0) {
+      throw new Error(
+        `장바구니 초기화 실패: 삭제 시도 후에도 ${remainingItemCount}개 상품이 남아 있습니다`,
+      );
+    }
+
     console.log("   ✅ 장바구니 초기화 완료");
   }
 
@@ -2347,7 +2551,10 @@ export class MakestarPage extends BasePage {
   private async selectOptionCard(card: Locator): Promise<boolean> {
     const previousPrice = await this.getCurrentPrice();
     await card.scrollIntoViewIfNeeded().catch(() => {});
-    await card.click({ force: true }).catch(() => {});
+    await this.clickWithRecovery(card, {
+      timeout: this.timeouts.medium,
+      settleTimeout: this.timeouts.short,
+    }).catch(() => {});
     await this.waitForContentStable(300).catch(() => {});
 
     const nextPrice = await this.getCurrentPrice();
@@ -2636,16 +2843,12 @@ export class MakestarPage extends BasePage {
     if (!hasResults) return false;
 
     // 검색 추천 모달이 클릭을 가로막을 수 있으므로 ESC로 닫기
-    await this.page.keyboard.press("Escape");
+    await this.pressEscape();
     await this.waitForContentStable(300);
-
-    // 모달이 여전히 있으면 force 옵션으로 클릭
-    try {
-      await this.searchResultCards.first().click({ timeout: 5000 });
-    } catch {
-      // 모달 가림 문제 발생 시 force 옵션 사용
-      await this.searchResultCards.first().click({ force: true });
-    }
+    await this.clickWithRecovery(this.searchResultCards.first(), {
+      timeout: this.timeouts.medium,
+      escapeCount: 1,
+    });
     await this.waitForLoadState("domcontentloaded");
     return true;
   }
@@ -2773,7 +2976,7 @@ export class MakestarPage extends BasePage {
         const btn = page.locator(selector).first();
         if (await btn.isVisible({ timeout: 1500 }).catch(() => false)) {
           await btn.click();
-          await page.waitForTimeout(500);
+          await btn.waitFor({ state: "hidden", timeout: 1000 }).catch(() => {});
           dismissed = true;
           break;
         }
@@ -3058,6 +3261,23 @@ export class MakestarPage extends BasePage {
   > = [];
 
   /**
+   * auth 입력 필드에 값을 넣고 blur시킨 뒤, 다음 버튼 상태가 반영될 때까지 대기합니다.
+   */
+  private async typeAuthInputAndWaitForButton(
+    input: Locator,
+    value: string,
+    nextButton: Locator,
+  ): Promise<boolean> {
+    await input.click();
+    await this.page.keyboard.type(value);
+    await this.page.keyboard.press("Tab");
+    await expect(nextButton)
+      .toBeEnabled({ timeout: 5000 })
+      .catch(() => {});
+    return await nextButton.isEnabled().catch(() => false);
+  }
+
+  /**
    * 이메일 로그인 페이지로 이동 (공통 헬퍼).
    * auth 도메인 쿠키를 클리어한 후 로그인 선택 → Email로 계속하기 → 이메일 입력 페이지까지 이동합니다.
    */
@@ -3180,15 +3400,11 @@ export class MakestarPage extends BasePage {
     const emailInput = this.page.getByRole("textbox", {
       name: /이메일 아이디/i,
     });
-    await emailInput.click();
-    await this.page.keyboard.type(email);
-    await this.page.keyboard.press("Tab");
-    await this.page.waitForTimeout(500);
-
-    // "다음" 버튼 활성화 확인
-    const nextButtonEnabledAfterInput = await nextButton
-      .isEnabled({ timeout: 5000 })
-      .catch(() => false);
+    const nextButtonEnabledAfterInput = await this.typeAuthInputAndWaitForButton(
+      emailInput,
+      email,
+      nextButton,
+    );
 
     return {
       emailPageLoaded,
@@ -3220,16 +3436,12 @@ export class MakestarPage extends BasePage {
     const emailInput = this.page.getByRole("textbox", {
       name: /이메일 아이디/i,
     });
-    await emailInput.click();
-    await this.page.keyboard.type(email);
-    await this.page.keyboard.press("Tab");
-    await this.page.waitForTimeout(500);
-
-    // 다음 버튼 클릭 (이메일 단계)
     const nextBtnEmail = this.page.getByRole("button", { name: "다음" });
-    const emailNextEnabled = await nextBtnEmail
-      .isEnabled({ timeout: 5000 })
-      .catch(() => false);
+    const emailNextEnabled = await this.typeAuthInputAndWaitForButton(
+      emailInput,
+      email,
+      nextBtnEmail,
+    );
     if (!emailNextEnabled) {
       return {
         success: false,
@@ -3237,7 +3449,7 @@ export class MakestarPage extends BasePage {
         reason: "이메일 입력 후 다음 버튼 미활성화",
       };
     }
-    await nextBtnEmail.click();
+    await this.clickWithRecovery(nextBtnEmail, { timeout: this.timeouts.medium });
 
     // /login/password 페이지 전환 대기
     await this.page
@@ -3260,16 +3472,12 @@ export class MakestarPage extends BasePage {
       };
     }
 
-    await passwordInput.click();
-    await this.page.keyboard.type(password);
-    await this.page.keyboard.press("Tab");
-    await this.page.waitForTimeout(500);
-
-    // 다음 버튼 클릭 (비밀번호 단계)
     const nextBtnPassword = this.page.getByRole("button", { name: "다음" });
-    const pwNextEnabled = await nextBtnPassword
-      .isEnabled({ timeout: 5000 })
-      .catch(() => false);
+    const pwNextEnabled = await this.typeAuthInputAndWaitForButton(
+      passwordInput,
+      password,
+      nextBtnPassword,
+    );
     if (!pwNextEnabled) {
       return {
         success: false,
@@ -3277,7 +3485,9 @@ export class MakestarPage extends BasePage {
         reason: "비밀번호 입력 후 다음 버튼 미활성화",
       };
     }
-    await nextBtnPassword.click();
+    await this.clickWithRecovery(nextBtnPassword, {
+      timeout: this.timeouts.medium,
+    });
 
     // 리다이렉트 대기
     await this.page

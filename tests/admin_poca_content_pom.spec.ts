@@ -75,10 +75,7 @@ test.describe("POCAAlbum Admin 콘텐츠 테스트", () => {
         .isVisible({ timeout: 5000 })
         .catch(() => false);
 
-      if (!isSearchVisible) {
-        console.log("ℹ️ FAVE 검색 필드 미발견");
-        return;
-      }
+      expect(isSearchVisible, "❌ FAVE 검색 필드를 찾지 못했습니다").toBe(true);
 
       await faveListPage.searchByKeyword("팩");
       const hasData = await faveListPage.hasTableData();
@@ -97,10 +94,7 @@ test.describe("POCAAlbum Admin 콘텐츠 테스트", () => {
 
     test("PF-PAGIN-01: FAVE 페이지네이션 동작", async () => {
       const rowCount = await faveListPage.getRowCount();
-      if (rowCount === 0) {
-        console.log("ℹ️ 테이블 데이터 없음");
-        return;
-      }
+      expect(rowCount, "❌ FAVE 테이블 데이터가 없습니다").toBeGreaterThan(0);
 
       const isNextVisible = await faveListPage.nextPageButton
         .isVisible()
@@ -110,26 +104,29 @@ test.describe("POCAAlbum Admin 콘텐츠 테스트", () => {
         : false;
 
       if (!isNextVisible || !isNextEnabled) {
-        console.log("ℹ️ Next 버튼 없거나 비활성 - 데이터가 1페이지만 존재");
-        return;
+        expect(
+          rowCount,
+          `❌ Next 버튼이 없거나 비활성인데 행 수(${rowCount})가 단일 페이지 기준을 벗어났습니다.`,
+        ).toBeLessThanOrEqual(10);
+        console.log("  ✅ 단일 페이지 상태 확인 — 다음 페이지 이동 불필요");
+      } else {
+        const firstRowBefore = await faveListPage.getFirstRow().textContent();
+        await faveListPage.goToNextPage();
+        await waitForPageStable(faveListPage.page, 5000);
+        const firstRowAfter = await faveListPage.getFirstRow().textContent();
+
+        expect(
+          firstRowBefore,
+          "페이지 이동 후 데이터가 변경되지 않았습니다",
+        ).not.toBe(firstRowAfter);
       }
-
-      const firstRowBefore = await faveListPage.getFirstRow().textContent();
-      await faveListPage.goToNextPage();
-      await waitForPageStable(faveListPage.page, 5000);
-      const firstRowAfter = await faveListPage.getFirstRow().textContent();
-
-      expect(
-        firstRowBefore,
-        "페이지 이동 후 데이터가 변경되지 않았습니다",
-      ).not.toBe(firstRowAfter);
     });
   });
 
   // ========================================================================
   // FAVE 팩 생성/삭제 (serial)
   // ========================================================================
-  test.describe.serial("FAVE 팩 생성/삭제 @feature:admin_pocaalbum.fave.create", () => {
+  test.describe.serial("FAVE 팩 생성/삭제 @feature:admin_pocaalbum.fave.create @suite:ops", () => {
     let sharedFaveTitle = "";
     let sharedFaveCreated = false;
 
@@ -216,11 +213,10 @@ test.describe("POCAAlbum Admin 콘텐츠 테스트", () => {
         .isVisible({ timeout: ELEMENT_TIMEOUT })
         .catch(() => false);
 
-      if (!tableVisible) {
-        console.log("ℹ️ BENEFIT 테이블 미표시 - URL 또는 권한 확인 필요");
-        console.log(`  현재 URL: ${benefitListPage.page.url()}`);
-        return;
-      }
+      expect(
+        tableVisible,
+        `❌ BENEFIT 테이블이 표시되지 않습니다. 현재 URL: ${benefitListPage.page.url()}`,
+      ).toBe(true);
 
       const rowCount = await benefitListPage.getRowCount();
       console.log(`  BENEFIT 목록: ${rowCount}행`);
@@ -231,10 +227,9 @@ test.describe("POCAAlbum Admin 콘텐츠 테스트", () => {
         .isVisible({ timeout: 5000 })
         .catch(() => false);
 
-      if (!isSearchVisible) {
-        console.log("ℹ️ BENEFIT 검색 필드 미발견");
-        return;
-      }
+      expect(isSearchVisible, "❌ BENEFIT 검색 필드를 찾지 못했습니다").toBe(
+        true,
+      );
 
       await benefitListPage.searchByKeyword("혜택");
       const hasData = await benefitListPage.hasTableData();
@@ -252,7 +247,7 @@ test.describe("POCAAlbum Admin 콘텐츠 테스트", () => {
   // ========================================================================
   // BENEFIT 생성/삭제 (serial)
   // ========================================================================
-  test.describe.serial("BENEFIT 생성/삭제 @feature:admin_pocaalbum.benefit.create", () => {
+  test.describe.serial("BENEFIT 생성/삭제 @feature:admin_pocaalbum.benefit.create @suite:ops", () => {
     let sharedBenefitTitle = "";
     let sharedBenefitCreated = false;
 
@@ -363,10 +358,7 @@ test.describe("POCAAlbum Admin 콘텐츠 테스트", () => {
         .isVisible({ timeout: 5000 })
         .catch(() => false);
 
-      if (!isSearchVisible) {
-        console.log("ℹ️ 알림 검색 필드 미발견");
-        return;
-      }
+      expect(isSearchVisible, "❌ 알림 검색 필드를 찾지 못했습니다").toBe(true);
 
       await notifListPage.searchByKeyword("공지");
       const hasData = await notifListPage.hasTableData();
@@ -384,7 +376,7 @@ test.describe("POCAAlbum Admin 콘텐츠 테스트", () => {
   // ========================================================================
   // 알림 생성/삭제 (serial)
   // ========================================================================
-  test.describe.serial("알림 생성/삭제 @feature:admin_pocaalbum.notice.create", () => {
+  test.describe.serial("알림 생성/삭제 @feature:admin_pocaalbum.notice.create @suite:ops", () => {
     let sharedNotifTitle = "";
     let sharedNotifCreated = false;
 

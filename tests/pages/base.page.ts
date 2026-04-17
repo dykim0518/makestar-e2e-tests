@@ -178,7 +178,7 @@ export abstract class BasePage {
       try {
         const btn = this._page.getByText(text, { exact: false }).first();
         if (await btn.isVisible({ timeout })) {
-          await btn.click({ timeout: this.timeouts.medium, force: true });
+          await this.clickWithRecovery(btn, { timeout: this.timeouts.medium });
           // 클릭 후 버튼(모달)이 사라질 때까지 조건부 대기
           await btn
             .waitFor({ state: "hidden", timeout: this.timeouts.short })
@@ -193,18 +193,182 @@ export abstract class BasePage {
     return false;
   }
 
+  /**
+   * Escape 키를 지정된 횟수만큼 눌러 드롭다운/모달/포커스 상태를 정리
+   */
+  protected async pressEscape(times: number = 1): Promise<void> {
+    for (let i = 0; i < times; i += 1) {
+      await this._page.keyboard.press("Escape").catch(() => {});
+    }
+  }
+
+  /**
+   * 짧은 UI 흔들림이 잦은 admin 화면에서 클릭 전후의 인터랙티브 상태를 정리
+   */
+  protected async settleInteractiveUi(options: {
+    escapeCount?: number;
+    timeout?: number;
+    stableTime?: number;
+  } = {}): Promise<void> {
+    const {
+      escapeCount = 0,
+      timeout = this.timeouts.short,
+      stableTime = 150,
+    } = options;
+
+    if (escapeCount > 0) {
+      await this.pressEscape(escapeCount);
+    }
+
+    await this.waitForContentStable("body", {
+      timeout,
+      stableTime,
+    }).catch(() => {});
+  }
+
+  /**
+   * 드롭다운/오버레이에 가려지기 쉬운 버튼 클릭을 재시도 포함해서 안정화
+   */
+  protected async clickWithRecovery(
+    locator: Locator,
+    options: {
+      timeout?: number;
+      escapeCount?: number;
+      settleTimeout?: number;
+      settleStableTime?: number;
+    } = {},
+  ): Promise<void> {
+    const {
+      timeout = this.timeouts.medium,
+      escapeCount = 0,
+      settleTimeout = this.timeouts.short,
+      settleStableTime = 150,
+    } = options;
+
+    const attemptClick = async () => {
+      await locator.click({ trial: true, timeout });
+      await locator.click({ timeout });
+    };
+
+    await locator.waitFor({ state: "visible", timeout });
+    await locator.scrollIntoViewIfNeeded().catch(() => {});
+    await this.settleInteractiveUi({
+      escapeCount,
+      timeout: settleTimeout,
+      stableTime: settleStableTime,
+    });
+
+    try {
+      await attemptClick();
+      return;
+    } catch {
+      await this.settleInteractiveUi({
+        escapeCount: Math.max(escapeCount, 1),
+        timeout: settleTimeout,
+        stableTime: settleStableTime,
+      });
+      await locator.scrollIntoViewIfNeeded().catch(() => {});
+      try {
+        await attemptClick();
+        return;
+      } catch (retryError) {
+        const handle = await locator.elementHandle({ timeout }).catch(
+          () => null,
+        );
+        if (!handle) throw retryError;
+
+        try {
+          await handle.evaluate((el) => {
+            (el as HTMLElement).click();
+          });
+        } catch {
+          throw retryError;
+        } finally {
+          await handle.dispose().catch(() => {});
+        }
+      }
+    }
+  }
+
+  /**
+   * 실제 사용자처럼 타이핑하고 blur까지 발생시켜 입력 상태를 UI 내부 form state에 반영합니다.
+   */
+  protected async typeInputLikeUser(
+    locator: Locator,
+    value: string,
+    options: {
+      timeout?: number;
+      blurWithTab?: boolean;
+      typingDelay?: number;
+    } = {},
+  ): Promise<void> {
+    const {
+      timeout = this.timeouts.medium,
+      blurWithTab = true,
+      typingDelay = 40,
+    } = options;
+
+    await locator.waitFor({ state: "visible", timeout });
+    await locator.click({ timeout });
+    await this._page.keyboard.press("ControlOrMeta+A").catch(() => {});
+    await this._page.keyboard.press("Delete").catch(() => {});
+    await this._page.keyboard.type(value, { delay: typingDelay });
+    await expect(locator).toHaveValue(value, { timeout });
+
+    if (blurWithTab) {
+      await locator.press("Tab").catch(() => {});
+      await expect(locator).toHaveValue(value, { timeout }).catch(() => {});
+    }
+  }
+
+  /**
+   * 포탈 드롭다운처럼 attached 상태만 보장되는 요소 클릭
+   * visible이면 일반 클릭 복구 경로를 사용하고, 아니면 DOM click으로 폴백
+   */
+  protected async clickAttachedElement(
+    locator: Locator,
+    options: {
+      timeout?: number;
+      escapeCount?: number;
+    } = {},
+  ): Promise<void> {
+    const {
+      timeout = this.timeouts.medium,
+      escapeCount = 0,
+    } = options;
+
+    await locator.waitFor({ state: "attached", timeout });
+
+    const isVisible = await locator
+      .isVisible({ timeout: Math.min(timeout, this.timeouts.short) })
+      .catch(() => false);
+
+    if (isVisible) {
+      await this.clickWithRecovery(locator, { timeout, escapeCount });
+      return;
+    }
+
+    if (escapeCount > 0) {
+      await this.pressEscape(escapeCount);
+    }
+
+    const handle = await locator.elementHandle({ timeout });
+    if (!handle) {
+      throw new Error("클릭 대상 elementHandle을 확보하지 못했습니다.");
+    }
+
+    try {
+      await handle.evaluate((el) => {
+        (el as HTMLElement).click();
+      });
+    } finally {
+      await handle.dispose().catch(() => {});
+    }
+  }
+
   // --------------------------------------------------------------------------
   // 대기 (조건부 대기 우선 사용 권장)
   // --------------------------------------------------------------------------
-
-  /**
-   * 지정 시간 대기
-   * @deprecated Hard wait는 CI 환경에서 불안정합니다.
-   *             waitForElement(), waitForContentStable() 등 조건부 대기 메서드를 사용하세요.
-   */
-  async wait(ms: number): Promise<void> {
-    await this._page.waitForTimeout(ms);
-  }
 
   /**
    * 로드 상태 대기
@@ -387,7 +551,7 @@ export abstract class BasePage {
       try {
         const btn = this._page.getByText(text, { exact: true }).first();
         if (await btn.isVisible({ timeout })) {
-          await btn.click({ timeout: this.timeouts.medium, force: true });
+          await this.clickWithRecovery(btn, { timeout: this.timeouts.medium });
           await btn
             .waitFor({ state: "hidden", timeout: this.timeouts.short })
             .catch(() => {});
@@ -430,7 +594,7 @@ export abstract class BasePage {
       try {
         const btn = this._page.getByText(text, { exact: false }).first();
         if (await btn.isVisible({ timeout: 1000 })) {
-          await btn.click({ force: true });
+          await this.clickWithRecovery(btn);
           await btn.waitFor({ state: "hidden", timeout: 1000 }).catch(() => {});
         }
       } catch {
@@ -442,7 +606,7 @@ export abstract class BasePage {
       try {
         const btn = this._page.getByText(text, { exact: true }).first();
         if (await btn.isVisible({ timeout: 500 })) {
-          await btn.click({ force: true });
+          await this.clickWithRecovery(btn);
           await btn.waitFor({ state: "hidden", timeout: 1000 }).catch(() => {});
         }
       } catch {

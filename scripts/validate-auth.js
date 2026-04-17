@@ -16,57 +16,30 @@
  */
 
 const fs = require("fs");
-const path = require("path");
+const { formatRemaining, getBrowserAuthState } = require("./auth-state");
 
-const AUTH_FILE =
-  process.env.AUTH_FILE_PATH || path.join(process.cwd(), "auth.json");
 const WARN_HOURS = Number(process.env.AUTH_WARN_HOURS) || 6;
 const WARN_THRESHOLD_MS = WARN_HOURS * 60 * 60 * 1000;
 
-function findRefreshTokens(cookies) {
-  return cookies.filter((c) => c.name === "refresh_token");
-}
-
-function getJwtExp(token) {
-  try {
-    const payload = JSON.parse(
-      Buffer.from(token.split(".")[1], "base64").toString(),
-    );
-    return payload.exp ? payload.exp * 1000 : null;
-  } catch {
-    return null;
-  }
-}
-
-function getExpiresMs(cookie) {
-  const jwtExp = getJwtExp(cookie.value);
-  if (jwtExp) return jwtExp;
-  if (cookie.expires && cookie.expires > 0) return cookie.expires * 1000;
-  return null;
-}
-
-function formatRemaining(ms) {
-  const hours = Math.floor(ms / (1000 * 60 * 60));
-  const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
-  if (hours > 24) return `${Math.floor(hours / 24)}일 ${hours % 24}시간`;
-  return `${hours}시간 ${minutes}분`;
-}
-
 function main() {
-  if (!fs.existsSync(AUTH_FILE)) {
+  const authState = getBrowserAuthState({
+    cwd: process.cwd(),
+    env: process.env,
+    bufferMs: 0,
+  });
+  const authFile = authState.authFilePath;
+
+  if (!authState.exists) {
     console.log("::error::auth.json 파일이 없습니다.");
     process.exit(1);
   }
 
-  let auth;
-  try {
-    auth = JSON.parse(fs.readFileSync(AUTH_FILE, "utf-8"));
-  } catch (e) {
-    console.log(`::error::auth.json 파싱 실패: ${e.message}`);
+  if (authState.parseError) {
+    console.log(`::error::auth.json 파싱 실패: ${authState.parseError.message}`);
     process.exit(1);
   }
 
-  const cookies = auth.cookies || [];
+  const cookies = authState.cookies;
   if (cookies.length === 0) {
     console.log(
       "::error::auth.json에 쿠키가 없습니다 (빈 상태). AUTH_JSON secret을 갱신하세요.",
@@ -75,7 +48,7 @@ function main() {
     process.exit(1);
   }
 
-  const refreshTokens = findRefreshTokens(cookies);
+  const refreshTokens = authState.refreshTokens;
   if (refreshTokens.length === 0) {
     console.log(
       "::error::refresh_token 쿠키를 찾을 수 없습니다. AUTH_JSON secret을 갱신하세요.",
@@ -84,32 +57,41 @@ function main() {
     process.exit(1);
   }
 
-  const now = Date.now();
   let hasValid = false;
   let minRemaining = Infinity;
   const results = [];
 
-  for (const rt of refreshTokens) {
-    const expiresMs = getExpiresMs(rt);
-    const domain = rt.domain || "unknown";
+  for (const refreshToken of refreshTokens) {
+    const remaining = refreshToken.remainingMs;
 
-    if (!expiresMs) {
-      results.push({ domain, status: "unknown", remaining: null });
+    if (typeof remaining !== "number") {
+      results.push({
+        domain: refreshToken.domain,
+        status: "unknown",
+        remaining: null,
+      });
       continue;
     }
 
-    const remaining = expiresMs - now;
     if (remaining <= 0) {
-      results.push({ domain, status: "expired", remaining });
+      results.push({
+        domain: refreshToken.domain,
+        status: "expired",
+        remaining,
+      });
     } else {
       hasValid = true;
       minRemaining = Math.min(minRemaining, remaining);
-      results.push({ domain, status: "valid", remaining });
+      results.push({
+        domain: refreshToken.domain,
+        status: "valid",
+        remaining,
+      });
     }
   }
 
   // 결과 출력
-  console.log("=== auth.json 토큰 검증 ===");
+  console.log(`=== ${authFile} 토큰 검증 ===`);
   for (const r of results) {
     const icon =
       r.status === "valid" ? "✅" : r.status === "expired" ? "❌" : "❓";

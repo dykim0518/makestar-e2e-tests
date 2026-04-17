@@ -69,8 +69,6 @@ export const ADMIN_SELECTORS = {
     perPageSelect: ':text("10 / page")',
   },
   breadcrumb: 'nav[aria-label="Breadcrumb"]',
-  // 검색 버튼: 새 UI는 아이콘 버튼, 레거시 UI는 텍스트 버튼
-  searchButton: 'button:has-text("조회하기"), img[cursor="pointer"]',
   resetButton: 'button:has-text("검색 초기화"), button:has-text("초기화")',
   checkbox: 'input[type="checkbox"]',
 } as const;
@@ -107,7 +105,9 @@ export abstract class AdminBasePage extends BasePage {
     this.noResultMessage = page.locator(ADMIN_SELECTORS.noResultMessage);
 
     // 검색 관련 로케이터
-    this.searchButton = page.locator(ADMIN_SELECTORS.searchButton);
+    this.searchButton = page
+      .getByRole("button", { name: /^(조회하기|검색)$/ })
+      .first();
     this.resetButton = page.locator(ADMIN_SELECTORS.resetButton);
 
     // 네비게이션 로케이터
@@ -268,21 +268,37 @@ export abstract class AdminBasePage extends BasePage {
    * 조회하기 버튼 클릭 후 데이터 로드 대기
    */
   async clickSearchAndWait(): Promise<void> {
-    await this.searchButton.click();
+    const searchTriggers = [
+      this.page
+        .getByRole("button", { name: /^(조회하기|검색)$/ })
+        .first(),
+      this.page.locator(".input__right__icons").first(),
+      this.page.locator('img[cursor="pointer"]').first(),
+    ];
 
-    // 검색 결과가 나타날 때까지 대기
-    await Promise.race([
-      this.page
-        .waitForSelector(ADMIN_SELECTORS.tableRows, {
-          timeout: this.timeouts.navigation,
-        })
-        .catch(() => null),
-      this.page
-        .waitForSelector(ADMIN_SELECTORS.noResultMessage, {
-          timeout: this.timeouts.navigation,
-        })
-        .catch(() => null),
-    ]);
+    let clicked = false;
+    for (const trigger of searchTriggers) {
+      const isVisible = await trigger
+        .isVisible({ timeout: this.timeouts.short })
+        .catch(() => false);
+      if (!isVisible) {
+        continue;
+      }
+
+      await this.clickWithRecovery(trigger, {
+        timeout: this.timeouts.medium,
+      });
+      clicked = true;
+      break;
+    }
+
+    if (!clicked) {
+      throw new Error("검색 트리거를 찾지 못했습니다.");
+    }
+
+    await this.page
+      .waitForLoadState("networkidle", { timeout: this.timeouts.medium })
+      .catch(() => null);
 
     // 스켈레톤 로딩 행이 사라질 때까지 대기
     await this.page
@@ -292,6 +308,7 @@ export abstract class AdminBasePage extends BasePage {
       })
       .catch(() => null);
 
+    await this.waitForTableOrNoResult();
     await this.waitForLoadState("domcontentloaded");
   }
 
@@ -384,7 +401,10 @@ export abstract class AdminBasePage extends BasePage {
     }
 
     await this.paginationNav.scrollIntoViewIfNeeded();
-    await pageButton.click({ force: true });
+    await this.clickWithRecovery(pageButton, {
+      timeout: this.timeouts.medium,
+      escapeCount: 1,
+    });
     await this.waitForLoadState("domcontentloaded");
     return true;
   }
@@ -514,14 +534,31 @@ export abstract class AdminBasePage extends BasePage {
   async waitForTableOrNoResult(
     timeout: number = this.timeouts.navigation,
   ): Promise<void> {
-    await Promise.race([
-      this.page
-        .waitForSelector(ADMIN_SELECTORS.tableRows, { timeout })
-        .catch(() => null),
-      this.noResultMessage
-        .waitFor({ state: "visible", timeout })
-        .catch(() => null),
-    ]);
+    await this.page.waitForFunction(
+      () => {
+        const text = (document.body.innerText || "").replace(/\s+/g, " ");
+        if (
+          text.includes("검색결과가 없습니다") ||
+          text.includes("조회된 데이터가 없습니다") ||
+          text.includes("데이터가 없습니다")
+        ) {
+          return true;
+        }
+
+        const rows = Array.from(document.querySelectorAll("table tbody tr"));
+        if (rows.length === 0) return true;
+
+        return rows.some((row) => {
+          const tds = row.querySelectorAll("td");
+          if (tds.length === 0) return false;
+          return Array.from(tds).some(
+            (td) => (td.textContent ?? "").trim().length > 0,
+          );
+        });
+      },
+      undefined,
+      { timeout },
+    );
     await this.page.waitForLoadState("domcontentloaded");
   }
 

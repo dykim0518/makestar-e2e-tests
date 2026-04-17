@@ -7,7 +7,7 @@
  *   PS-PAGE-01: 목록 로드
  *   PS-SEARCH-01: 키워드 검색
  *   PS-DATA-01: 토글 상태 확인
- *   PS-CREATE-01 ~ PS-ACTION-01: 생성/수정/삭제 (serial)
+ *   PS-CREATE-01 ~ PS-ACTION-01: 생성/상세 확인 (serial)
  *
  * @see tests/pages/ (POM 클래스)
  * @see tests/helpers/admin/ (인증/공통 유틸)
@@ -59,10 +59,7 @@ test.describe("POCAAlbum Admin Shop 테스트", () => {
         .isVisible({ timeout: 5000 })
         .catch(() => false);
 
-      if (!isSearchVisible) {
-        console.log("ℹ️ Shop 검색 필드 미발견 - 검색 기능 없을 수 있음");
-        return;
-      }
+      expect(isSearchVisible, "❌ Shop 검색 필드를 찾지 못했습니다").toBe(true);
 
       await shopListPage.searchByKeyword("앨범");
       const hasData = await shopListPage.hasTableData();
@@ -103,9 +100,9 @@ test.describe("POCAAlbum Admin Shop 테스트", () => {
   });
 
   // ========================================================================
-  // Shop 포인트상품 생성/삭제 (serial)
+  // Shop 포인트상품 생성/상세 확인 (serial)
   // ========================================================================
-  test.describe.serial("Shop 포인트상품 생성/삭제 @feature:admin_pocaalbum.shop.create", () => {
+  test.describe.serial("Shop 포인트상품 생성/상세 확인 @feature:admin_pocaalbum.shop.create @suite:ops", () => {
     let sharedShopTitle = "";
     let sharedShopCreated = false;
 
@@ -169,7 +166,7 @@ test.describe("POCAAlbum Admin Shop 테스트", () => {
       console.log(`  상품 검색 결과: ${hasData ? "데이터 있음" : "미발견"}`);
     });
 
-    test("PS-ACTION-01: 테스트 상품 삭제", async ({ page }) => {
+    test("PS-ACTION-01: 생성된 상품 상세 진입 및 수정 버튼 노출 확인", async ({ page }) => {
       expect(
         sharedShopCreated,
         "❌ PS-CREATE-01에서 상품이 생성되지 않음",
@@ -187,37 +184,41 @@ test.describe("POCAAlbum Admin Shop 테스트", () => {
         await shopListPage.searchByKeyword(sharedShopTitle);
       }
 
-      // 첫 번째 행 클릭 → 상세 진입
-      const rowCount = await shopListPage.getRowCount();
-      if (rowCount === 0) {
-        console.warn("⚠️ 삭제할 상품을 찾을 수 없음");
-        return;
-      }
+      const rowIndex = await shopListPage.findRowByText(sharedShopTitle);
+      expect(rowIndex, "❌ 삭제할 Shop 상품을 목록에서 찾지 못했습니다").toBeGreaterThanOrEqual(0);
 
-      await shopListPage.clickFirstRow(1);
+      await shopListPage.openProductDetailByTitle(sharedShopTitle);
       await waitForPageStable(page);
+      await page.waitForLoadState("networkidle").catch(() => {});
+      await page
+        .waitForFunction(
+          () => (document.querySelector("main")?.innerText || "").trim().length > 0,
+          undefined,
+          { timeout: 10000 },
+        )
+        .catch(() => {});
 
-      const deleteBtn = page.getByRole("button", { name: "삭제" }).first();
-      const isDeleteVisible = await deleteBtn
+      const editBtn = page
+        .getByRole("button", { name: /수정하기|수정/ })
+        .first();
+      const isEditVisible = await editBtn
         .isVisible({ timeout: 5000 })
         .catch(() => false);
 
-      if (!isDeleteVisible) {
-        console.log(
-          "⚠️ 삭제 버튼을 찾을 수 없음 - 권한 또는 UI 구조 확인 필요",
-        );
-        return;
-      }
+      expect(
+        isEditVisible,
+        "❌ 수정 버튼을 찾을 수 없습니다. Shop 상세 UI 구조를 확인하세요.",
+      ).toBe(true);
 
-      page.once("dialog", (dialog) => dialog.accept());
-      await deleteBtn.click();
-
-      try {
-        await page.waitForURL(/\/pocaalbum\/shop/, { timeout: 10000 });
-        console.log("✅ 상품 삭제 후 목록으로 이동");
-      } catch {
-        console.log("ℹ️ 삭제 후 목록 이동 미확인 - 현재 URL:", page.url());
-      }
+      const deleteVisible = await page
+        .getByRole("button", { name: /삭제/ })
+        .first()
+        .isVisible({ timeout: 2000 })
+        .catch(() => false);
+      expect(
+        deleteVisible,
+        "현재 Shop 상세 UI는 삭제 버튼을 제공하지 않아야 합니다. UI가 변경되면 이 검증을 갱신하세요.",
+      ).toBe(false);
     });
   });
 });

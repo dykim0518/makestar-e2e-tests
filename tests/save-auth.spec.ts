@@ -1,6 +1,11 @@
 import { test, expect } from "@playwright/test";
 import * as fs from "fs";
 import * as path from "path";
+import {
+  waitForManualLogin,
+  waitForPageReady,
+  waitForValidRefreshToken,
+} from "./helpers/manual-auth-session";
 
 const AUTH_FILE = path.join(__dirname, "..", "auth.json");
 
@@ -67,7 +72,7 @@ test("로그인 세션 저장 (수동 로그인)", async ({ page, context }) => 
   await page.goto(
     "https://auth.makestar.com/login/?application=MAKESTAR&redirect_url=https://www.makestar.com/my-page",
   );
-  await page.waitForTimeout(2000);
+  await waitForPageReady(page);
 
   console.log("");
   console.log("┌" + "─".repeat(68) + "┐");
@@ -85,57 +90,43 @@ test("로그인 세션 저장 (수동 로그인)", async ({ page, context }) => 
   console.log("└" + "─".repeat(68) + "┘");
   console.log("");
 
-  // 로그인 완료 대기 (my-page로 리다이렉트 되는지 확인)
-  let loginSuccess = false;
-  const maxWaitTime = 180000; // 3분
-  const checkInterval = 2000; // 2초마다 확인
-  const startTime = Date.now();
-
-  while (Date.now() - startTime < maxWaitTime) {
-    const currentUrl = page.url();
-
-    // 로그인 성공 조건: my-page에 있고 auth/login이 아닌 경우
-    if (
+  const loginSuccess = await waitForManualLogin(page, {
+    successMessage: "✅ 로그인 감지! 세션 저장 중...",
+    isLoginComplete: (currentUrl) =>
       currentUrl.includes("makestar.com/my-page") &&
       !currentUrl.includes("auth.makestar.com") &&
-      !currentUrl.includes("login")
-    ) {
-      loginSuccess = true;
-      console.log("");
-      console.log("✅ 로그인 감지! 세션 저장 중...");
-      break;
-    }
+      !currentUrl.includes("login"),
+    onIntermediateUrl: async (currentUrlPage, currentUrl) => {
+      if (
+        currentUrl === "https://www.makestar.com/" ||
+        currentUrl === "https://www.makestar.com"
+      ) {
+        await currentUrlPage.goto("https://www.makestar.com/my-page", {
+          waitUntil: "domcontentloaded",
+        });
+        await waitForPageReady(currentUrlPage);
 
-    // 메인 페이지로 이동한 경우도 로그인 성공으로 간주
-    if (
-      currentUrl === "https://www.makestar.com/" ||
-      currentUrl === "https://www.makestar.com"
-    ) {
-      // my-page로 이동해서 확인
-      await page.goto("https://www.makestar.com/my-page", {
-        waitUntil: "domcontentloaded",
-      });
-      await page.waitForTimeout(2000);
-
-      const afterUrl = page.url();
-      if (!afterUrl.includes("login") && !afterUrl.includes("auth")) {
-        loginSuccess = true;
-        console.log("");
-        console.log("✅ 로그인 성공! 세션 저장 중...");
-        break;
+        const afterUrl = currentUrlPage.url();
+        return !afterUrl.includes("login") && !afterUrl.includes("auth");
       }
-    }
-
-    await page.waitForTimeout(checkInterval);
-    const elapsed = Math.floor((Date.now() - startTime) / 1000);
-    process.stdout.write(
-      `\r⏳ 로그인 대기 중... (${elapsed}초/${maxWaitTime / 1000}초)`,
-    );
-  }
+      return false;
+    },
+  });
 
   console.log("");
 
   if (loginSuccess) {
+    const tokenReady = await waitForValidRefreshToken(
+      page,
+      "makestar.com",
+      "Makestar",
+    );
+
+    expect(
+      tokenReady,
+      "로그인 성공 후 .makestar.com refresh_token이 저장되지 않았습니다.",
+    ).toBeTruthy();
+
     // 세션 저장 (기존 쿠키와 병합)
     const totalCookies = await mergeAndSaveStorageState(context, AUTH_FILE);
 
@@ -180,7 +171,7 @@ test("Admin 로그인 세션 저장 (stage-new-admin)", async ({ page, context }
   await page.goto(
     "https://stage-auth.makeuni2026.com/login/?application=MAKESTAR&redirect_url=https://stage-new-admin.makeuni2026.com",
   );
-  await page.waitForTimeout(2000);
+  await waitForPageReady(page);
 
   console.log("");
   console.log("┌" + "─".repeat(68) + "┐");
@@ -198,37 +189,28 @@ test("Admin 로그인 세션 저장 (stage-new-admin)", async ({ page, context }
   console.log("└" + "─".repeat(68) + "┘");
   console.log("");
 
-  // 로그인 완료 대기
-  let loginSuccess = false;
-  const maxWaitTime = 180000; // 3분
-  const checkInterval = 2000; // 2초마다 확인
-  const startTime = Date.now();
-
-  while (Date.now() - startTime < maxWaitTime) {
-    const currentUrl = page.url();
-
-    // 로그인 성공 조건: stage-new-admin에 있고 login이 아닌 경우
-    if (
+  const loginSuccess = await waitForManualLogin(page, {
+    successMessage: "✅ Admin 로그인 감지! 세션 저장 중...",
+    isLoginComplete: (currentUrl) =>
       currentUrl.includes("stage-new-admin.makeuni2026.com") &&
       !currentUrl.includes("login") &&
-      !currentUrl.includes("auth")
-    ) {
-      loginSuccess = true;
-      console.log("");
-      console.log("✅ Admin 로그인 감지! 세션 저장 중...");
-      break;
-    }
-
-    await page.waitForTimeout(checkInterval);
-    const elapsed = Math.floor((Date.now() - startTime) / 1000);
-    process.stdout.write(
-      `\r⏳ 로그인 대기 중... (${elapsed}초/${maxWaitTime / 1000}초)`,
-    );
-  }
+      !currentUrl.includes("auth"),
+  });
 
   console.log("");
 
   if (loginSuccess) {
+    const tokenReady = await waitForValidRefreshToken(
+      page,
+      "makeuni2026.com",
+      "Admin",
+    );
+
+    expect(
+      tokenReady,
+      "로그인 성공 후 .makeuni2026.com refresh_token이 저장되지 않았습니다.",
+    ).toBeTruthy();
+
     // 세션 저장 (기존 쿠키와 병합)
     const totalCookies = await mergeAndSaveStorageState(context, AUTH_FILE);
 
@@ -272,7 +254,7 @@ test("STG 공개 사이트 로그인 세션 저장 (stage-new)", async ({
   await page.goto(
     "https://stage-auth.makeuni2026.com/login/?application=MAKESTAR&redirect_url=https://stage-new.makeuni2026.com/my-page",
   );
-  await page.waitForTimeout(2000);
+  await waitForPageReady(page);
 
   console.log("");
   console.log("┌" + "─".repeat(68) + "┐");
@@ -290,32 +272,13 @@ test("STG 공개 사이트 로그인 세션 저장 (stage-new)", async ({
   console.log("└" + "─".repeat(68) + "┘");
   console.log("");
 
-  let loginSuccess = false;
-  const maxWaitTime = 180000;
-  const checkInterval = 2000;
-  const startTime = Date.now();
-
-  while (Date.now() - startTime < maxWaitTime) {
-    const currentUrl = page.url();
-
-    // 로그인 성공: stage-new.makeuni2026.com에 있고 login/auth가 아닌 경우
-    if (
+  const loginSuccess = await waitForManualLogin(page, {
+    successMessage: "✅ STG 로그인 감지! 세션 저장 중...",
+    isLoginComplete: (currentUrl) =>
       currentUrl.includes("stage-new.makeuni2026.com") &&
       !currentUrl.includes("login") &&
-      !currentUrl.includes("stage-auth")
-    ) {
-      loginSuccess = true;
-      console.log("");
-      console.log("✅ STG 로그인 감지! 세션 저장 중...");
-      break;
-    }
-
-    await page.waitForTimeout(checkInterval);
-    const elapsed = Math.floor((Date.now() - startTime) / 1000);
-    process.stdout.write(
-      `\r⏳ 로그인 대기 중... (${elapsed}초/${maxWaitTime / 1000}초)`,
-    );
-  }
+      !currentUrl.includes("stage-auth"),
+  });
 
   console.log("");
 
@@ -324,7 +287,7 @@ test("STG 공개 사이트 로그인 세션 저장 (stage-new)", async ({
     await page.goto("https://stage-new.makeuni2026.com/my-page", {
       waitUntil: "domcontentloaded",
     });
-    await page.waitForTimeout(3000);
+    await waitForPageReady(page);
 
     const totalCookies = await mergeAndSaveStorageState(context, AUTH_FILE);
 
@@ -371,7 +334,7 @@ test("저장된 세션 확인", async ({ page, context }) => {
   await page.goto("https://www.makestar.com/my-page", {
     waitUntil: "domcontentloaded",
   });
-  await page.waitForTimeout(3000);
+  await waitForPageReady(page);
 
   const currentUrl = page.url();
   console.log(`📍 현재 URL: ${currentUrl}`);

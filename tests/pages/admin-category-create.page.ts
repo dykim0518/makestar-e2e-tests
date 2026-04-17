@@ -170,15 +170,15 @@ export class CategoryCreatePage extends AdminBasePage {
       .locator("xpath=following-sibling::img");
 
     if (await closeBtn.isVisible({ timeout: 500 }).catch(() => false)) {
-      await closeBtn.click();
-      await this.wait(300);
+      await this.clickWithRecovery(closeBtn, { timeout: this.timeouts.short });
+      await this.settleInteractiveUi({ timeout: this.timeouts.short });
       console.log("ℹ️ 모달 X 버튼으로 닫힘");
       return;
     }
 
     // 대안: ESC 키로 모달 닫기
-    await this.page.keyboard.press("Escape");
-    await this.wait(300);
+    await this.pressEscape();
+    await this.settleInteractiveUi({ timeout: this.timeouts.short });
     console.log("ℹ️ 모달 ESC로 닫힘");
   }
 
@@ -203,8 +203,10 @@ export class CategoryCreatePage extends AdminBasePage {
       : this.page.locator(".multiselect").first();
 
     // 컨테이너 클릭하여 드롭다운 열기
-    await multiselectContainer.click({ force: true });
-    await this.wait(500);
+    await this.clickWithRecovery(multiselectContainer, {
+      timeout: this.timeouts.medium,
+    });
+    await this.settleInteractiveUi({ timeout: this.timeouts.short });
 
     // 검색 입력 필드 찾기 (드롭다운이 열리면 input이 visible됨)
     const searchInput = this.page
@@ -217,7 +219,10 @@ export class CategoryCreatePage extends AdminBasePage {
       .catch(() => false);
     if (isInputVisible) {
       await searchInput.fill(searchTerm);
-      await this.wait(1500); // 검색 결과 API 응답 대기 (더 길게)
+      await this.waitForContentStable("body", {
+        timeout: this.timeouts.medium,
+        stableTime: 250,
+      }).catch(() => {});
     }
 
     // 드롭다운 내용 확인을 위한 대기
@@ -240,7 +245,9 @@ export class CategoryCreatePage extends AdminBasePage {
 
     if (await matchingOption.isVisible({ timeout: 2000 }).catch(() => false)) {
       const optionText = await matchingOption.textContent();
-      await matchingOption.click();
+      await this.clickWithRecovery(matchingOption, {
+        timeout: this.timeouts.short,
+      });
       console.log(`ℹ️ 유통사 선택: ${optionText?.trim()}`);
     } else {
       // 유효 옵션 중 첫 번째 선택 (정확한 매칭 실패시)
@@ -256,7 +263,9 @@ export class CategoryCreatePage extends AdminBasePage {
           !optionText.includes("undefined") &&
           optionText.trim().length > 0
         ) {
-          await firstValidOption.click();
+          await this.clickWithRecovery(firstValidOption, {
+            timeout: this.timeouts.short,
+          });
           console.log(`ℹ️ 유통사 선택(첫번째): ${optionText?.trim()}`);
         } else {
           console.warn(
@@ -268,7 +277,7 @@ export class CategoryCreatePage extends AdminBasePage {
       }
     }
 
-    await this.wait(500);
+    await this.settleInteractiveUi({ timeout: this.timeouts.short });
 
     // 모달이 열렸다면 닫기
     await this.closeModalIfVisible();
@@ -299,12 +308,16 @@ export class CategoryCreatePage extends AdminBasePage {
       console.warn("⚠️ 아티스트 combobox를 찾을 수 없음, multiselect로 시도");
       // fallback: .multiselect 사용
       const multiselects = this.page.locator(".multiselect");
-      await multiselects.nth(1).click({ force: true });
+      await this.clickWithRecovery(multiselects.nth(1), {
+        timeout: this.timeouts.medium,
+      });
     } else {
       // combobox 클릭하여 드롭다운 열기
-      await artistCombobox.click({ force: true });
+      await this.clickWithRecovery(artistCombobox, {
+        timeout: this.timeouts.medium,
+      });
     }
-    await this.wait(500);
+    await this.settleInteractiveUi({ timeout: this.timeouts.short });
 
     // 검색 입력 필드 찾기 - :visible 사용
     const searchInput = this.page
@@ -316,7 +329,10 @@ export class CategoryCreatePage extends AdminBasePage {
       .catch(() => false);
     if (isInputVisible) {
       await searchInput.fill(artistName);
-      await this.wait(1500); // 검색 결과 API 응답 대기 (더 길게)
+      await this.waitForContentStable("body", {
+        timeout: this.timeouts.medium,
+        stableTime: 250,
+      }).catch(() => {});
     }
 
     // 드롭다운 내용 확인을 위한 대기
@@ -362,10 +378,12 @@ export class CategoryCreatePage extends AdminBasePage {
       );
     }
 
-    await targetOption.click();
+    await this.clickWithRecovery(targetOption, {
+      timeout: this.timeouts.short,
+    });
     console.log(`ℹ️ 아티스트 선택: ${optionText.trim()}`);
 
-    await this.wait(300);
+    await this.settleInteractiveUi({ timeout: this.timeouts.short });
   }
 
   /**
@@ -379,7 +397,7 @@ export class CategoryCreatePage extends AdminBasePage {
     });
     await this.releaseDateInput.fill(date);
     await this.releaseDateInput.press("Tab"); // blur 이벤트 발생
-    await this.wait(300);
+    await this.settleInteractiveUi({ timeout: this.timeouts.short });
   }
 
   /**
@@ -397,7 +415,7 @@ export class CategoryCreatePage extends AdminBasePage {
 
     // setInputFiles로 파일 업로드
     await fileInput.setInputFiles(absolutePath);
-    await this.wait(1000);
+    await this.settleInteractiveUi({ timeout: this.timeouts.short });
 
     console.log(`ℹ️ 이미지 업로드 시도: ${absolutePath}`);
   }
@@ -441,7 +459,7 @@ export class CategoryCreatePage extends AdminBasePage {
 
     // 버튼이 viewport에 보이도록 스크롤
     await this.createButton.scrollIntoViewIfNeeded();
-    await this.wait(500);
+    await this.settleInteractiveUi({ timeout: this.timeouts.short });
 
     // 네비게이션 발생 대기하면서 클릭 (10초 타임아웃)
     await Promise.all([
@@ -451,7 +469,9 @@ export class CategoryCreatePage extends AdminBasePage {
           console.log("ℹ️ 네비게이션 미발생 (10초 대기)");
           return null;
         }),
-      this.createButton.click({ force: true }),
+      this.clickWithRecovery(this.createButton, {
+        timeout: this.timeouts.navigation,
+      }),
     ]);
 
     console.log("ℹ️ 버튼 클릭 완료");
@@ -463,8 +483,9 @@ export class CategoryCreatePage extends AdminBasePage {
   async submitAndWaitForList(): Promise<void> {
     await this.clickCreate();
 
-    // 짧은 대기 후 현재 URL 확인
-    await this.wait(3000);
+    await this.page
+      .waitForURL(/\/product\/new\/list/, { timeout: 3000 })
+      .catch(() => {});
     const currentUrl = this.page.url();
     console.log(`ℹ️ 버튼 클릭 후 현재 URL: ${currentUrl}`);
 

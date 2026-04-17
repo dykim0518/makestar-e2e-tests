@@ -65,7 +65,7 @@ export class PocaBenefitCreatePage extends AdminBasePage {
 
   /**
    * 커스텀 드롭다운에서 첫 번째 옵션 선택
-   * cover 해제 → trigger force click → 패널 attached 대기 → option force click
+   * cover 해제 → trigger 클릭 → 패널 attached 대기 → option 클릭
    */
   private async selectDropdownByIndex(dropdownIndex: number): Promise<void> {
     await this.dismissDropdownCover();
@@ -73,14 +73,14 @@ export class PocaBenefitCreatePage extends AdminBasePage {
     const triggers = this.page.locator(".is-placeholder");
     const trigger = triggers.nth(dropdownIndex);
     await trigger.scrollIntoViewIfNeeded();
-    await trigger.click({ force: true });
+    await this.clickWithRecovery(trigger, { timeout: this.timeouts.medium });
 
     const dropdown = this.page.locator(".selection-dropdown-container");
     await dropdown.waitFor({ state: "attached", timeout: 3000 });
 
     const firstItem = dropdown.locator(".menu-item__label").first();
     await firstItem.waitFor({ state: "attached", timeout: 3000 });
-    await firstItem.click({ force: true });
+    await this.clickAttachedElement(firstItem, { timeout: 3000 });
 
     await this.dismissDropdownCover();
   }
@@ -97,7 +97,7 @@ export class PocaBenefitCreatePage extends AdminBasePage {
     await expect(applyBtn, "적용하기 버튼 미발견").toBeVisible({
       timeout: 5000,
     });
-    await applyBtn.click();
+    await this.clickWithRecovery(applyBtn, { timeout: this.timeouts.medium });
   }
 
   /** 필수 텍스트 필드 입력 (placeholder 기반, disabled 제외) */
@@ -160,7 +160,9 @@ export class PocaBenefitCreatePage extends AdminBasePage {
       });
 
       await dateTrigger.scrollIntoViewIfNeeded();
-      await dateTrigger.click();
+      await this.clickWithRecovery(dateTrigger, {
+        timeout: this.timeouts.medium,
+      });
 
       // 달력에서 활성화된 날짜 클릭 (시작: 15일, 종료: 20일)
       const dayNum = i === 0 ? "15" : "20";
@@ -173,7 +175,9 @@ export class PocaBenefitCreatePage extends AdminBasePage {
         .isVisible({ timeout: 2000 })
         .catch(() => false);
       if (dayVisible) {
-        await dayBtn.click();
+        await this.clickWithRecovery(dayBtn, {
+          timeout: this.timeouts.medium,
+        });
       }
     }
   }
@@ -220,7 +224,9 @@ export class PocaBenefitCreatePage extends AdminBasePage {
     this.page.once("dialog", (dialog) => dialog.accept());
 
     await this.createButton.scrollIntoViewIfNeeded();
-    await this.createButton.click({ force: true });
+    await this.clickWithRecovery(this.createButton, {
+      timeout: this.timeouts.medium,
+    });
 
     await this.page
       .waitForURL(/\/pocaalbum\/benefit/, { timeout: 15000 })

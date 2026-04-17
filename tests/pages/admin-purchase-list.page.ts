@@ -71,16 +71,14 @@ export class PurchaseListPage extends AdminBasePage {
   }
 
   async clickSearchAndWait(): Promise<void> {
-    await this.page.keyboard.press("Escape").catch(() => {});
-    await this.page.keyboard.press("Escape").catch(() => {});
-    await this.submitSearchButton.click({ force: true });
+    await this.clickWithRecovery(this.submitSearchButton, {
+      escapeCount: 2,
+      timeout: this.timeouts.medium,
+    });
     await this.waitForTableOrNoResult();
   }
 
   async resetFiltersAndWait(): Promise<void> {
-    await this.page.keyboard.press("Escape").catch(() => {});
-    await this.page.keyboard.press("Escape").catch(() => {});
-
     const canReset = await this.searchResetButton
       .isVisible({ timeout: this.timeouts.short })
       .catch(() => false);
@@ -89,7 +87,10 @@ export class PurchaseListPage extends AdminBasePage {
         .isEnabled()
         .catch(() => false);
       if (enabled) {
-        await this.searchResetButton.click({ force: true });
+        await this.clickWithRecovery(this.searchResetButton, {
+          escapeCount: 2,
+          timeout: this.timeouts.medium,
+        });
       }
     }
 
@@ -160,8 +161,10 @@ export class PurchaseListPage extends AdminBasePage {
 
   async switchTab(tab: PurchaseTabKey): Promise<void> {
     const tabLocator = await this.resolveTab(tab);
-    await tabLocator.scrollIntoViewIfNeeded().catch(() => {});
-    await tabLocator.click({ force: true });
+    await this.clickWithRecovery(tabLocator, {
+      escapeCount: 2,
+      timeout: this.timeouts.medium,
+    });
     await this.waitForTableOrNoResult();
   }
 
@@ -297,8 +300,8 @@ export class PurchaseListPage extends AdminBasePage {
       return false;
     }
 
-    await this.nextPageButton.click({
-      force: true,
+    await this.clickWithRecovery(this.nextPageButton, {
+      escapeCount: 1,
       timeout: this.timeouts.medium,
     });
     await this.waitForTableOrNoResult(15000);
@@ -319,8 +322,8 @@ export class PurchaseListPage extends AdminBasePage {
       return false;
     }
 
-    await this.previousPageButton.click({
-      force: true,
+    await this.clickWithRecovery(this.previousPageButton, {
+      escapeCount: 1,
       timeout: this.timeouts.medium,
     });
     await this.waitForTableOrNoResult(15000);
@@ -821,7 +824,10 @@ export class PurchaseListPage extends AdminBasePage {
       );
     }
 
-    await control.locator.click({ force: true }).catch(() => {});
+    await this.clickWithRecovery(control.locator, {
+      escapeCount: 1,
+      timeout: this.timeouts.medium,
+    }).catch(() => {});
 
     const options = await this.page
       .locator(
@@ -830,7 +836,7 @@ export class PurchaseListPage extends AdminBasePage {
       .allTextContents()
       .catch(() => [] as string[]);
 
-    await this.page.keyboard.press("Escape").catch(() => {});
+    await this.pressEscape();
 
     return Array.from(
       new Set(
@@ -880,7 +886,10 @@ export class PurchaseListPage extends AdminBasePage {
       return this.rowContainsToken(current, optionText);
     }
 
-    await control.locator.click({ force: true }).catch(() => {});
+    await this.clickWithRecovery(control.locator, {
+      escapeCount: 1,
+      timeout: this.timeouts.medium,
+    }).catch(() => {});
 
     const escaped = this.escapeRegExp(optionText);
     const exactOption = this.page
@@ -896,7 +905,9 @@ export class PurchaseListPage extends AdminBasePage {
         .isVisible({ timeout: this.timeouts.short })
         .catch(() => false)
     ) {
-      await exactOption.click({ force: true }).catch(() => {});
+      await this.clickWithRecovery(exactOption, {
+        timeout: this.timeouts.short,
+      }).catch(() => {});
       clicked = true;
     }
 
@@ -912,12 +923,14 @@ export class PurchaseListPage extends AdminBasePage {
           .isVisible({ timeout: this.timeouts.short })
           .catch(() => false)
       ) {
-        await partialOption.click({ force: true }).catch(() => {});
+        await this.clickWithRecovery(partialOption, {
+          timeout: this.timeouts.short,
+        }).catch(() => {});
         clicked = true;
       }
     }
 
-    await this.page.keyboard.press("Escape").catch(() => {});
+    await this.pressEscape();
     const current = await this.getFilterControlCurrentValue(control).catch(
       () => "",
     );
@@ -1086,7 +1099,7 @@ export class PurchaseListPage extends AdminBasePage {
       .toLowerCase();
   }
 
-  private isMeaningfulValue(value: string): boolean {
+  override isMeaningfulValue(value: string): boolean {
     const normalized = this.normalize(value);
     if (!normalized.length) return false;
     if (normalized === "-" || normalized === "--") return false;

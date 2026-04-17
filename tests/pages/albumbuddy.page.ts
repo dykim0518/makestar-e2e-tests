@@ -5,20 +5,33 @@
  */
 
 import { Page, Locator, expect } from "@playwright/test";
-import { BasePage, DEFAULT_TIMEOUTS, TimeoutConfig } from "./base.page";
+import {
+  BasePage,
+  DEFAULT_TIMEOUTS,
+  ImageVerificationResult,
+  TimeoutConfig,
+} from "./base.page";
+import {
+  ALBUMBUDDY_PAGES,
+  ALBUMBUDDY_URLS,
+  HOME_SECTIONS,
+  NAV_BUTTONS,
+  PERFORMANCE_THRESHOLD,
+  escapeRegExp,
+} from "./albumbuddy.config";
+import {
+  analyzeAboutContent,
+  analyzeDashboardContent,
+  analyzeDashboardDetailContent,
+  analyzeDashboardSessionIndicators,
+  analyzePackageDetailContent,
+  analyzePricingPageContent,
+  analyzePurchasingDetailContent,
+  hasPackageContent,
+  hasPurchasingContent,
+} from "./albumbuddy-content";
 import * as fs from "fs";
 import * as path from "path";
-
-// ============================================================================
-// 타입 정의
-// ============================================================================
-
-/** 페이지 정보 타입 */
-export type PageInfo = {
-  url: string;
-  pattern: RegExp;
-  title?: string;
-};
 
 /** 성능 측정 결과 */
 export type PerformanceResult = {
@@ -26,67 +39,6 @@ export type PerformanceResult = {
   loadTime: number;
   passed: boolean;
 };
-
-// ============================================================================
-// AlbumBuddy 상수
-// ============================================================================
-
-export const ALBUMBUDDY_URLS = {
-  base: "https://albumbuddy.kr",
-  shop: "https://albumbuddy.kr/shop",
-  about: "https://albumbuddy.kr/about",
-  pricing: "https://albumbuddy.kr/pricing",
-  dashboard: "https://albumbuddy.kr/dashboard/purchasing",
-  dashboardPurchasing: "https://albumbuddy.kr/dashboard/purchasing",
-  dashboardPackage: "https://albumbuddy.kr/dashboard/package",
-} as const;
-
-export const ALBUMBUDDY_PAGES: Record<string, PageInfo> = {
-  home: { url: ALBUMBUDDY_URLS.shop, pattern: /shop/i, title: "ALBUM BUDDY" },
-  about: { url: ALBUMBUDDY_URLS.about, pattern: /about/i },
-  pricing: { url: ALBUMBUDDY_URLS.pricing, pattern: /pricing/i },
-  dashboard: { url: ALBUMBUDDY_URLS.dashboard, pattern: /dashboard/i },
-  dashboardPurchasing: {
-    url: ALBUMBUDDY_URLS.dashboardPurchasing,
-    pattern: /purchasing/i,
-  },
-  dashboardPackage: {
-    url: ALBUMBUDDY_URLS.dashboardPackage,
-    pattern: /package/i,
-  },
-} as const;
-
-export const NAV_BUTTONS = [
-  "About",
-  "Pricing",
-  "Dashboard",
-  "Request item",
-] as const;
-
-// 실제 사이트의 섹션명 (한글/영문 혼용)
-export const HOME_SECTIONS = [
-  "Artist",
-  "Recent",
-  "Trending",
-  "Official", // 영어
-  "추천",
-  "아티스트",
-  "트렌딩",
-  "공식",
-  "파트너",
-  "전체",
-  "앨범", // 한국어
-] as const;
-
-export const PERFORMANCE_THRESHOLD = {
-  pageLoad: 10000,
-  apiResponse: 5000,
-} as const;
-
-/** 정규식 특수문자 이스케이프 */
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
 
 // ============================================================================
 // AlbumBuddyPage 클래스
@@ -168,7 +120,10 @@ export class AlbumBuddyPage extends BasePage {
     } catch {
       // networkidle 타임아웃은 무시
     }
-    await this.wait(2000);
+    await this.settleInteractiveUi({
+      timeout: this.timeouts.short,
+      stableTime: 250,
+    });
 
     // 오버레이/모달 제거
     for (let i = 0; i < 3; i++) {
@@ -183,7 +138,10 @@ export class AlbumBuddyPage extends BasePage {
           });
       });
       await this.page.keyboard.press("Escape");
-      await this.wait(200);
+      await this.settleInteractiveUi({
+        timeout: this.timeouts.short,
+        stableTime: 120,
+      });
     }
   }
 
@@ -311,8 +269,11 @@ export class AlbumBuddyPage extends BasePage {
         .catch(() => false);
       if (!visible) continue;
 
-      await candidate.click().catch(() => {});
-      await this.wait(2000);
+      await this.clickWithRecovery(candidate, {
+        timeout: this.timeouts.medium,
+        escapeCount: 1,
+      }).catch(() => {});
+      await this.waitForPageReady();
       return true;
     }
 
@@ -398,10 +359,12 @@ export class AlbumBuddyPage extends BasePage {
   /**
    * 이미지 로드 확인
    */
-  async verifyImagesLoaded(): Promise<{
-    count: number;
-    firstImageLoaded: boolean;
-  }> {
+  async verifyImagesLoaded(): Promise<
+    ImageVerificationResult & {
+      count: number;
+      firstImageLoaded: boolean;
+    }
+  > {
     const result = await this.page.evaluate(() => {
       const images = Array.from(
         document.querySelectorAll("img"),
@@ -425,6 +388,9 @@ export class AlbumBuddyPage extends BasePage {
     });
 
     return {
+      total: result.count,
+      broken: Math.max(result.count - result.loadedVisibleCount, 0),
+      brokenSrcs: [],
       count: result.count,
       firstImageLoaded: result.loadedVisibleCount > 0,
     };
@@ -437,8 +403,10 @@ export class AlbumBuddyPage extends BasePage {
     if (
       await this.showMoreButton.isVisible({ timeout: 5000 }).catch(() => false)
     ) {
-      await this.showMoreButton.click();
-      await this.wait(2000);
+      await this.clickWithRecovery(this.showMoreButton, {
+        timeout: this.timeouts.medium,
+      });
+      await this.waitForPageReady();
       return true;
     }
     return false;
@@ -922,27 +890,8 @@ export class AlbumBuddyPage extends BasePage {
     hasMeaningfulCounters: boolean;
   }> {
     const pageText = await this.page.evaluate(() => document.body.innerText);
-    const counterLabels = [
-      "Waiting",
-      "Pending",
-      "Paid",
-      "Ordered",
-      "Shipment",
-      "Canceled",
-      "On hold",
-    ];
-    const hasMeaningfulCounters = counterLabels.some((label) =>
-      new RegExp(`\\b([1-9]\\d*)\\s+${escapeRegExp(label)}\\b`, "i").test(
-        pageText,
-      ),
-    );
     const rowCount = await this.page.locator("table tr").count().catch(() => 0);
-
-    return {
-      hasNoItemsRegistered: /No items registered\./i.test(pageText),
-      hasOrderRows: rowCount > 1,
-      hasMeaningfulCounters,
-    };
+    return analyzeDashboardSessionIndicators(pageText, rowCount);
   }
 
   /**
@@ -971,7 +920,7 @@ export class AlbumBuddyPage extends BasePage {
     hasLoginElement: boolean;
   }> {
     await this.clickNavButton("Dashboard");
-    await this.wait(3000);
+    await this.waitForPageReady();
 
     const currentUrl = this.currentUrl;
     const hasLoginElement = await this.hasVisibleLoginEntry();
@@ -993,28 +942,15 @@ export class AlbumBuddyPage extends BasePage {
     notFound: boolean;
   }> {
     const pageContent = await this.page.evaluate(() => document.body.innerText);
-
-    return {
-      hasContent: pageContent.length > 100,
-      notFound: pageContent.toLowerCase().includes("not found"),
-    };
+    return analyzeDashboardContent(pageContent);
   }
 
   /**
    * 구매 내역 UI 요소 확인
    */
   async verifyPurchasingContent(): Promise<boolean> {
-    const hasContent = await this.page.evaluate(() => {
-      const text = document.body.innerText;
-      return (
-        text.includes("Order") ||
-        text.includes("Purchase") ||
-        text.includes("구매") ||
-        text.includes("No ") ||
-        text.includes("empty")
-      );
-    });
-    return hasContent;
+    const pageText = await this.page.evaluate(() => document.body.innerText);
+    return hasPurchasingContent(pageText);
   }
 
   /**
@@ -1022,13 +958,7 @@ export class AlbumBuddyPage extends BasePage {
    */
   async verifyPackageContent(): Promise<boolean> {
     const pageText = await this.page.evaluate(() => document.body.innerText);
-    return (
-      pageText.includes("패키지") ||
-      pageText.includes("Package") ||
-      pageText.includes("패키징") ||
-      pageText.includes("Packaging") ||
-      pageText.includes("배송")
-    );
+    return hasPackageContent(pageText);
   }
 
   /**
@@ -1041,14 +971,7 @@ export class AlbumBuddyPage extends BasePage {
     hasSponsor: boolean;
   }> {
     const pageText = await this.page.evaluate(() => document.body.innerText);
-
-    return {
-      hasBrandName: pageText.includes("AlbumBuddy"),
-      hasServiceDescription: /proxy buying|shipping service|구매 대행/i.test(
-        pageText,
-      ),
-      hasSponsor: pageText.includes("MAKESTAR"),
-    };
+    return analyzeAboutContent(pageText);
   }
 
   /**
@@ -1062,27 +985,7 @@ export class AlbumBuddyPage extends BasePage {
     hasShippingCalculator: boolean;
   }> {
     const pageText = await this.page.evaluate(() => document.body.innerText);
-
-    // 실제 가격 값이 있는지 ($숫자 패턴)
-    const hasPriceValues = /\$\s*\d+\.\d{2}/.test(pageText);
-
-    // 핵심 서비스 항목 확인
-    const serviceItems = [
-      "Package Consolidation",
-      "Repackaging",
-      "Storage",
-      "Online shop",
-    ];
-    const foundServices = serviceItems.filter((item) =>
-      pageText.includes(item),
-    );
-
-    return {
-      hasTitle: pageText.includes("Service Pricing"),
-      hasPriceValues,
-      hasServiceItems: foundServices.length >= 2,
-      hasShippingCalculator: pageText.includes("Shipping fee calculator"),
-    };
+    return analyzePricingPageContent(pageText);
   }
 
   /**
@@ -1096,35 +999,7 @@ export class AlbumBuddyPage extends BasePage {
     notFound: boolean;
   }> {
     const pageText = await this.page.evaluate(() => document.body.innerText);
-
-    // 주문 탭 확인
-    const hasOrderTabs =
-      pageText.includes("My orders") || pageText.includes("My packages");
-
-    // 상태 카운터 확인 (Waiting, Pending, Paid 등)
-    const statusLabels = [
-      "Waiting",
-      "Pending",
-      "Paid",
-      "Ordered",
-      "Shipment",
-      "Canceled",
-    ];
-    const foundStatuses = statusLabels.filter((s) => pageText.includes(s));
-    const hasStatusCounters = foundStatuses.length >= 3;
-
-    // 결제 섹션 확인
-    const hasPaymentSection =
-      pageText.includes("Total") && /\$\s*\d+\.\d{2}/.test(pageText);
-
-    return {
-      hasOrderTabs,
-      hasStatusCounters,
-      hasPaymentSection,
-      notFound:
-        pageText.toLowerCase().includes("not found") ||
-        pageText.toLowerCase().includes("404"),
-    };
+    return analyzeDashboardDetailContent(pageText);
   }
 
   /**
@@ -1137,13 +1012,6 @@ export class AlbumBuddyPage extends BasePage {
     hasCostBreakdown: boolean;
   }> {
     const pageText = await this.page.evaluate(() => document.body.innerText);
-
-    // 데스크톱 테이블 헤더 확인
-    const tableHeaders = ["Vendor", "Item", "Quantity", "Price"];
-    const foundHeaders = tableHeaders.filter((h) => pageText.includes(h));
-    const hasOrderTable = foundHeaders.length >= 2;
-
-    // 모바일은 카드형 목록으로 렌더링될 수 있으므로 개별 아이템 카드도 허용
     const productImageCount = await this.page
       .locator('img[alt="image"], img[alt="componentImage"]')
       .count()
@@ -1152,27 +1020,11 @@ export class AlbumBuddyPage extends BasePage {
       .getByRole("textbox")
       .count()
       .catch(() => 0);
-    const hasMobileItemCard =
-      productImageCount > 0 &&
-      quantityFieldCount > 0 &&
-      /\$\s*\d+(\.\d+)?/.test(pageText);
-
-    // 항목 컬럼 존재
-    const hasItemColumns =
-      pageText.includes("No items registered") ||
-      hasOrderTable ||
-      hasMobileItemCard;
-
-    // 비용 내역 확인
-    const costItems = ["Item cost", "Assisted purchasing fee", "Total"];
-    const foundCosts = costItems.filter((c) => pageText.includes(c));
-    const hasCostBreakdown = foundCosts.length >= 2;
-
-    return {
-      hasOrderTable,
-      hasItemColumns,
-      hasCostBreakdown,
-    };
+    return analyzePurchasingDetailContent(
+      pageText,
+      productImageCount,
+      quantityFieldCount,
+    );
   }
 
   /**
@@ -1183,15 +1035,7 @@ export class AlbumBuddyPage extends BasePage {
     hasPackageContent: boolean;
   }> {
     const pageText = await this.page.evaluate(() => document.body.innerText);
-
-    return {
-      hasPackageTab: pageText.includes("My packages"),
-      hasPackageContent:
-        pageText.includes("Package") ||
-        pageText.includes("패키지") ||
-        pageText.includes("Shipping") ||
-        pageText.includes("배송"),
-    };
+    return analyzePackageDetailContent(pageText);
   }
 
   // --------------------------------------------------------------------------
@@ -1210,8 +1054,10 @@ export class AlbumBuddyPage extends BasePage {
         )
         .first();
       if (await searchButton.isVisible({ timeout: 5000 })) {
-        await searchButton.click();
-        await this.wait(1000);
+        await this.clickWithRecovery(searchButton, {
+          timeout: this.timeouts.medium,
+        });
+        await this.settleInteractiveUi({ timeout: this.timeouts.short });
         return true;
       }
       return false;
@@ -1260,7 +1106,7 @@ export class AlbumBuddyPage extends BasePage {
       }
 
       await searchInput.fill(query);
-      await this.wait(500);
+      await this.settleInteractiveUi({ timeout: this.timeouts.short });
       await searchInput.press("Enter");
       await this.page
         .waitForFunction(
@@ -1277,7 +1123,7 @@ export class AlbumBuddyPage extends BasePage {
           { timeout: 10000 },
         )
         .catch(() => {});
-      await this.wait(1000);
+      await this.waitForPageReady();
 
       const pageText = await this.page.evaluate(() => document.body.innerText);
       const finalUrl = this.currentUrl;
@@ -1397,7 +1243,10 @@ export class AlbumBuddyPage extends BasePage {
       }
 
       await searchInput.fill(query);
-      await this.wait(1500);
+      await this.waitForContentStable("body", {
+        timeout: this.timeouts.medium,
+        stableTime: 300,
+      }).catch(() => {});
 
       // 자동완성 드롭다운 확인
       const dropdown = this.page
@@ -1438,18 +1287,20 @@ export class AlbumBuddyPage extends BasePage {
   }> {
     try {
       // 페이지 로드 대기
-      await this.wait(3000);
+      await this.waitForPageReady();
 
       // 팝업 닫기 (있으면)
       const closeButton = this.page.locator("text=Close").first();
       if (await closeButton.isVisible({ timeout: 2000 }).catch(() => false)) {
-        await closeButton.click();
-        await this.wait(1000);
+        await this.clickWithRecovery(closeButton, {
+          timeout: this.timeouts.short,
+        });
+        await this.settleInteractiveUi({ timeout: this.timeouts.short });
       }
 
       // 스크롤 다운하여 상품 섹션 노출
       await this.page.evaluate(() => window.scrollBy(0, 500));
-      await this.wait(1000);
+      await this.settleInteractiveUi({ timeout: this.timeouts.short });
 
       // 방법 1: "전체 앨범" 그리드의 첫 번째 상품 클릭 (가장 신뢰성 높음)
       const albumGridProduct = this.page
@@ -1460,8 +1311,13 @@ export class AlbumBuddyPage extends BasePage {
       ) {
         const text = (await albumGridProduct.textContent()) || "";
         const productName = text.split("$")[0].trim().substring(0, 50);
-        await albumGridProduct.click();
-        await this.wait(2000);
+        await this.clickWithRecovery(albumGridProduct, {
+          timeout: this.timeouts.medium,
+        });
+        await this.waitForUrlContains(/\/product\//, this.timeouts.medium).catch(
+          () => {},
+        );
+        await this.waitForPageReady();
 
         // URL 확인
         if (this.currentUrl.includes("/product/")) {
@@ -1487,8 +1343,11 @@ export class AlbumBuddyPage extends BasePage {
         // 가격이 포함된 상품만
         if (text.includes("$") && text.length > 10) {
           const productName = text.split("$")[0].trim().substring(0, 50);
-          await card.click();
-          await this.wait(2000);
+          await this.clickWithRecovery(card, { timeout: this.timeouts.medium });
+          await this.waitForUrlContains(/\/product\//, this.timeouts.medium).catch(
+            () => {},
+          );
+          await this.waitForPageReady();
 
           if (this.currentUrl.includes("/product/")) {
             return { success: true, productName };
@@ -1504,6 +1363,87 @@ export class AlbumBuddyPage extends BasePage {
   }
 
   /**
+   * 실제로 로드된 상세 이미지를 가진 상품을 찾아 상세 페이지로 이동
+   * 모니터링 관점에서 "첫 상품"보다 "이미지 검증 가능한 상품"을 우선 선택합니다.
+   */
+  async clickProductWithLoadedImage(
+    maxCandidates: number = 4,
+  ): Promise<{
+    success: boolean;
+    productName: string;
+  }> {
+    await this.gotoHome();
+    await this.waitForPageReady();
+    await this.page.evaluate(() => window.scrollBy(0, 500));
+    await this.settleInteractiveUi({ timeout: this.timeouts.short });
+
+    const gridCards = this.page.locator(".album__grid > div > div");
+    const fallbackCards = this.page.locator(
+      'div:has(img[alt="image"]):has(p:has-text("$"))',
+    );
+    const gridCount = await gridCards.count().catch(() => 0);
+    const fallbackCount = await fallbackCards.count().catch(() => 0);
+    const candidateCards = gridCount > 1 ? gridCards : fallbackCards;
+    const attemptCount = Math.min(
+      gridCount > 1 ? gridCount : fallbackCount,
+      maxCandidates,
+    );
+
+    for (let i = 0; i < attemptCount; i += 1) {
+      if (i > 0) {
+        await this.page
+          .goBack({
+            waitUntil: "domcontentloaded",
+            timeout: this.timeouts.short,
+          })
+          .catch(async () => {
+            await this.gotoHome();
+          });
+        await this.waitForPageReady();
+        await this.page.evaluate(() => window.scrollBy(0, 500));
+        await this.settleInteractiveUi({ timeout: this.timeouts.short });
+      }
+
+      const card = candidateCards.nth(i);
+      const visible = await card
+        .isVisible({ timeout: this.timeouts.medium })
+        .catch(() => false);
+      if (!visible) {
+        continue;
+      }
+
+      const text = ((await card.textContent().catch(() => "")) || "").trim();
+      if (text.includes("Banner") || text.includes("배너")) {
+        continue;
+      }
+      const productName = text.split("$")[0].trim().substring(0, 50);
+
+      await this.clickWithRecovery(card, {
+        timeout: this.timeouts.medium,
+      }).catch(() => {});
+      await this.waitForUrlContains(/\/product\//, this.timeouts.medium).catch(
+        () => {},
+      );
+      await this.waitForPageReady();
+
+      if (!this.currentUrl.includes("/product/")) {
+        continue;
+      }
+
+      const imageLoaded = await this.verifyProductImageLoaded();
+      if (imageLoaded) {
+        return { success: true, productName };
+      }
+
+      console.warn(
+        `상품 ${i + 1}번은 상세 이미지 검증 실패 — 다음 상품 시도`,
+      );
+    }
+
+    return { success: false, productName: "" };
+  }
+
+  /**
    * 상품 상세 페이지 요소 확인
    * AlbumBuddy 상품 페이지 구조: /product/{uuid}?tab=description
    */
@@ -1513,7 +1453,7 @@ export class AlbumBuddyPage extends BasePage {
     hasTitle: boolean;
     hasAddToCartButton: boolean;
   }> {
-    await this.wait(1000);
+    await this.waitForPageReady();
 
     // URL이 상품 상세 페이지인지 확인
     const currentUrl = this.currentUrl;
@@ -1602,20 +1542,89 @@ export class AlbumBuddyPage extends BasePage {
     }
 
     // AlbumBuddy는 img[alt="image"] 또는 img[alt="componentImage"] 사용
-    const productImages = this.page.locator(
-      'img[alt="image"], img[alt="componentImage"]',
-    );
-    const count = await productImages.count();
+    const selector = 'img[alt="image"], img[alt="componentImage"]';
+    const hasLoadedSubstantialImage = async (): Promise<boolean> =>
+      this.page
+        .evaluate((imageSelector: string) => {
+          const images = Array.from(
+            document.querySelectorAll(imageSelector),
+          ) as HTMLImageElement[];
 
-    if (count === 0) return false;
+          return images.some((img) => {
+            const style = window.getComputedStyle(img);
+            const rect = img.getBoundingClientRect();
+            const loaded = img.complete && img.naturalWidth > 0;
+            const visible =
+              style.display !== "none" &&
+              style.visibility !== "hidden" &&
+              rect.width >= 120 &&
+              rect.height >= 120;
 
-    const firstImg = productImages.first();
-    if (await firstImg.isVisible()) {
-      const naturalWidth = await firstImg.evaluate(
-        (img: HTMLImageElement) => img.naturalWidth,
-      );
-      return naturalWidth > 0;
+            return loaded && visible;
+          });
+        }, selector)
+        .catch(() => false);
+
+    const initialLoaded = await hasLoadedSubstantialImage();
+    if (initialLoaded) {
+      return true;
     }
-    return false;
+
+    await this.page
+      .waitForFunction(
+        (imageSelector: string) => {
+          const images = Array.from(
+            document.querySelectorAll(imageSelector),
+          ) as HTMLImageElement[];
+
+          return images.some((img) => {
+            const style = window.getComputedStyle(img);
+            const rect = img.getBoundingClientRect();
+            const loaded = img.complete && img.naturalWidth > 0;
+            const visible =
+              style.display !== "none" &&
+              style.visibility !== "hidden" &&
+              rect.width >= 120 &&
+              rect.height >= 120;
+
+            return loaded && visible;
+          });
+        },
+        selector,
+        { timeout: this.timeouts.medium },
+      )
+      .catch(async () => {
+        const debugStates = await this.page
+          .evaluate((imageSelector: string) => {
+            return Array.from(
+              document.querySelectorAll(imageSelector),
+            )
+              .slice(0, 8)
+              .map((node, index) => {
+                const img = node as HTMLImageElement;
+                const style = window.getComputedStyle(img);
+                const rect = img.getBoundingClientRect();
+                return {
+                  index,
+                  alt: img.getAttribute("alt"),
+                  complete: img.complete,
+                  naturalWidth: img.naturalWidth,
+                  width: Math.round(rect.width),
+                  height: Math.round(rect.height),
+                  display: style.display,
+                  visibility: style.visibility,
+                  top: Math.round(rect.top),
+                  src: (img.getAttribute("src") || "").slice(0, 120),
+                };
+              });
+          }, selector)
+          .catch(() => []);
+
+        console.warn(
+          `AlbumBuddy 상세 이미지 로드 실패 상태: ${JSON.stringify(debugStates)}`,
+        );
+      });
+
+    return hasLoadedSubstantialImage();
   }
 }

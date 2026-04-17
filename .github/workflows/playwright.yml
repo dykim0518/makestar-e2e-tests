@@ -1,29 +1,27 @@
 name: Playwright Tests
 
 on:
-  # 배포 후 자동 실행 (main 브랜치에 push 시)
   push:
     branches: [main, master]
 
-  # PR 생성 시 실행
   pull_request:
     branches: [main, master]
 
-  # 수동 실행 가능
   workflow_dispatch:
     inputs:
       suite:
-        description: "실행할 테스트 스위트 (admin은 GitHub Hosted Runner에서 미지원)"
+        description: "실행할 스위트 (push/PR 자동 실행은 gate 고정, admin 계열은 self-hosted 수동 실행)"
         type: choice
         options:
+          - gate
           - cmr
           - albumbuddy
-          - admin
-          - all
+          - admin-gate
+          - admin-ops
         required: true
-        default: cmr
+        default: gate
       environment:
-        description: "실행 환경 (CMR suite 전용, 나머지는 prod 고정)"
+        description: "실행 환경 (CMR/Admin auth 선택에 사용, 기본 prod)"
         type: choice
         options:
           - prod
@@ -31,7 +29,7 @@ on:
         required: false
         default: prod
       project:
-        description: "Playwright project override (예: cmr-monitoring)"
+        description: "Playwright project override (예: cmr-monitoring, admin-gate)"
         required: false
         default: ""
       spec:
@@ -39,30 +37,28 @@ on:
         required: false
         default: ""
       grep:
-        description: "실행할 테스트 패턴 (예: TC-HOME, TC-SEARCH)"
+        description: "실행할 테스트 패턴 (예: TC-HOME, @suite:ops)"
         required: false
         default: ""
       retries:
-        description: "재시도 횟수 (0~5, 기본 1)"
+        description: "재시도 횟수 (0~5, admin-ops는 항상 0)"
         type: number
         required: false
         default: 1
       notify_slack:
-        description: "Slack 알림 전송 여부 (스케줄 전용)"
+        description: "Slack 알림 전송 여부"
         type: boolean
         required: false
         default: false
 
-# 동시 실행 제한
-# - push/PR: 같은 브랜치 내 이전 실행 취소
-# - workflow_dispatch(대시보드 트리거): 각각 독립 실행 (큐잉)
 concurrency:
   group: ${{ github.event_name == 'workflow_dispatch' && format('dispatch-{0}', github.run_id) || format('{0}-{1}', github.workflow, github.ref) }}
   cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
 
 jobs:
-  test:
-    name: Playwright Monitoring
+  hosted_gate:
+    name: Hosted Gate
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.suite == 'gate' || github.event.inputs.suite == 'cmr' || github.event.inputs.suite == 'albumbuddy'
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -82,9 +78,7 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
-      # 인증 정보 설정 (GitHub Secrets에서 주입, 없으면 빈 상태 생성)
-      # STG 환경에서는 STG_AUTH_JSON secret을 사용
-      - name: Setup CMR/Admin authentication
+      - name: Setup CMR authentication
         run: |
           ENV_INPUT="${{ github.event.inputs.environment || 'prod' }}"
           if [ "${ENV_INPUT}" = "stg" ] && [ -n "$STG_AUTH_JSON" ]; then
@@ -109,7 +103,6 @@ jobs:
         env:
           AB_AUTH_JSON: ${{ secrets.AB_AUTH_JSON }}
 
-      # 인증 토큰 자동 갱신 (만료/임박 시 headless Google OAuth로 갱신)
       - name: Auto-refresh auth tokens
         id: auth_refresh
         run: node scripts/ci-refresh-auth.js
@@ -117,25 +110,25 @@ jobs:
         env:
           ENVIRONMENT_INPUT: ${{ github.event.inputs.environment || 'prod' }}
 
-      # 갱신 후 토큰 유효성 최종 검증 (실패 시 테스트 중단 + 갱신 안내)
       - name: Validate auth tokens
         id: auth_check
         run: node scripts/validate-auth.js
         env:
           AUTH_WARN_HOURS: "2"
 
-      # 테스트 실행
-      - name: Run Playwright tests
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Run hosted gate tests
         id: run_playwright
         run: |
-          SUITE_INPUT="${{ github.event.inputs.suite || 'cmr' }}"
+          SUITE_INPUT="${{ github.event.inputs.suite || 'gate' }}"
           PROJECT_INPUT="${{ github.event.inputs.project || '' }}"
           SPEC_INPUT="${{ github.event.inputs.spec || '' }}"
           GREP_INPUT="${{ github.event.inputs.grep || '' }}"
           RETRIES_INPUT="${{ github.event.inputs.retries || '1' }}"
           ENV_INPUT="${{ github.event.inputs.environment || 'prod' }}"
 
-          # STG 환경일 때 BASE URL 설정
           if [ "${ENV_INPUT}" = "stg" ]; then
             export MAKESTAR_BASE_URL="https://stage-new.makeuni2026.com"
             echo "🔧 STG 환경: MAKESTAR_BASE_URL=${MAKESTAR_BASE_URL}"
@@ -162,6 +155,8 @@ jobs:
             HAS_AB_AUTH=1
           fi
 
+          node scripts/check-false-green.js
+
           CMD=(npx playwright test --config=playwright.ci.config.js "--retries=${RETRIES_INPUT}")
           EFFECTIVE_TARGETS=()
           SKIP_REASONS=()
@@ -177,18 +172,32 @@ jobs:
           fi
 
           if [ -n "${PROJECT_INPUT}" ]; then
-            if [[ "${PROJECT_INPUT}" == *admin* ]]; then
-              echo "::error::admin project는 GitHub Hosted Runner에서 실행할 수 없습니다. 사내 VPN 허용 IP를 가진 self-hosted runner에서 실행해주세요."
-              exit 1
-            fi
-            if [[ "${PROJECT_INPUT}" == *albumbuddy* ]] && [ "${HAS_AB_AUTH}" -ne 1 ]; then
-              echo "::error::AB_AUTH_JSON secret이 없거나 비어 있어 albumbuddy project를 실행할 수 없습니다."
-              exit 1
-            fi
-            CMD+=("--project=${PROJECT_INPUT}")
-            EFFECTIVE_TARGETS+=("${PROJECT_INPUT}")
+            case "${PROJECT_INPUT}" in
+              cmr-monitoring)
+                add_project "cmr-monitoring"
+                ;;
+              albumbuddy-monitoring)
+                if [ "${HAS_AB_AUTH}" -ne 1 ]; then
+                  echo "::error::AB_AUTH_JSON secret이 없거나 비어 있어 albumbuddy project를 실행할 수 없습니다."
+                  exit 1
+                fi
+                add_project "albumbuddy-monitoring"
+                ;;
+              *)
+                echo "::error::Hosted gate job은 cmr-monitoring/albumbuddy-monitoring만 지원합니다. admin 계열은 self-hosted workflow_dispatch를 사용하세요."
+                exit 1
+                ;;
+            esac
           else
             case "${SUITE_INPUT}" in
+              gate)
+                add_project "cmr-monitoring"
+                if [ "${HAS_AB_AUTH}" -eq 1 ]; then
+                  add_project "albumbuddy-monitoring"
+                else
+                  SKIP_REASONS+=("albumbuddy gate 제외: AB_AUTH_JSON secret 없음 또는 빈 쿠키")
+                fi
+                ;;
               cmr)
                 add_project "cmr-monitoring"
                 ;;
@@ -199,21 +208,8 @@ jobs:
                 fi
                 add_project "albumbuddy-monitoring"
                 ;;
-              admin)
-                echo "::error::admin suite는 GitHub Hosted Runner에서 Access Denied(VPN/IP allowlist)로 실패합니다. self-hosted runner로 분리 실행해주세요."
-                exit 1
-                ;;
-              all)
-                add_project "cmr-monitoring"
-                if [ "${HAS_AB_AUTH}" -eq 1 ]; then
-                  add_project "albumbuddy-monitoring"
-                else
-                  SKIP_REASONS+=("albumbuddy 제외: AB_AUTH_JSON secret 없음 또는 빈 쿠키")
-                fi
-                SKIP_REASONS+=("admin 제외: GitHub Hosted Runner IP 미허용")
-                ;;
               *)
-                echo "지원하지 않는 suite 입력값: ${SUITE_INPUT}"
+                echo "::error::Hosted gate job은 gate/cmr/albumbuddy만 지원합니다. admin 계열은 self-hosted workflow_dispatch를 사용하세요."
                 exit 1
                 ;;
             esac
@@ -255,7 +251,7 @@ jobs:
           CI: true
           DASHBOARD_URL: ${{ secrets.DASHBOARD_URL }}
           DASHBOARD_API_SECRET: ${{ secrets.DASHBOARD_API_SECRET }}
-          SUITE_INPUT: ${{ github.event.inputs.suite || 'cmr' }}
+          SUITE_INPUT: ${{ github.event.inputs.suite || 'gate' }}
           ENVIRONMENT_INPUT: ${{ github.event.inputs.environment || 'prod' }}
 
       - name: Publish run summary
@@ -266,7 +262,7 @@ jobs:
 
           const summaryPath = process.env.GITHUB_STEP_SUMMARY;
           const outcome = process.env.RUN_OUTCOME || 'unknown';
-          const suite = process.env.RUN_SUITE || 'cmr';
+          const suite = process.env.RUN_SUITE || 'gate';
           const effectiveTargets = process.env.RUN_EFFECTIVE_TARGETS || '';
           const skipReasonsRaw = process.env.RUN_SKIP_REASONS || '';
           const project = process.env.RUN_PROJECT || '';
@@ -413,7 +409,6 @@ jobs:
           RUN_RETRIES: ${{ steps.run_playwright.outputs.retries }}
           RUN_COMMAND: ${{ steps.run_playwright.outputs.playwright_command }}
 
-      # 테스트 리포트 업로드 (항상 실행)
       - name: Upload Playwright Report
         uses: actions/upload-artifact@v4
         if: always()
@@ -423,7 +418,6 @@ jobs:
           retention-days: 30
           if-no-files-found: ignore
 
-      # 테스트 결과 (스크린샷, 트레이스) 업로드
       - name: Upload Test Results
         uses: actions/upload-artifact@v4
         if: always()
@@ -432,7 +426,6 @@ jobs:
           path: test-results/
           retention-days: 7
 
-      # QA 대시보드에 결과 전송
       - name: Push results to dashboard
         if: always()
         run: |
@@ -455,7 +448,6 @@ jobs:
           DASHBOARD_URL: ${{ secrets.DASHBOARD_URL }}
           DASHBOARD_API_SECRET: ${{ secrets.DASHBOARD_API_SECRET }}
 
-      # Slack #team-qa 채널에 결과 알림
       - name: Notify Slack
         if: always() && inputs.notify_slack == true
         run: |
@@ -464,7 +456,7 @@ jobs:
           const https = require('https');
 
           const outcome = process.env.RUN_OUTCOME || 'unknown';
-          const suite = process.env.RUN_SUITE || 'cmr';
+          const suite = process.env.RUN_SUITE || 'gate';
           const env = process.env.RUN_ENVIRONMENT || 'prod';
           const runUrl = `https://github.com/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
           const triggeredBy = process.env.GITHUB_EVENT_NAME || 'unknown';
@@ -509,6 +501,347 @@ jobs:
           }
 
           const text = `${emoji} *Playwright ${suite.toUpperCase()} (${env})* — ${label}\n${statsText}${failureText}\n\n<${runUrl}|GitHub Actions에서 보기> | 트리거: ${triggeredBy}`;
+
+          const webhookUrl = process.env.SLACK_WEBHOOK_URL;
+          if (!webhookUrl) {
+            console.log('SLACK_WEBHOOK_URL not set, skipping');
+            process.exit(0);
+          }
+
+          const url = new URL(webhookUrl);
+          const payload = JSON.stringify({ text });
+          const req = https.request({
+            hostname: url.hostname,
+            path: url.pathname,
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
+          }, (res) => {
+            let body = '';
+            res.on('data', d => body += d);
+            res.on('end', () => console.log(`Slack response: ${res.statusCode} ${body}`));
+          });
+          req.on('error', (e) => console.log(`Slack request failed: ${e.message}`));
+          req.write(payload);
+          req.end();
+          SLACK_EOF
+        env:
+          RUN_OUTCOME: ${{ steps.run_playwright.outcome }}
+          RUN_SUITE: ${{ steps.run_playwright.outputs.suite }}
+          RUN_ENVIRONMENT: ${{ steps.run_playwright.outputs.environment }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  admin_manual:
+    name: Admin Manual
+    if: github.event_name == 'workflow_dispatch' && (github.event.inputs.suite == 'admin-gate' || github.event.inputs.suite == 'admin-ops')
+    runs-on: self-hosted
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium
+
+      - name: Setup Admin authentication
+        run: |
+          ENV_INPUT="${{ github.event.inputs.environment || 'prod' }}"
+          if [ "${ENV_INPUT}" = "stg" ] && [ -n "$STG_AUTH_JSON" ]; then
+            printf '%s' "$STG_AUTH_JSON" > auth.json
+            echo "✅ STG 인증 정보 설정 완료"
+          elif [ -n "$AUTH_JSON" ]; then
+            printf '%s' "$AUTH_JSON" > auth.json
+          else
+            printf '%s' '{"cookies":[],"origins":[]}' > auth.json
+          fi
+        env:
+          AUTH_JSON: ${{ secrets.AUTH_JSON }}
+          STG_AUTH_JSON: ${{ secrets.STG_AUTH_JSON }}
+
+      - name: Auto-refresh auth tokens
+        id: auth_refresh
+        run: node scripts/ci-refresh-auth.js
+        continue-on-error: true
+        env:
+          ENVIRONMENT_INPUT: ${{ github.event.inputs.environment || 'prod' }}
+
+      - name: Validate auth tokens
+        id: auth_check
+        run: node scripts/validate-auth.js
+        env:
+          AUTH_WARN_HOURS: "2"
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Run admin manual tests
+        id: run_playwright
+        run: |
+          SUITE_INPUT="${{ github.event.inputs.suite }}"
+          PROJECT_INPUT="${{ github.event.inputs.project || '' }}"
+          SPEC_INPUT="${{ github.event.inputs.spec || '' }}"
+          GREP_INPUT="${{ github.event.inputs.grep || '' }}"
+          RETRIES_INPUT="${{ github.event.inputs.retries || '1' }}"
+          ENV_INPUT="${{ github.event.inputs.environment || 'prod' }}"
+
+          if [ "${ENV_INPUT}" = "stg" ]; then
+            export MAKESTAR_BASE_URL="https://stage-new.makeuni2026.com"
+            echo "🔧 STG 환경: MAKESTAR_BASE_URL=${MAKESTAR_BASE_URL}"
+          fi
+
+          if ! [[ "${RETRIES_INPUT}" =~ ^[0-5]$ ]]; then
+            echo "retries 입력값은 0~5 정수만 허용됩니다: ${RETRIES_INPUT}"
+            exit 1
+          fi
+
+          node scripts/check-false-green.js
+
+          CONFIG_FILE="playwright.ci.config.js"
+          PROJECT_NAME="admin-gate"
+          EFFECTIVE_RETRIES="${RETRIES_INPUT}"
+
+          case "${SUITE_INPUT}" in
+            admin-gate)
+              CONFIG_FILE="playwright.ci.config.js"
+              PROJECT_NAME="admin-gate"
+              ;;
+            admin-ops)
+              CONFIG_FILE="playwright.ops.config.js"
+              PROJECT_NAME="admin-ops"
+              EFFECTIVE_RETRIES="0"
+              ;;
+            *)
+              echo "::error::Admin manual job은 admin-gate/admin-ops만 지원합니다."
+              exit 1
+              ;;
+          esac
+
+          if [ "${SUITE_INPUT}" = "admin-ops" ] && [ "${RETRIES_INPUT}" != "0" ]; then
+            echo "ℹ️ admin-ops는 retries=0으로 고정합니다. 입력값 ${RETRIES_INPUT}은 무시됩니다."
+          fi
+
+          CMD=(npx playwright test "--config=${CONFIG_FILE}" "--retries=${EFFECTIVE_RETRIES}")
+          EFFECTIVE_TARGETS=()
+
+          add_project() {
+            local project="$1"
+            CMD+=("--project=${project}")
+            EFFECTIVE_TARGETS+=("${project}")
+          }
+
+          if [ -n "${SPEC_INPUT}" ]; then
+            CMD+=("${SPEC_INPUT}")
+          fi
+
+          if [ -n "${PROJECT_INPUT}" ]; then
+            if [ "${PROJECT_INPUT}" != "${PROJECT_NAME}" ]; then
+              echo "::error::${SUITE_INPUT} 실행에서는 project override로 ${PROJECT_NAME}만 허용됩니다."
+              exit 1
+            fi
+            add_project "${PROJECT_INPUT}"
+          else
+            add_project "${PROJECT_NAME}"
+          fi
+
+          if [ -n "${GREP_INPUT}" ]; then
+            CMD+=("-g" "${GREP_INPUT}")
+          fi
+
+          PLAYWRIGHT_CMD="${CMD[*]}"
+          EFFECTIVE_TARGETS_JOINED="$(IFS=,; echo "${EFFECTIVE_TARGETS[*]}")"
+
+          echo "playwright_command=${PLAYWRIGHT_CMD}" >> "$GITHUB_OUTPUT"
+          echo "suite=${SUITE_INPUT}" >> "$GITHUB_OUTPUT"
+          echo "environment=${ENV_INPUT}" >> "$GITHUB_OUTPUT"
+          echo "effective_targets=${EFFECTIVE_TARGETS_JOINED}" >> "$GITHUB_OUTPUT"
+          echo "skip_reasons=" >> "$GITHUB_OUTPUT"
+          echo "project=${PROJECT_INPUT}" >> "$GITHUB_OUTPUT"
+          echo "spec=${SPEC_INPUT}" >> "$GITHUB_OUTPUT"
+          echo "grep=${GREP_INPUT}" >> "$GITHUB_OUTPUT"
+          echo "retries=${EFFECTIVE_RETRIES}" >> "$GITHUB_OUTPUT"
+
+          echo "▶ 실행 명령: ${PLAYWRIGHT_CMD}"
+          "${CMD[@]}"
+        env:
+          CI: true
+          DASHBOARD_URL: ${{ secrets.DASHBOARD_URL }}
+          DASHBOARD_API_SECRET: ${{ secrets.DASHBOARD_API_SECRET }}
+          SUITE_INPUT: ${{ github.event.inputs.suite }}
+          ENVIRONMENT_INPUT: ${{ github.event.inputs.environment || 'prod' }}
+
+      - name: Publish run summary
+        if: always()
+        run: |
+          node <<'EOF'
+          const fs = require('fs');
+
+          const summaryPath = process.env.GITHUB_STEP_SUMMARY;
+          const outcome = process.env.RUN_OUTCOME || 'unknown';
+          const suite = process.env.RUN_SUITE || 'admin-gate';
+          const effectiveTargets = process.env.RUN_EFFECTIVE_TARGETS || '';
+          const skipReasonsRaw = process.env.RUN_SKIP_REASONS || '';
+          const project = process.env.RUN_PROJECT || '';
+          const spec = process.env.RUN_SPEC || '';
+          const grep = process.env.RUN_GREP || '';
+          const retries = process.env.RUN_RETRIES || '0';
+          const environment = process.env.RUN_ENVIRONMENT || 'prod';
+          const command = process.env.RUN_COMMAND || '';
+          const resultFile = 'test-results/results.json';
+          const skipReasons = skipReasonsRaw
+            .split('||')
+            .map((item) => item.trim())
+            .filter(Boolean);
+
+          const outcomeLabelMap = {
+            success: '성공',
+            failure: '실패',
+            cancelled: '취소됨',
+            timed_out: '시간 초과',
+          };
+          const outcomeLabel = outcomeLabelMap[outcome] || outcome;
+
+          const lines = [];
+          lines.push('## Playwright 실행 요약');
+          lines.push('');
+          lines.push('| 항목 | 값 |');
+          lines.push('|---|---|');
+          lines.push(`| 결과 | ${outcomeLabel} |`);
+          lines.push(`| 요청 suite | ${suite} |`);
+          lines.push(`| 환경 | ${environment} |`);
+          lines.push(`| 실제 실행 프로젝트 | ${effectiveTargets || '-'} |`);
+          lines.push(`| project override | ${project || '-'} |`);
+          lines.push(`| spec | ${spec || '-'} |`);
+          lines.push(`| grep | ${grep || '-'} |`);
+          lines.push(`| retries | ${retries} |`);
+          lines.push(`| command | \`${command || '-'}\` |`);
+
+          if (fs.existsSync(resultFile)) {
+            try {
+              const raw = fs.readFileSync(resultFile, 'utf-8');
+              const data = JSON.parse(raw);
+              const stats = data.stats || {};
+              const durationMs = typeof stats.duration === 'number' ? stats.duration : null;
+              const durationSec = durationMs === null ? '-' : `${Math.round(durationMs / 1000)}s`;
+
+              lines.push('');
+              lines.push('### 테스트 통계');
+              lines.push('');
+              lines.push('| metric | value |');
+              lines.push('|---|---|');
+              lines.push(`| expected | ${stats.expected ?? '-'} |`);
+              lines.push(`| unexpected | ${stats.unexpected ?? '-'} |`);
+              lines.push(`| flaky | ${stats.flaky ?? '-'} |`);
+              lines.push(`| skipped | ${stats.skipped ?? '-'} |`);
+              lines.push(`| duration | ${durationSec} |`);
+            } catch (error) {
+              lines.push('');
+              lines.push(`- 결과 JSON 파싱 실패: ${error.message}`);
+            }
+          } else {
+            lines.push('');
+            lines.push('- `test-results/results.json` 파일이 없어 통계 파싱을 건너뜁니다.');
+          }
+
+          if (skipReasons.length > 0) {
+            lines.push('');
+            lines.push('### 실행 제외 항목');
+            for (const reason of skipReasons) {
+              lines.push(`- ${reason}`);
+            }
+          }
+
+          fs.appendFileSync(summaryPath, lines.join('\n') + '\n');
+          EOF
+        env:
+          RUN_OUTCOME: ${{ steps.run_playwright.outcome }}
+          RUN_SUITE: ${{ steps.run_playwright.outputs.suite }}
+          RUN_ENVIRONMENT: ${{ steps.run_playwright.outputs.environment }}
+          RUN_EFFECTIVE_TARGETS: ${{ steps.run_playwright.outputs.effective_targets }}
+          RUN_SKIP_REASONS: ${{ steps.run_playwright.outputs.skip_reasons }}
+          RUN_PROJECT: ${{ steps.run_playwright.outputs.project }}
+          RUN_SPEC: ${{ steps.run_playwright.outputs.spec }}
+          RUN_GREP: ${{ steps.run_playwright.outputs.grep }}
+          RUN_RETRIES: ${{ steps.run_playwright.outputs.retries }}
+          RUN_COMMAND: ${{ steps.run_playwright.outputs.playwright_command }}
+
+      - name: Upload Playwright Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-${{ steps.run_playwright.outputs.suite || 'suite' }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: playwright-report/
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Upload Test Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-${{ steps.run_playwright.outputs.suite || 'suite' }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/
+          retention-days: 7
+
+      - name: Push results to dashboard
+        if: always()
+        run: |
+          if [ ! -f "test-results/results.json" ]; then
+            echo "results.json not found, skipping dashboard push"
+            exit 0
+          fi
+          curl -s -X POST "$DASHBOARD_URL/api/results" \
+            -H "Authorization: Bearer $DASHBOARD_API_SECRET" \
+            -H "Content-Type: application/json" \
+            -H "X-GitHub-Run-Id: ${{ github.run_id }}" \
+            -H "X-GitHub-Suite: ${{ steps.run_playwright.outputs.suite }}" \
+            -H "X-GitHub-Environment: ${{ steps.run_playwright.outputs.environment }}" \
+            -H "X-GitHub-Sha: ${{ github.sha }}" \
+            -H "X-GitHub-Branch: ${{ github.ref_name }}" \
+            -H "X-GitHub-Triggered-By: ${{ github.event_name }}" \
+            --data-binary @test-results/results.json \
+            --max-time 15 || true
+        env:
+          DASHBOARD_URL: ${{ secrets.DASHBOARD_URL }}
+          DASHBOARD_API_SECRET: ${{ secrets.DASHBOARD_API_SECRET }}
+
+      - name: Notify Slack
+        if: always() && inputs.notify_slack == true
+        run: |
+          node <<'SLACK_EOF'
+          const fs = require('fs');
+          const https = require('https');
+
+          const outcome = process.env.RUN_OUTCOME || 'unknown';
+          const suite = process.env.RUN_SUITE || 'admin-gate';
+          const env = process.env.RUN_ENVIRONMENT || 'prod';
+          const runUrl = `https://github.com/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+          const triggeredBy = process.env.GITHUB_EVENT_NAME || 'unknown';
+
+          const emojiMap = { success: '✅', failure: '🔴', cancelled: '⚠️' };
+          const labelMap = { success: '성공', failure: '실패', cancelled: '취소' };
+          const emoji = emojiMap[outcome] || '❓';
+          const label = labelMap[outcome] || outcome;
+
+          let statsText = '';
+          const resultFile = 'test-results/results.json';
+          if (fs.existsSync(resultFile)) {
+            try {
+              const data = JSON.parse(fs.readFileSync(resultFile, 'utf-8'));
+              const s = data.stats || {};
+              const dur = typeof s.duration === 'number' ? `${Math.round(s.duration / 1000)}s` : '-';
+              statsText = `통과: ${s.expected ?? '-'} | 실패: ${s.unexpected ?? 0} | Flaky: ${s.flaky ?? 0} | 스킵: ${s.skipped ?? 0} | 소요: ${dur}`;
+            } catch {}
+          }
+
+          const text = `${emoji} *Playwright ${suite.toUpperCase()} (${env})* — ${label}\n${statsText}\n\n<${runUrl}|GitHub Actions에서 보기> | 트리거: ${triggeredBy}`;
 
           const webhookUrl = process.env.SLACK_WEBHOOK_URL;
           if (!webhookUrl) {

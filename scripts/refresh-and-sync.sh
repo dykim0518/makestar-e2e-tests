@@ -33,12 +33,18 @@ if [ -f auth.json ]; then
   BEFORE_TS=$(stat -f %m auth.json 2>/dev/null || stat -c %Y auth.json 2>/dev/null || echo 0)
 fi
 
-# Step 1: 브라우저에서 로그인
-echo -e "${YELLOW}[1/3]${NC} 브라우저에서 로그인해주세요 (최대 3분 대기)..."
+# Step 1: Makestar 공개 사이트 로그인
+echo -e "${YELLOW}[1/5]${NC} Makestar 공개 사이트 로그인 (최대 3분 대기)..."
 echo ""
-npx playwright test tests/save-auth.spec.ts --headed --retries=0 --reporter=list
+SKIP_GLOBAL_SETUP_AUTH_CHECK=true npx playwright test tests/save-auth.spec.ts --headed --retries=0 --workers=1 --project=chromium --reporter=list -g "^로그인 세션 저장 \\(수동 로그인\\)$"
 
-# Step 2: auth.json 갱신 확인
+# Step 2: Admin 로그인
+echo ""
+echo -e "${YELLOW}[2/5]${NC} Admin 로그인 (최대 3분 대기)..."
+echo ""
+SKIP_GLOBAL_SETUP_AUTH_CHECK=true npx playwright test tests/save-auth.spec.ts --headed --retries=0 --workers=1 --project=chromium --reporter=list -g "^Admin 로그인 세션 저장 \\(stage-new-admin\\)$"
+
+# Step 3: auth.json 갱신 확인
 AFTER_TS=$(stat -f %m auth.json 2>/dev/null || stat -c %Y auth.json 2>/dev/null || echo 0)
 
 if [ "$AFTER_TS" -le "$BEFORE_TS" ]; then
@@ -48,6 +54,9 @@ fi
 
 echo -e "${GREEN}✅ auth.json 갱신 완료${NC}"
 echo ""
+
+echo -e "${YELLOW}[3/5]${NC} 토큰 검증 중..."
+node scripts/validate-auth.js
 
 # 토큰 잔여 시간 출력
 node -e "
@@ -61,7 +70,7 @@ node -e "
 
 # Step 3: GitHub Secret 동기화
 echo ""
-echo -e "${YELLOW}[2/3]${NC} GitHub Secret 동기화 중..."
+echo -e "${YELLOW}[4/5]${NC} GitHub Secret 동기화 중..."
 
 if ! command -v gh &> /dev/null; then
   echo -e "${RED}❌ gh CLI가 설치되어 있지 않습니다. 수동으로 동기화하세요:${NC}"
@@ -80,7 +89,7 @@ echo -e "${GREEN}✅ AUTH_JSON secret 동기화 완료${NC}"
 echo ""
 
 # 완료
-echo -e "${YELLOW}[3/3]${NC} 검증..."
+echo -e "${YELLOW}[5/5]${NC} 검증..."
 UPDATED=$(gh secret list | grep AUTH_JSON | awk '{print $2}')
 echo -e "   SECRET 갱신 시각: ${UPDATED}"
 

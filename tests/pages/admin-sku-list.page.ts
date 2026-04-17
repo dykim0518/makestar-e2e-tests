@@ -98,7 +98,7 @@ export class SKUListPage extends AdminBasePage {
    * SKU 코드로 검색
    */
   async searchBySKUCode(skuCode: string): Promise<void> {
-    await this.skuCodeInput.fill(skuCode);
+    await this.typeInputLikeUser(this.skuCodeInput, skuCode);
     await this.clickSearchAndWait();
   }
 
@@ -106,7 +106,7 @@ export class SKUListPage extends AdminBasePage {
    * 상품명으로 검색
    */
   async searchByProductName(productName: string): Promise<void> {
-    await this.skuCodeInput.fill(productName);
+    await this.typeInputLikeUser(this.skuCodeInput, productName);
     await this.clickSearchAndWait();
   }
 
@@ -114,7 +114,7 @@ export class SKUListPage extends AdminBasePage {
    * 제품/유통 코드로 검색
    */
   async searchByProductCode(productCode: string): Promise<void> {
-    await this.productCodeInput.fill(productCode);
+    await this.typeInputLikeUser(this.productCodeInput, productCode);
     await this.clickSearchAndWait();
   }
 
@@ -123,10 +123,13 @@ export class SKUListPage extends AdminBasePage {
    */
   async searchWithOptions(options: SKUSearchOptions): Promise<void> {
     if (options.skuCode) {
-      await this.skuCodeInput.fill(options.skuCode);
+      await this.typeInputLikeUser(this.skuCodeInput, options.skuCode);
     }
     if (options.productCode) {
-      await this.productCodeInput.fill(options.productCode);
+      await this.typeInputLikeUser(
+        this.productCodeInput,
+        options.productCode,
+      );
     }
     if (options.safetyStockRisk) {
       await this.safetyStockCheckbox.click();
@@ -166,16 +169,20 @@ export class SKUListPage extends AdminBasePage {
    * 대분류 연결 다이얼로그 열기
    */
   async openLinkCategoryDialog(): Promise<void> {
-    await this.linkCategoryButton.click();
-    await this.wait(500);
+    await this.clickWithRecovery(this.linkCategoryButton, {
+      timeout: this.timeouts.medium,
+    });
+    await this.settleInteractiveUi({ timeout: this.timeouts.short });
   }
 
   /**
    * 일괄 수정 다이얼로그 열기
    */
   async openBulkEditDialog(): Promise<void> {
-    await this.bulkEditButton.click();
-    await this.wait(500);
+    await this.clickWithRecovery(this.bulkEditButton, {
+      timeout: this.timeouts.medium,
+    });
+    await this.settleInteractiveUi({ timeout: this.timeouts.short });
   }
 
   /**

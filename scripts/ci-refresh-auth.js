@@ -21,10 +21,13 @@
 
 const { chromium } = require("@playwright/test");
 const fs = require("fs");
-const path = require("path");
+const {
+  formatRemaining,
+  getBrowserAuthState,
+  mergeCookies,
+  shouldRefreshBrowserAuth,
+} = require("./auth-state");
 
-const AUTH_FILE =
-  process.env.AUTH_FILE_PATH || path.join(process.cwd(), "auth.json");
 const FORCE = process.argv.includes("--force");
 const REFRESH_THRESHOLD_MS = 2 * 60 * 60 * 1000; // 2시간 이내면 갱신 시도
 
@@ -60,91 +63,63 @@ function log(msg) {
   console.log(`[${ts}] ${msg}`);
 }
 
-function getRefreshTokenExp(cookies) {
-  const rt = cookies.find(
-    (c) => c.name === "refresh_token" && c.domain?.includes("makestar"),
-  );
-  if (!rt?.value) return null;
-  try {
-    const payload = JSON.parse(
-      Buffer.from(rt.value.split(".")[1], "base64").toString(),
-    );
-    return payload.exp ? payload.exp * 1000 : null;
-  } catch {
-    return rt.expires > 0 ? rt.expires * 1000 : null;
-  }
-}
-
-function needsRefresh(cookies) {
-  if (FORCE) return true;
-  const exp = getRefreshTokenExp(cookies);
-  if (!exp) return true;
-  const remaining = exp - Date.now();
-  if (remaining <= 0) {
-    log(`refresh_token 만료됨`);
-    return true;
-  }
-  if (remaining < REFRESH_THRESHOLD_MS) {
-    const mins = Math.floor(remaining / 60000);
-    log(`refresh_token 잔여 ${mins}분 — 갱신 필요`);
-    return true;
-  }
-  const hours = (remaining / 3600000).toFixed(1);
-  log(`refresh_token 잔여 ${hours}시간 — 갱신 불필요`);
-  return false;
-}
-
-/**
- * 기존 auth.json 쿠키와 새 쿠키를 병합
- */
-function mergeCookies(existingCookies, newCookies) {
-  const map = new Map();
-  for (const c of existingCookies) {
-    map.set(`${c.name}@@${c.domain}`, c);
-  }
-  for (const c of newCookies) {
-    map.set(`${c.name}@@${c.domain}`, c);
-  }
-  return [...map.values()];
-}
-
 async function refreshAuth() {
+  const browserAuthState = getBrowserAuthState({
+    cwd: process.cwd(),
+    env: process.env,
+    bufferMs: 0,
+  });
+  const authFile = browserAuthState.authFilePath;
+
   // 1. auth.json 로드
-  if (!fs.existsSync(AUTH_FILE)) {
+  if (!browserAuthState.exists) {
     log("auth.json 없음 — 갱신 불가");
     return false;
   }
 
-  let auth;
-  try {
-    auth = JSON.parse(fs.readFileSync(AUTH_FILE, "utf-8"));
-  } catch (e) {
-    log(`auth.json 파싱 실패: ${e.message}`);
+  if (browserAuthState.parseError || !browserAuthState.authData) {
+    log(`auth.json 파싱 실패: ${browserAuthState.parseError?.message || "unknown error"}`);
     return false;
   }
 
-  const cookies = auth.cookies || [];
+  const auth = browserAuthState.authData;
+  const cookies = browserAuthState.cookies;
   if (cookies.length === 0) {
     log("auth.json에 쿠키 없음 — 갱신 불가");
     return false;
   }
 
   // 2. 갱신 필요 여부 확인
-  if (!needsRefresh(cookies)) {
+  if (
+    !shouldRefreshBrowserAuth({
+      browserAuthState,
+      thresholdMs: REFRESH_THRESHOLD_MS,
+      force: FORCE,
+    })
+  ) {
+    log(
+      `refresh_token 잔여 ${formatRemaining(browserAuthState.remainingMs)} — 갱신 불필요`,
+    );
     return true; // 갱신 불필요 = 성공
   }
 
+  if (browserAuthState.bestRefreshToken?.remainingMs <= 0) {
+    log("refresh_token 만료됨");
+  } else if (typeof browserAuthState.remainingMs === "number") {
+    log(
+      `refresh_token 잔여 ${formatRemaining(browserAuthState.remainingMs)} — 갱신 필요`,
+    );
+  }
+
   // 3. Google 세션 쿠키 존재 확인
-  const googleCookies = cookies.filter(
-    (c) =>
-      c.domain?.includes("google.com") &&
-      ["SID", "SSID", "HSID"].includes(c.name),
-  );
-  if (googleCookies.length === 0) {
+  if (!browserAuthState.hasGoogleSession) {
     log("Google 세션 쿠키 없음 — headless 갱신 불가");
     return false;
   }
-  log(`Google 세션 쿠키 ${googleCookies.length}개 확인`);
+  const googleCookieCount = cookies.filter((c) =>
+    c.domain?.includes("google.com"),
+  ).length;
+  log(`Google 세션 쿠키 ${googleCookieCount}개 확인`);
 
   // 4. headless 브라우저 시작
   log("headless 브라우저 시작...");
@@ -181,7 +156,7 @@ async function refreshAuth() {
     if (isSuccessUrl(currentUrl)) {
       log("이미 로그인 상태 — 세션 유효");
       const newCookies = await context.cookies();
-      await saveRefreshedAuth(auth, newCookies);
+      await saveRefreshedAuth(authFile, auth, newCookies);
       await browser.close();
       return true;
     }
@@ -226,7 +201,7 @@ async function refreshAuth() {
         if (isSuccessUrl(currentUrl)) {
           log("자동 리다이렉트로 로그인 성공");
           const newCookies = await context.cookies();
-          await saveRefreshedAuth(auth, newCookies);
+          await saveRefreshedAuth(authFile, auth, newCookies);
           await browser.close();
           return true;
         }
@@ -262,7 +237,7 @@ async function refreshAuth() {
     if (isSuccessUrl(currentUrl)) {
       log("로그인 성공!");
       const newCookies = await context.cookies();
-      await saveRefreshedAuth(auth, newCookies);
+      await saveRefreshedAuth(authFile, auth, newCookies);
       await browser.close();
       return true;
     }
@@ -276,7 +251,7 @@ async function refreshAuth() {
     if (isSuccessUrl(currentUrl)) {
       log("지연 리다이렉트로 로그인 성공");
       const newCookies = await context.cookies();
-      await saveRefreshedAuth(auth, newCookies);
+      await saveRefreshedAuth(authFile, auth, newCookies);
       await browser.close();
       return true;
     }
@@ -291,20 +266,25 @@ async function refreshAuth() {
   }
 }
 
-async function saveRefreshedAuth(originalAuth, newCookies) {
+async function saveRefreshedAuth(authFile, originalAuth, newCookies) {
   const merged = mergeCookies(originalAuth.cookies || [], newCookies);
   const updated = {
     cookies: merged,
     origins: originalAuth.origins || [],
   };
 
-  fs.writeFileSync(AUTH_FILE, JSON.stringify(updated, null, 2));
+  fs.writeFileSync(authFile, JSON.stringify(updated, null, 2));
 
   // 갱신된 토큰 확인
-  const exp = getRefreshTokenExp(merged);
-  if (exp) {
-    const hours = ((exp - Date.now()) / 3600000).toFixed(1);
-    log(`auth.json 저장 완료 — 새 refresh_token 잔여: ${hours}시간`);
+  const updatedState = getBrowserAuthState({
+    cwd: process.cwd(),
+    env: { ...process.env, AUTH_FILE_PATH: authFile },
+    bufferMs: 0,
+  });
+  if (typeof updatedState.remainingMs === "number" && updatedState.remainingMs > 0) {
+    log(
+      `auth.json 저장 완료 — 새 refresh_token 잔여: ${formatRemaining(updatedState.remainingMs)}`,
+    );
   } else {
     log("auth.json 저장 완료 (refresh_token exp 확인 불가)");
   }

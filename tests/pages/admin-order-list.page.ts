@@ -72,16 +72,14 @@ export class OrderListPage extends AdminBasePage {
   }
 
   async clickSearchAndWait(): Promise<void> {
-    await this.page.keyboard.press("Escape").catch(() => {});
-    await this.page.keyboard.press("Escape").catch(() => {});
-    await this.submitSearchButton.click({ force: true });
+    await this.clickWithRecovery(this.submitSearchButton, {
+      escapeCount: 2,
+      timeout: this.timeouts.medium,
+    });
     await this.waitForTableOrNoResult();
   }
 
   async clickResetButton(): Promise<void> {
-    await this.page.keyboard.press("Escape").catch(() => {});
-    await this.page.keyboard.press("Escape").catch(() => {});
-
     if (
       await this.searchResetButton
         .isVisible({ timeout: this.timeouts.short })
@@ -91,7 +89,10 @@ export class OrderListPage extends AdminBasePage {
         .isEnabled()
         .catch(() => false);
       if (enabled) {
-        await this.searchResetButton.click({ force: true });
+        await this.clickWithRecovery(this.searchResetButton, {
+          escapeCount: 2,
+          timeout: this.timeouts.medium,
+        });
       }
     }
     await this.waitForTableOrNoResult();
@@ -165,11 +166,11 @@ export class OrderListPage extends AdminBasePage {
   }
 
   async switchTab(tab: OrderTabKey): Promise<void> {
-    await this.page.keyboard.press("Escape").catch(() => {});
-    await this.page.keyboard.press("Escape").catch(() => {});
     const tabLocator = await this.resolveTab(tab);
-    await tabLocator.scrollIntoViewIfNeeded().catch(() => {});
-    await tabLocator.click({ force: true });
+    await this.clickWithRecovery(tabLocator, {
+      escapeCount: 2,
+      timeout: this.timeouts.medium,
+    });
     await this.waitForTableOrNoResult();
   }
 
@@ -491,7 +492,7 @@ export class OrderListPage extends AdminBasePage {
 
   async getSummaryTotalCount(): Promise<number | null> {
     const summaryText = this.normalize(
-      await this.resultSummary.textContent().catch(() => ""),
+      (await this.resultSummary.textContent().catch(() => "")) ?? "",
     );
     const match = summaryText.match(/전체\s*([\d,]+)\s*건/);
     if (!match || !match[1]) {
@@ -675,8 +676,8 @@ export class OrderListPage extends AdminBasePage {
       return false;
     }
 
-    await this.nextPageButton.click({
-      force: true,
+    await this.clickWithRecovery(this.nextPageButton, {
+      escapeCount: 1,
       timeout: this.timeouts.medium,
     });
     await this.waitForTableOrNoResult(15000);
@@ -700,8 +701,8 @@ export class OrderListPage extends AdminBasePage {
       return false;
     }
 
-    await this.previousPageButton.click({
-      force: true,
+    await this.clickWithRecovery(this.previousPageButton, {
+      escapeCount: 1,
       timeout: this.timeouts.medium,
     });
     await this.waitForTableOrNoResult(15000);
@@ -760,13 +761,15 @@ export class OrderListPage extends AdminBasePage {
       throw new Error(`상태 필터를 찾지 못했습니다: ${key}`);
     }
 
-    await trigger.scrollIntoViewIfNeeded().catch(() => {});
-    await trigger.click({ force: true });
+    await this.clickWithRecovery(trigger, {
+      escapeCount: 1,
+      timeout: this.timeouts.medium,
+    });
 
     const optionCandidates =
       await this.collectVisibleStatusOptionTexts(trigger);
 
-    await this.page.keyboard.press("Escape").catch(() => {});
+    await this.pressEscape();
     return optionCandidates;
   }
 
@@ -834,14 +837,16 @@ export class OrderListPage extends AdminBasePage {
       throw new Error(`상태 필터를 찾지 못했습니다: ${key}`);
     }
 
-    await trigger.scrollIntoViewIfNeeded().catch(() => {});
-    await trigger.click({ force: true });
+    await this.clickWithRecovery(trigger, {
+      escapeCount: 1,
+      timeout: this.timeouts.medium,
+    });
 
     const currentText = this.normalize(
-      await trigger.textContent().catch(() => ""),
+      (await trigger.textContent().catch(() => "")) ?? "",
     );
     if (this.isStatusEquivalent(key, currentText, optionText)) {
-      await this.page.keyboard.press("Escape").catch(() => {});
+      await this.pressEscape();
       return;
     }
 
@@ -852,7 +857,7 @@ export class OrderListPage extends AdminBasePage {
       visibleOptions,
     );
     if (!this.isMeaningfulValue(resolvedOptionText)) {
-      await this.page.keyboard.press("Escape").catch(() => {});
+      await this.pressEscape();
       throw new Error(`상태 옵션 목록이 비어 있습니다: ${key}`);
     }
 
@@ -886,9 +891,13 @@ export class OrderListPage extends AdminBasePage {
     ]);
 
     if (option) {
-      await option.scrollIntoViewIfNeeded().catch(() => {});
       const clickedByLocator = await option
-        .click({ force: true })
+        .scrollIntoViewIfNeeded()
+        .then(() =>
+          this.clickWithRecovery(option, {
+            timeout: this.timeouts.short,
+          }),
+        )
         .then(() => true)
         .catch(() => false);
       if (!clickedByLocator) {
@@ -909,7 +918,7 @@ export class OrderListPage extends AdminBasePage {
         resolvedOptionText,
       );
       if (selectedByClick) {
-        await this.page.keyboard.press("Escape").catch(() => {});
+        await this.pressEscape();
         return;
       }
     }
@@ -932,7 +941,7 @@ export class OrderListPage extends AdminBasePage {
       );
 
       if (selectedByInput) {
-        await this.page.keyboard.press("Escape").catch(() => {});
+        await this.pressEscape();
         return;
       }
     }
@@ -962,20 +971,25 @@ export class OrderListPage extends AdminBasePage {
           .first(),
       ]);
       if (fallbackOption) {
-        await fallbackOption.click({ force: true }).catch(() => {});
+        await this.clickWithRecovery(fallbackOption, {
+          timeout: this.timeouts.short,
+        }).catch(() => {});
         const selectedFallback = await this.waitForStatusSelection(
           key,
           trigger,
           fallbackOptionText,
         );
         if (selectedFallback) {
-          await this.page.keyboard.press("Escape").catch(() => {});
+          await this.pressEscape();
           return;
         }
       }
     }
 
-    await trigger.click({ force: true }).catch(() => {});
+    await this.clickWithRecovery(trigger, {
+      escapeCount: 1,
+      timeout: this.timeouts.medium,
+    }).catch(() => {});
     const firstMeaningfulOption = await this.findFirstVisible([
       this.page
         .locator(
@@ -985,16 +999,18 @@ export class OrderListPage extends AdminBasePage {
         .first(),
     ]);
     if (firstMeaningfulOption) {
-      await firstMeaningfulOption.click({ force: true }).catch(() => {});
+      await this.clickWithRecovery(firstMeaningfulOption, {
+        timeout: this.timeouts.short,
+      }).catch(() => {});
       const selectedAnyMeaningful =
         await this.waitForAnyMeaningfulStatusSelection(key);
       if (selectedAnyMeaningful) {
-        await this.page.keyboard.press("Escape").catch(() => {});
+        await this.pressEscape();
         return;
       }
     }
 
-    await this.page.keyboard.press("Escape").catch(() => {});
+    await this.pressEscape();
     throw new Error(
       `상태 옵션을 찾지 못했습니다: ${optionText} (resolved=${resolvedOptionText})`,
     );
@@ -1171,7 +1187,7 @@ export class OrderListPage extends AdminBasePage {
       .toLowerCase();
   }
 
-  private isMeaningfulValue(value: string): boolean {
+  override isMeaningfulValue(value: string): boolean {
     const normalized = this.normalize(value);
     if (normalized.length === 0) return false;
     if (normalized === "-" || normalized === "--") return false;
@@ -1375,7 +1391,7 @@ export class OrderListPage extends AdminBasePage {
         .poll(
           async () => {
             const selectedText = this.normalize(
-              await trigger.textContent().catch(() => ""),
+              (await trigger.textContent().catch(() => "")) ?? "",
             );
             if (this.isStatusEquivalent(key, selectedText, expectedOption)) {
               return true;
@@ -1550,7 +1566,10 @@ export class OrderListPage extends AdminBasePage {
       return;
     }
 
-    await trigger.click({ force: true });
+    await this.clickWithRecovery(trigger, {
+      escapeCount: 1,
+      timeout: this.timeouts.medium,
+    });
     const defaultOption = await this.findFirstVisible([
       this.page.getByRole("option", { name: /^\s*선택\s*$/ }).first(),
       this.page
@@ -1560,7 +1579,9 @@ export class OrderListPage extends AdminBasePage {
     ]);
 
     if (defaultOption) {
-      await defaultOption.click({ force: true }).catch(() => {});
+      await this.clickWithRecovery(defaultOption, {
+        timeout: this.timeouts.short,
+      }).catch(() => {});
     } else {
       const searchInput = await this.findFirstVisible([
         trigger.locator("input").first(),
@@ -1571,7 +1592,7 @@ export class OrderListPage extends AdminBasePage {
       }
     }
 
-    await this.page.keyboard.press("Escape").catch(() => {});
+    await this.pressEscape();
     await this.getCurrentSelectedValue(key).catch(() => "");
   }
 

@@ -69,7 +69,7 @@ export class CategoryListPage extends AdminBasePage {
    * 키워드로 검색
    */
   async searchByKeyword(keyword: string): Promise<void> {
-    await this.keywordInput.fill(keyword);
+    await this.typeInputLikeUser(this.keywordInput, keyword);
     await this.clickSearchAndWait();
   }
 
@@ -78,7 +78,7 @@ export class CategoryListPage extends AdminBasePage {
    */
   async searchWithOptions(options: CategorySearchOptions): Promise<void> {
     if (options.keyword) {
-      await this.keywordInput.fill(options.keyword);
+      await this.typeInputLikeUser(this.keywordInput, options.keyword);
     }
 
     await this.clickSearchAndWait();
@@ -100,8 +100,10 @@ export class CategoryListPage extends AdminBasePage {
    * 엑셀 다운로드
    */
   async downloadExcel(): Promise<void> {
-    await this.excelDownloadButton.click();
-    await this.wait(1000);
+    await this.clickWithRecovery(this.excelDownloadButton, {
+      timeout: this.timeouts.medium,
+    });
+    await this.settleInteractiveUi({ timeout: this.timeouts.short });
   }
 
   // --------------------------------------------------------------------------

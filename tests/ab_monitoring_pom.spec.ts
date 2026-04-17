@@ -457,15 +457,17 @@ test.describe("상품 상세 및 Request Item", () => {
       albumbuddy = new AlbumBuddyPage(page);
       await albumbuddy.gotoHome();
 
-      const { success } = await albumbuddy.clickFirstProduct();
+      const { success, productName } =
+        await albumbuddy.clickProductWithLoadedImage();
 
-      // 상품 클릭이 성공해야 함
-      expect(success, "상품을 클릭하여 상세 페이지로 이동해야 합니다").toBe(
-        true,
-      );
+      expect(
+        success,
+        "상세 이미지가 실제로 로드되는 상품 상세 페이지로 이동해야 합니다",
+      ).toBe(true);
 
       if (success) {
         const imageLoaded = await albumbuddy.verifyProductImageLoaded();
+        console.log(`이미지 검증 상품: ${productName || "이름 확인 불가"}`);
         console.log(
           `상품 이미지 로드: ${imageLoaded ? "성공" : "이미지 없음 또는 로드 실패"}`,
         );

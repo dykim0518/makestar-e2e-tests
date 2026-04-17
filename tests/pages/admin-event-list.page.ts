@@ -57,15 +57,12 @@ export class EventListPage extends AdminBasePage {
   readonly previewButton: Locator;
   readonly newWindowButton: Locator;
 
-  // 조회 버튼 (새 UI)
-  readonly searchButton: Locator;
-
   constructor(page: Page) {
     super(page, ADMIN_TIMEOUTS);
 
     // 이름 검색 입력: 상세 검색 UI와 간단 검색 UI를 모두 지원
     this.nameInput = page.locator(
-      'input[placeholder="이벤트 이름을 입력해주세요"], input[placeholder="검색하기"]',
+      'input[placeholder="이벤트 이름을 입력해주세요"], input[placeholder="검색하기"], input[placeholder="검색어를 입력해주세요"]',
     );
 
     // 레거시/호환성 담당자 필터
@@ -93,11 +90,6 @@ export class EventListPage extends AdminBasePage {
 
     // 추가 검색 옵션
     this.simpleSearchButton = page.locator('button:has-text("간단하게 검색")');
-
-    // 검색 실행 버튼/아이콘
-    this.searchButton = page.locator(
-      'button:has-text("조회하기"), .input__right__icons',
-    );
 
     // 액션 버튼 초기화 (새 UI에서는 "등록하기" 버튼)
     this.createProductButton = page.locator(
@@ -142,7 +134,7 @@ export class EventListPage extends AdminBasePage {
       state: "visible",
       timeout: this.timeouts.medium,
     });
-    await this.nameInput.fill(name);
+    await this.typeInputLikeUser(this.nameInput, name);
     await this.clickSearchButton();
   }
 
@@ -154,9 +146,9 @@ export class EventListPage extends AdminBasePage {
     if (
       await this.managerInput.isVisible({ timeout: 1000 }).catch(() => false)
     ) {
-      await this.managerInput.fill(manager);
+      await this.typeInputLikeUser(this.managerInput, manager);
     } else {
-      await this.nameInput.fill(manager);
+      await this.typeInputLikeUser(this.nameInput, manager);
     }
     await this.clickSearchButton();
   }
@@ -167,9 +159,9 @@ export class EventListPage extends AdminBasePage {
    */
   async searchById(id: string): Promise<void> {
     if (await this.idInput.isVisible({ timeout: 1000 }).catch(() => false)) {
-      await this.idInput.fill(id);
+      await this.typeInputLikeUser(this.idInput, id);
     } else {
-      await this.nameInput.fill(id);
+      await this.typeInputLikeUser(this.nameInput, id);
     }
     await this.clickSearchButton();
   }
@@ -206,7 +198,9 @@ export class EventListPage extends AdminBasePage {
     if (
       await this.searchButton.isVisible({ timeout: 1000 }).catch(() => false)
     ) {
-      await this.searchButton.click();
+      await this.clickWithRecovery(this.searchButton, {
+        timeout: this.timeouts.medium,
+      });
     } else {
       await this.nameInput.press("Enter").catch(() => {});
     }
@@ -308,19 +302,19 @@ export class EventListPage extends AdminBasePage {
    */
   async searchWithOptions(options: EventSearchOptions): Promise<void> {
     if (options.name) {
-      await this.nameInput.fill(options.name);
+      await this.typeInputLikeUser(this.nameInput, options.name);
     }
     if (options.productCode) {
-      await this.productCodeInput.fill(options.productCode);
+      await this.typeInputLikeUser(this.productCodeInput, options.productCode);
     }
     if (options.albumCode) {
-      await this.albumCodeInput.fill(options.albumCode);
+      await this.typeInputLikeUser(this.albumCodeInput, options.albumCode);
     }
     if (options.id) {
-      await this.idInput.fill(options.id);
+      await this.typeInputLikeUser(this.idInput, options.id);
     }
     if (options.manager) {
-      await this.managerInput.fill(options.manager);
+      await this.typeInputLikeUser(this.managerInput, options.manager);
     }
     if (options.type) {
       await this.filterByType(options.type);
@@ -338,8 +332,10 @@ export class EventListPage extends AdminBasePage {
    * 간단하게 검색 모드 전환
    */
   async toggleSimpleSearch(): Promise<void> {
-    await this.simpleSearchButton.click();
-    await this.wait(500);
+    await this.clickWithRecovery(this.simpleSearchButton, {
+      timeout: this.timeouts.medium,
+    });
+    await this.settleInteractiveUi({ timeout: this.timeouts.short });
   }
 
   // --------------------------------------------------------------------------
@@ -358,16 +354,20 @@ export class EventListPage extends AdminBasePage {
    * 엑셀 다운로드
    */
   async downloadExcel(): Promise<void> {
-    await this.excelDownloadButton.click();
-    await this.wait(1000);
+    await this.clickWithRecovery(this.excelDownloadButton, {
+      timeout: this.timeouts.medium,
+    });
+    await this.settleInteractiveUi({ timeout: this.timeouts.short });
   }
 
   /**
    * 출고 엑셀 다운로드
    */
   async downloadShipmentExcel(): Promise<void> {
-    await this.shipmentExcelButton.click();
-    await this.wait(1000);
+    await this.clickWithRecovery(this.shipmentExcelButton, {
+      timeout: this.timeouts.medium,
+    });
+    await this.settleInteractiveUi({ timeout: this.timeouts.short });
   }
 
   // --------------------------------------------------------------------------
@@ -379,8 +379,10 @@ export class EventListPage extends AdminBasePage {
    */
   async clickPrivateLink(rowIndex: number): Promise<void> {
     const row = this.tableRows.nth(rowIndex);
-    await row.locator('button:has-text("비공개링크")').click();
-    await this.wait(500);
+    await this.clickWithRecovery(row.locator('button:has-text("비공개링크")'), {
+      timeout: this.timeouts.medium,
+    });
+    await this.settleInteractiveUi({ timeout: this.timeouts.short });
   }
 
   /**
@@ -388,8 +390,10 @@ export class EventListPage extends AdminBasePage {
    */
   async clickPreview(rowIndex: number): Promise<void> {
     const row = this.tableRows.nth(rowIndex);
-    await row.locator('button:has-text("미리보기")').click();
-    await this.wait(500);
+    await this.clickWithRecovery(row.locator('button:has-text("미리보기")'), {
+      timeout: this.timeouts.medium,
+    });
+    await this.settleInteractiveUi({ timeout: this.timeouts.short });
   }
 
   /**
@@ -397,8 +401,10 @@ export class EventListPage extends AdminBasePage {
    */
   async clickNewWindow(rowIndex: number): Promise<void> {
     const row = this.tableRows.nth(rowIndex);
-    await row.locator('button:has-text("새창보기")').click();
-    await this.wait(500);
+    await this.clickWithRecovery(row.locator('button:has-text("새창보기")'), {
+      timeout: this.timeouts.medium,
+    });
+    await this.settleInteractiveUi({ timeout: this.timeouts.short });
   }
 
   // --------------------------------------------------------------------------

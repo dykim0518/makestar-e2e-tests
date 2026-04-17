@@ -57,17 +57,16 @@ export class PocaFaveCreatePage extends AdminBasePage {
     await expect(albumTrigger, "앨범 선택 드롭다운 미발견").toBeVisible({
       timeout: 5000,
     });
-    await albumTrigger.click();
+    await this.clickWithRecovery(albumTrigger, { timeout: this.timeouts.medium });
 
     // 포탈 드롭다운 대기 (height:0으로 렌더 — attached로 체크)
     const dropdown = this.page.locator(".selection-dropdown-container");
     await dropdown.waitFor({ state: "attached", timeout: 5000 });
 
-    // 첫 번째 앨범 선택 (force: true — 패널 height:0 대응)
     const firstAlbum = dropdown.locator(".menu-item__label").first();
     await firstAlbum.waitFor({ state: "attached", timeout: 5000 });
     const albumName = await firstAlbum.textContent();
-    await firstAlbum.click({ force: true });
+    await this.clickAttachedElement(firstAlbum, { timeout: 5000 });
     console.log(`  앨범 선택: ${albumName?.trim()}`);
 
     // 커버 오버레이 닫기
@@ -76,7 +75,7 @@ export class PocaFaveCreatePage extends AdminBasePage {
       .isVisible({ timeout: 1000 })
       .catch(() => false);
     if (coverVisible) {
-      await this.page.keyboard.press("Escape");
+      await this.pressEscape();
       await cover.waitFor({ state: "hidden", timeout: 3000 }).catch(() => {});
     }
 
@@ -85,7 +84,7 @@ export class PocaFaveCreatePage extends AdminBasePage {
     await expect(applyBtn, "적용하기 버튼 미발견").toBeVisible({
       timeout: 5000,
     });
-    await applyBtn.click();
+    await this.clickWithRecovery(applyBtn, { timeout: this.timeouts.medium });
 
     // 폼 영역이 로드될 때까지 대기
     await this.page.waitForLoadState("domcontentloaded").catch(() => {});
@@ -110,7 +109,7 @@ export class PocaFaveCreatePage extends AdminBasePage {
     await expect(addBtn, "FAVE 추가하기 버튼 미발견").toBeVisible({
       timeout: 5000,
     });
-    await addBtn.click();
+    await this.clickWithRecovery(addBtn, { timeout: this.timeouts.medium });
 
     // FAVE 카드 섹션 로드 대기 — "FAVE 1" 헤더가 나타날 때까지
     const faveSection = this.page.getByText("FAVE 1");
@@ -163,7 +162,9 @@ export class PocaFaveCreatePage extends AdminBasePage {
     this.page.once("dialog", (dialog) => dialog.accept());
 
     await this.createButton.scrollIntoViewIfNeeded();
-    await this.createButton.click({ force: true });
+    await this.clickWithRecovery(this.createButton, {
+      timeout: this.timeouts.medium,
+    });
 
     await this.page
       .waitForURL(/\/pocaalbum\/fave/, { timeout: 15000 })

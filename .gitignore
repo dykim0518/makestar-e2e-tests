@@ -24,6 +24,12 @@ playwright-session.json
 debug-*.png
 debug-*.html
 page-content.txt
+.playwright-cli/
+downloads/
+coverage-crawl-*.json
+explore-menus-report.json
+ab-session-storage.json
+docs/tc-cheatsheet.html
 
 # OS files
 .DS_Store

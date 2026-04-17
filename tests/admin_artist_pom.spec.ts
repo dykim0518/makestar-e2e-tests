@@ -381,40 +381,65 @@ test.describe("아티스트 목록", () => {
       const firstPageNumbers = await artistPage.getNoColumnValues(10);
       const moved = await artistPage.goToNextPage();
       if (!moved) {
-        console.log("  ℹ️ 1페이지만 존재 - 연속성 검증 건너뜀");
-        return;
-      }
-
-      const secondPageNumbers = await artistPage.getNoColumnValues(10);
-
-      // 2페이지도 내림차순 유지
-      for (let i = 0; i < secondPageNumbers.length - 1; i++) {
+        const totalCount = await artistPage.getListCount();
         expect(
-          secondPageNumbers[i],
-          `❌ 2페이지 정렬 오류: No ${secondPageNumbers[i]} → ${secondPageNumbers[i + 1]}`,
-        ).toBeGreaterThan(secondPageNumbers[i + 1]);
-      }
+          firstPageNumbers.length,
+          "❌ 단일 페이지인데 데이터가 없습니다.",
+        ).toBeGreaterThan(0);
+        expect(
+          totalCount,
+          `❌ 다음 페이지 이동이 불가한데 총 건수(${totalCount})가 현재 페이지 행 수(${firstPageNumbers.length})보다 많습니다.`,
+        ).toBeLessThanOrEqual(firstPageNumbers.length);
+        console.log("  ✅ 단일 페이지 상태 확인 — 연속성 검증 불필요");
+      } else {
+        const secondPageNumbers = await artistPage.getNoColumnValues(10);
 
-      // 1페이지 마지막 No > 2페이지 첫 No (페이지 간 연속)
-      const lastOfFirst = firstPageNumbers[firstPageNumbers.length - 1];
-      expect(
-        secondPageNumbers[0],
-        `❌ 페이지 연속성 오류: 1페이지 마지막(${lastOfFirst}) > 2페이지 첫(${secondPageNumbers[0]}) 이어야 함`,
-      ).toBeLessThan(lastOfFirst);
+        // 2페이지도 내림차순 유지
+        for (let i = 0; i < secondPageNumbers.length - 1; i++) {
+          expect(
+            secondPageNumbers[i],
+            `❌ 2페이지 정렬 오류: No ${secondPageNumbers[i]} → ${secondPageNumbers[i + 1]}`,
+          ).toBeGreaterThan(secondPageNumbers[i + 1]);
+        }
+
+        // 1페이지 마지막 No > 2페이지 첫 No (페이지 간 연속)
+        const lastOfFirst = firstPageNumbers[firstPageNumbers.length - 1];
+        expect(
+          secondPageNumbers[0],
+          `❌ 페이지 연속성 오류: 1페이지 마지막(${lastOfFirst}) > 2페이지 첫(${secondPageNumbers[0]}) 이어야 함`,
+        ).toBeLessThan(lastOfFirst);
+      }
     });
 
     test("ART-PAGIN-03: 페이지 이동 후 복귀 시 원래 데이터 복원 검증", async () => {
       const beforeNumbers = await artistPage.getNoColumnValues(10);
       const moved = await artistPage.goToNextPage();
-      if (!moved) return;
+      if (moved) {
+        await artistPage.goToPreviousPage();
+        const afterNumbers = await artistPage.getNoColumnValues(10);
 
-      await artistPage.goToPreviousPage();
-      const afterNumbers = await artistPage.getNoColumnValues(10);
+        expect(
+          afterNumbers,
+          "❌ 복귀 후 데이터가 원래와 다릅니다 (멱등성 위반)",
+        ).toEqual(beforeNumbers);
+      } else {
+        const currentNumbers = await artistPage.getNoColumnValues(10);
+        const currentPage = await artistPage.getCurrentPageNumber();
+        const canGoNext = await artistPage.canGoToNextPage();
 
-      expect(
-        afterNumbers,
-        "❌ 복귀 후 데이터가 원래와 다릅니다 (멱등성 위반)",
-      ).toEqual(beforeNumbers);
+        expect(
+          currentPage,
+          "❌ 다음 페이지가 없다면 현재 페이지는 1페이지여야 합니다",
+        ).toBe(1);
+        expect(
+          canGoNext,
+          "❌ 단일 페이지 상태에서는 다음 페이지 이동이 가능하면 안 됩니다",
+        ).toBe(false);
+        expect(
+          currentNumbers,
+          "❌ 단일 페이지 상태에서도 현재 목록 데이터는 안정적으로 유지되어야 합니다",
+        ).toEqual(beforeNumbers);
+      }
     });
 
     test("ART-PAGIN-04: 페이지당 표시 개수 검증", async () => {

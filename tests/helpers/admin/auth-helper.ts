@@ -7,6 +7,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import type { Page } from "@playwright/test";
+const { getBrowserAuthState } = require("../../../scripts/auth-state");
 
 // ============================================================================
 // 상수
@@ -17,6 +18,7 @@ export const AUTH_DOMAIN = "stage-auth.makeuni2026.com";
 export const ROOT_DOMAIN = ".makeuni2026.com";
 
 const AUTH_FILE = path.join(__dirname, "..", "..", "..", "auth.json");
+const PROJECT_ROOT = path.join(__dirname, "..", "..", "..");
 const TOKEN_BUFFER_MS = 1 * 60 * 1000; // 1분
 
 // ============================================================================
@@ -61,39 +63,15 @@ let authSetupCache: AuthSetupCache = {
  * 토큰 만료 여부 확인
  */
 export function isTokenExpired(bufferMs: number = TOKEN_BUFFER_MS): boolean {
-  if (!fs.existsSync(AUTH_FILE)) return true;
-  try {
-    const auth: AuthData = JSON.parse(fs.readFileSync(AUTH_FILE, "utf-8"));
-    const rtCookie = auth.cookies?.find((c) => c.name === "refresh_token");
-    if (!rtCookie?.value) return true;
-    const payload = JSON.parse(
-      Buffer.from(rtCookie.value.split(".")[1], "base64").toString(),
-    );
-    const expiresAt = new Date(payload.exp * 1000).getTime();
-    return expiresAt - bufferMs <= Date.now();
-  } catch {
-    return true;
-  }
+  return !getBrowserAuthState({ cwd: PROJECT_ROOT, bufferMs }).valid;
 }
 
 /**
  * 토큰 남은 시간 (분 단위)
  */
 export function getTokenRemainingMinutes(): number {
-  if (!fs.existsSync(AUTH_FILE)) return 0;
-  try {
-    const auth: AuthData = JSON.parse(fs.readFileSync(AUTH_FILE, "utf-8"));
-    const rtCookie = auth.cookies?.find((c) => c.name === "refresh_token");
-    if (!rtCookie?.value) return 0;
-    const payload = JSON.parse(
-      Buffer.from(rtCookie.value.split(".")[1], "base64").toString(),
-    );
-    const expiresAt = new Date(payload.exp * 1000).getTime();
-    const remaining = expiresAt - Date.now();
-    return Math.max(0, Math.floor(remaining / (1000 * 60)));
-  } catch {
-    return 0;
-  }
+  const authState = getBrowserAuthState({ cwd: PROJECT_ROOT, bufferMs: 0 });
+  return Math.max(0, Math.floor((authState.remainingMs || 0) / (1000 * 60)));
 }
 
 /**

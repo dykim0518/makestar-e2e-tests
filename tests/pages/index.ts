@@ -21,15 +21,16 @@ export { MakestarPage, MAKESTAR_TEXT_PATTERNS } from "./makestar.page";
 export type { MenuItem, ProductInfo, WebVitalsResult } from "./makestar.page";
 
 // AlbumBuddy 페이지
+export { AlbumBuddyPage } from "./albumbuddy.page";
+export type { PerformanceResult } from "./albumbuddy.page";
+export type { PageInfo } from "./albumbuddy.config";
 export {
-  AlbumBuddyPage,
   ALBUMBUDDY_URLS,
   ALBUMBUDDY_PAGES,
   NAV_BUTTONS,
   HOME_SECTIONS,
   PERFORMANCE_THRESHOLD,
-} from "./albumbuddy.page";
-export type { PageInfo, PerformanceResult } from "./albumbuddy.page";
+} from "./albumbuddy.config";
 
 // Admin 베이스 페이지
 export {

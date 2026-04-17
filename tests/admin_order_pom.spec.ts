@@ -409,17 +409,16 @@ test.describe.serial("주문관리 목록 @feature:admin_makestar.order.list", (
         metrics.hasNoResultMessage || metrics.hasZeroSummary,
         "no-result 상태 표시(메시지/전체 0건)가 없습니다.",
       ).toBeTruthy();
-      return;
+    } else {
+      expect(
+        metrics.summaryCount,
+        "결과 요약 카운트를 찾지 못했습니다.",
+      ).not.toBeNull();
+      if (metrics.summaryCount !== null) {
+        expect(metrics.summaryCount).toBeGreaterThanOrEqual(metrics.rowCount);
+      }
+      expect(metrics.rowCount).toBeLessThanOrEqual(pageLimit);
     }
-
-    expect(
-      metrics.summaryCount,
-      "결과 요약 카운트를 찾지 못했습니다.",
-    ).not.toBeNull();
-    if (metrics.summaryCount !== null) {
-      expect(metrics.summaryCount).toBeGreaterThanOrEqual(metrics.rowCount);
-    }
-    expect(metrics.rowCount).toBeLessThanOrEqual(pageLimit);
   });
 
   test("ORD-PAGE-02: 페이징 이동 및 페이지당 표시 개수 검증", async () => {
@@ -432,35 +431,38 @@ test.describe.serial("주문관리 목록 @feature:admin_makestar.order.list", (
 
     if (firstMetrics.noResultState) {
       expect(firstMetrics.rowCount).toBe(0);
-      return;
-    }
-
-    expect(firstMetrics.rowCount).toBeLessThanOrEqual(pageLimit);
-
-    const canGoNext = await orderPage.canGoToNextPage();
-    if (!canGoNext) {
-      if (firstMetrics.summaryCount !== null) {
-        expect(firstMetrics.summaryCount).toBeLessThanOrEqual(pageLimit);
-      }
-      return;
-    }
-
-    const firstRowBefore = await orderPage.getFirstRowFingerprint();
-    const moved = await orderPage.goToNextPageSafely();
-    expect(moved, "다음 페이지 이동에 실패했습니다.").toBeTruthy();
-
-    const secondMetrics = await orderPage.getResultMetrics();
-    expect(secondMetrics.rowCount).toBeLessThanOrEqual(pageLimit);
-
-    if (firstRowBefore.length > 0 && secondMetrics.rowCount > 0) {
-      const firstRowAfter = await orderPage.getFirstRowFingerprint();
       expect(
-        firstRowAfter,
-        "다음 페이지 첫 번째 행이 비어 있습니다.",
+        firstMetrics.hasNoResultMessage || firstMetrics.hasZeroSummary,
+        "no-result 상태 표시(메시지/전체 0건)가 없습니다.",
       ).toBeTruthy();
-    }
+    } else {
+      expect(firstMetrics.rowCount).toBeLessThanOrEqual(pageLimit);
 
-    await orderPage.goToPreviousPageSafely();
+      const canGoNext = await orderPage.canGoToNextPage();
+      if (!canGoNext) {
+        if (firstMetrics.summaryCount !== null) {
+          expect(firstMetrics.summaryCount).toBeLessThanOrEqual(pageLimit);
+        }
+        console.log("  ✅ 단일 페이지 상태 확인 — 다음 페이지 이동 불필요");
+      } else {
+        const firstRowBefore = await orderPage.getFirstRowFingerprint();
+        const moved = await orderPage.goToNextPageSafely();
+        expect(moved, "다음 페이지 이동에 실패했습니다.").toBeTruthy();
+
+        const secondMetrics = await orderPage.getResultMetrics();
+        expect(secondMetrics.rowCount).toBeLessThanOrEqual(pageLimit);
+
+        if (firstRowBefore.length > 0 && secondMetrics.rowCount > 0) {
+          const firstRowAfter = await orderPage.getFirstRowFingerprint();
+          expect(
+            firstRowAfter,
+            "다음 페이지 첫 번째 행이 비어 있습니다.",
+          ).toBeTruthy();
+        }
+
+        await orderPage.goToPreviousPageSafely();
+      }
+    }
   });
 });
 
@@ -476,12 +478,59 @@ test.describe
   const TARGET_URL =
     "https://stage-new-admin.makeuni2026.com/order/list?openedTab=b2b";
 
+  async function waitForOrderListOutcome(page: import("@playwright/test").Page) {
+    const orderPage = new OrderListPage(page);
+    await page.waitForLoadState("domcontentloaded").catch(() => {});
+    await page
+      .waitForLoadState("networkidle", { timeout: 15000 })
+      .catch(() => {});
+    await orderPage.waitForTableOrNoResult(20000);
+  }
+
+  async function clickSearchButton(page: import("@playwright/test").Page) {
+    const orderPage = new OrderListPage(page);
+    await expect(orderPage.submitSearchButton).toBeVisible({
+      timeout: ELEMENT_TIMEOUT,
+    });
+    await expect(orderPage.submitSearchButton).toBeEnabled({
+      timeout: ELEMENT_TIMEOUT,
+    });
+    await orderPage.clickSearchAndWait();
+  }
+
+  async function selectDepositCheckbox(
+    page: import("@playwright/test").Page,
+  ): Promise<void> {
+    await expect(page.getByText("예치금", { exact: true }).first()).toBeVisible({
+      timeout: 15000,
+    });
+
+    const checked = await page.evaluate(() => {
+      const deposits = Array.from(document.querySelectorAll("*")).filter(
+        (n) => n.children.length === 0 && n.textContent?.trim() === "예치금",
+      );
+      for (const n of deposits) {
+        let node: Element | null = n.parentElement;
+        for (let i = 0; i < 4 && node; i++) {
+          const cb = node.querySelector(
+            'input[type="checkbox"]',
+          ) as HTMLInputElement | null;
+          if (cb) {
+            cb.click();
+            return cb.checked;
+          }
+          node = node.parentElement;
+        }
+      }
+      return null;
+    });
+
+    expect(checked, "예치금 체크박스를 선택할 수 있어야 합니다").toBe(true);
+  }
+
   test.beforeEach(async ({ page }) => {
     await page.goto(TARGET_URL);
-    await page
-      .waitForLoadState("networkidle", { timeout: 20000 })
-      .catch(() => {});
-    await page.waitForTimeout(1500);
+    await waitForOrderListOutcome(page);
   });
 
   test("QA102-PAGE-01: B2B 주문 목록 + 결제수단 필터 노출", async ({
@@ -499,20 +548,8 @@ test.describe
   });
 
   test("QA102-FLT-01: 결제수단 '예치금' 필터 적용 가능", async ({ page }) => {
-    await page.getByText("결제수단", { exact: false }).first().click();
-    await page.waitForTimeout(500);
-    await page.getByText("예치금", { exact: true }).first().click();
-    await page.waitForTimeout(300);
-    await page.keyboard.press("Escape");
-    await page.keyboard.press("Escape");
-    await page.waitForTimeout(300);
-    await page
-      .getByRole("button", { name: "조회하기", exact: true })
-      .click({ force: true });
-    await page
-      .waitForLoadState("networkidle", { timeout: 15000 })
-      .catch(() => {});
-    await page.waitForTimeout(1500);
+    await selectDepositCheckbox(page);
+    await clickSearchButton(page);
 
     const hasSummary = await page
       .getByText("상품 주문내역")
@@ -534,41 +571,8 @@ test.describe
   test("QA102-FLT-02: 예치금 필터 결과의 결제수단 정합성 (다른 결제수단 0건)", async ({
     page,
   }) => {
-    await expect(page.getByText("예치금", { exact: true }).first()).toBeVisible(
-      { timeout: 15000 },
-    );
-    await page.waitForTimeout(500);
-
-    // 텍스트 클릭으로는 체크박스가 토글되지 않아 input[checkbox] 직접 클릭
-    const checked = await page.evaluate(() => {
-      const deposits = Array.from(document.querySelectorAll("*")).filter(
-        (n) => n.children.length === 0 && n.textContent?.trim() === "예치금",
-      );
-      for (const n of deposits) {
-        let node: Element | null = n.parentElement;
-        for (let i = 0; i < 4 && node; i++) {
-          const cb = node.querySelector(
-            'input[type="checkbox"]',
-          ) as HTMLInputElement | null;
-          if (cb) {
-            cb.click();
-            return cb.checked;
-          }
-          node = node.parentElement;
-        }
-      }
-      return null;
-    });
-    expect(checked, "예치금 체크박스를 선택할 수 있어야 합니다").toBe(true);
-
-    await page.waitForTimeout(500);
-    await page
-      .getByRole("button", { name: "조회하기", exact: true })
-      .click({ force: true });
-    await page
-      .waitForLoadState("networkidle", { timeout: 15000 })
-      .catch(() => {});
-    await page.waitForTimeout(2000);
+    await selectDepositCheckbox(page);
+    await clickSearchButton(page);
 
     const counts = await page.evaluate(() => {
       const text = document.body.innerText;
@@ -597,7 +601,6 @@ test.describe
       page.getByText(/상품 주문내역/).first(),
       "주문 목록이 렌더링되어야 합니다",
     ).toBeVisible({ timeout: 15000 });
-    await page.waitForTimeout(2000);
 
     const depositValueNodes = page
       .locator("span, p, div")
@@ -608,8 +611,7 @@ test.describe
 
     const innerDeposit = depositValueNodes.nth(1);
     await innerDeposit.scrollIntoViewIfNeeded();
-    await innerDeposit.click({ force: true });
-    await page.waitForTimeout(2000);
+    await innerDeposit.click();
 
     await expect(
       page.getByText("주문상세정보", { exact: false }).first(),
@@ -633,62 +635,25 @@ test.describe
       };
     });
 
-    // 필터 영역 '선택' 제외하고 팝업 내 실제 값 사용
-    const popupPayMethod = paymentInfo.결제수단.find((v) => v !== "선택");
+    // 주문상세 팝업의 '결제수단 정보' 필드에 '예치금'이 노출되어야 한다 (QA-102 회귀 방지)
+    const payInfoValue = paymentInfo.결제수단정보.find(
+      (v) => v && v.length > 0 && v !== "-" && v !== "선택",
+    );
     expect(
-      popupPayMethod,
-      "주문상세 팝업에 '결제수단' 값이 존재해야 합니다 (QA-102 회귀 방지)",
+      payInfoValue,
+      "주문상세 팝업에 '결제수단 정보' 값이 존재해야 합니다 (QA-102 회귀 방지)",
     ).toBeDefined();
     expect(
-      popupPayMethod && popupPayMethod.length > 0 && popupPayMethod !== "-",
-      `결제수단 값이 비어있지 않아야 합니다. 실제: "${popupPayMethod}"`,
+      payInfoValue?.includes("예치금"),
+      `결제수단 정보가 '예치금'이어야 합니다. 실제: "${payInfoValue}"`,
     ).toBe(true);
-
-    if (paymentInfo.결제수단정보[0]) {
-      expect(
-        paymentInfo.결제수단정보[0].includes("예치금"),
-        `결제수단 정보가 '예치금'이어야 합니다. 실제: "${paymentInfo.결제수단정보[0]}"`,
-      ).toBe(true);
-    }
   });
 
   test("QA100-DATA-01: 예치금 필터 후 결제상태 '결제완료' 노출 + 정합성 검증", async ({
     page,
   }) => {
-    await expect(page.getByText("예치금", { exact: true }).first()).toBeVisible(
-      { timeout: 15000 },
-    );
-    await page.waitForTimeout(500);
-
-    const checked = await page.evaluate(() => {
-      const deposits = Array.from(document.querySelectorAll("*")).filter(
-        (n) => n.children.length === 0 && n.textContent?.trim() === "예치금",
-      );
-      for (const n of deposits) {
-        let node: Element | null = n.parentElement;
-        for (let i = 0; i < 4 && node; i++) {
-          const cb = node.querySelector(
-            'input[type="checkbox"]',
-          ) as HTMLInputElement | null;
-          if (cb) {
-            cb.click();
-            return cb.checked;
-          }
-          node = node.parentElement;
-        }
-      }
-      return null;
-    });
-    expect(checked).toBe(true);
-
-    await page.waitForTimeout(500);
-    await page
-      .getByRole("button", { name: "조회하기", exact: true })
-      .click({ force: true });
-    await page
-      .waitForLoadState("networkidle", { timeout: 15000 })
-      .catch(() => {});
-    await page.waitForTimeout(2000);
+    await selectDepositCheckbox(page);
+    await clickSearchButton(page);
 
     const counts = await page.evaluate(() => {
       const text = document.body.innerText;
@@ -839,51 +804,65 @@ test.describe
         baselineMetrics.hasNoResultMessage || baselineMetrics.hasZeroSummary,
         "기본 조회 no-result 표기가 없습니다.",
       ).toBeTruthy();
-      return;
-    }
-
-    const searchSeed = await purchasePage.buildSearchSeedFromCurrentRows(2);
-    await purchasePage.clickSearchAndWait();
-
-    const firstMetrics = await purchasePage.getResultMetrics();
-    const firstFingerprint = !firstMetrics.noResultState
-      ? await purchasePage.getFirstRowFingerprint()
-      : "";
-    if (!firstMetrics.noResultState) {
-      await purchasePage.assertRowsMatchSearchSeed(searchSeed, 5);
-    }
-
-    await purchasePage.resetFiltersAndWait();
-    await purchasePage.applySearchSeed(searchSeed);
-    await purchasePage.clickSearchAndWait();
-
-    const rerunMetrics = await purchasePage.getResultMetrics();
-    const rerunFingerprint = !rerunMetrics.noResultState
-      ? await purchasePage.getFirstRowFingerprint()
-      : "";
-    if (!rerunMetrics.noResultState) {
-      await purchasePage.assertRowsMatchSearchSeed(searchSeed, 5);
-    }
-
-    const firstIsZero = firstMetrics.noResultState;
-    const rerunIsZero = rerunMetrics.noResultState;
-    expect(firstIsZero, "동일 조건 재조회 시 결과 상태가 변경되었습니다.").toBe(
-      rerunIsZero,
-    );
-    expect(
-      firstMetrics.summaryCount,
-      "동일 조건 재조회 시 요약 카운트가 변경되었습니다.",
-    ).toBe(rerunMetrics.summaryCount);
-    if (
-      !firstIsZero &&
-      !rerunIsZero &&
-      firstFingerprint.length > 0 &&
-      rerunFingerprint.length > 0
-    ) {
+      await purchasePage.clickSearchAndWait();
+      const rerunNoResultMetrics = await purchasePage.getResultMetrics();
       expect(
-        rerunFingerprint,
-        "동일 조건 재조회 시 첫 행 식별자가 변경되었습니다.",
-      ).toBe(firstFingerprint);
+        rerunNoResultMetrics.noResultState,
+        "기본 조회가 no-result 상태라면 재조회 후에도 no-result 상태여야 합니다.",
+      ).toBeTruthy();
+      expect(
+        rerunNoResultMetrics.summaryCount,
+        "no-result 상태 재조회 시 요약 카운트가 변경되었습니다.",
+      ).toBe(baselineMetrics.summaryCount);
+      expect(
+        rerunNoResultMetrics.hasNoResultMessage ||
+          rerunNoResultMetrics.hasZeroSummary,
+        "재조회 후 no-result 표기가 유지되지 않습니다.",
+      ).toBeTruthy();
+    } else {
+      const searchSeed = await purchasePage.buildSearchSeedFromCurrentRows(2);
+      await purchasePage.clickSearchAndWait();
+
+      const firstMetrics = await purchasePage.getResultMetrics();
+      const firstFingerprint = !firstMetrics.noResultState
+        ? await purchasePage.getFirstRowFingerprint()
+        : "";
+      if (!firstMetrics.noResultState) {
+        await purchasePage.assertRowsMatchSearchSeed(searchSeed, 5);
+      }
+
+      await purchasePage.resetFiltersAndWait();
+      await purchasePage.applySearchSeed(searchSeed);
+      await purchasePage.clickSearchAndWait();
+
+      const rerunMetrics = await purchasePage.getResultMetrics();
+      const rerunFingerprint = !rerunMetrics.noResultState
+        ? await purchasePage.getFirstRowFingerprint()
+        : "";
+      if (!rerunMetrics.noResultState) {
+        await purchasePage.assertRowsMatchSearchSeed(searchSeed, 5);
+      }
+
+      const firstIsZero = firstMetrics.noResultState;
+      const rerunIsZero = rerunMetrics.noResultState;
+      expect(firstIsZero, "동일 조건 재조회 시 결과 상태가 변경되었습니다.").toBe(
+        rerunIsZero,
+      );
+      expect(
+        firstMetrics.summaryCount,
+        "동일 조건 재조회 시 요약 카운트가 변경되었습니다.",
+      ).toBe(rerunMetrics.summaryCount);
+      if (
+        !firstIsZero &&
+        !rerunIsZero &&
+        firstFingerprint.length > 0 &&
+        rerunFingerprint.length > 0
+      ) {
+        expect(
+          rerunFingerprint,
+          "동일 조건 재조회 시 첫 행 식별자가 변경되었습니다.",
+        ).toBe(firstFingerprint);
+      }
     }
   });
 
@@ -1157,13 +1136,12 @@ test.describe
         metrics.hasNoResultMessage || metrics.hasZeroSummary,
         "no-result 상태인데 메시지/요약(0건) 표기가 없습니다.",
       ).toBeTruthy();
-      return;
-    }
-
-    expect(metrics.rowCount, "기본 조회 결과가 없습니다.").toBeGreaterThan(0);
-    expect(metrics.rowCount).toBeLessThanOrEqual(pageLimit);
-    if (metrics.summaryCount !== null) {
-      expect(metrics.summaryCount).toBeGreaterThanOrEqual(metrics.rowCount);
+    } else {
+      expect(metrics.rowCount, "기본 조회 결과가 없습니다.").toBeGreaterThan(0);
+      expect(metrics.rowCount).toBeLessThanOrEqual(pageLimit);
+      if (metrics.summaryCount !== null) {
+        expect(metrics.summaryCount).toBeGreaterThanOrEqual(metrics.rowCount);
+      }
     }
   });
 
@@ -1201,45 +1179,44 @@ test.describe
       expect(
         firstMetrics.hasNoResultMessage || firstMetrics.hasZeroSummary,
       ).toBeTruthy();
-      return;
-    }
+    } else {
+      const canGoNext = await chartPage.canGoToNextPage();
+      if (!canGoNext) {
+        const pageLimit = await chartPage.getPerPageLimit(10);
+        if (firstMetrics.summaryCount !== null) {
+          expect(firstMetrics.summaryCount).toBeLessThanOrEqual(pageLimit);
+        }
+        console.log("  ✅ 단일 페이지 상태 확인 — 다음 페이지 이동 불필요");
+      } else {
+        const beforePage = await chartPage.getCurrentPageNumber();
+        const beforeUrl = chartPage.currentUrl;
+        const beforeFirstRow = await chartPage.getFirstRowFingerprint();
 
-    const canGoNext = await chartPage.canGoToNextPage();
-    if (!canGoNext) {
-      const pageLimit = await chartPage.getPerPageLimit(10);
-      if (firstMetrics.summaryCount !== null) {
-        expect(firstMetrics.summaryCount).toBeLessThanOrEqual(pageLimit);
+        const moved = await chartPage.goToNextPageSafely();
+        expect(moved, "다음 페이지 이동에 실패했습니다.").toBeTruthy();
+
+        const secondMetrics = await chartPage.getResultMetrics();
+        const afterPage = await chartPage.getCurrentPageNumber();
+        const afterUrl = chartPage.currentUrl;
+        const afterFirstRow = !secondMetrics.noResultState
+          ? await chartPage.getFirstRowFingerprint()
+          : "";
+
+        const pageChanged = beforePage !== afterPage;
+        const urlChanged = beforeUrl !== afterUrl;
+        const rowChanged =
+          beforeFirstRow.length > 0 &&
+          afterFirstRow.length > 0 &&
+          beforeFirstRow !== afterFirstRow;
+
+        expect(
+          pageChanged || urlChanged || rowChanged,
+          `다음 페이지 이동 후 식별자 변화가 없습니다. page:${beforePage}->${afterPage}, url:${beforeUrl}->${afterUrl}`,
+        ).toBeTruthy();
+
+        const returned = await chartPage.goToPreviousPageSafely();
+        expect(returned, "이전 페이지 복귀에 실패했습니다.").toBeTruthy();
       }
-      return;
     }
-
-    const beforePage = await chartPage.getCurrentPageNumber();
-    const beforeUrl = chartPage.currentUrl;
-    const beforeFirstRow = await chartPage.getFirstRowFingerprint();
-
-    const moved = await chartPage.goToNextPageSafely();
-    expect(moved, "다음 페이지 이동에 실패했습니다.").toBeTruthy();
-
-    const secondMetrics = await chartPage.getResultMetrics();
-    const afterPage = await chartPage.getCurrentPageNumber();
-    const afterUrl = chartPage.currentUrl;
-    const afterFirstRow = !secondMetrics.noResultState
-      ? await chartPage.getFirstRowFingerprint()
-      : "";
-
-    const pageChanged = beforePage !== afterPage;
-    const urlChanged = beforeUrl !== afterUrl;
-    const rowChanged =
-      beforeFirstRow.length > 0 &&
-      afterFirstRow.length > 0 &&
-      beforeFirstRow !== afterFirstRow;
-
-    expect(
-      pageChanged || urlChanged || rowChanged,
-      `다음 페이지 이동 후 식별자 변화가 없습니다. page:${beforePage}->${afterPage}, url:${beforeUrl}->${afterUrl}`,
-    ).toBeTruthy();
-
-    const returned = await chartPage.goToPreviousPageSafely();
-    expect(returned, "이전 페이지 복귀에 실패했습니다.").toBeTruthy();
   });
 });

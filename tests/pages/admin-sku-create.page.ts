@@ -237,8 +237,8 @@ export class SkuCreatePage extends AdminBasePage {
         .catch(() => false);
 
       if (isModalVisible) {
-        await this.page.keyboard.press("Escape");
-        await this.wait(300);
+        await this.pressEscape();
+        await this.settleInteractiveUi({ timeout: this.timeouts.short });
         console.log(`ℹ️ 모달 닫힘: ${title}`);
         return;
       }
@@ -337,7 +337,7 @@ export class SkuCreatePage extends AdminBasePage {
       }
     }
 
-    await this.wait(300);
+    await this.settleInteractiveUi({ timeout: this.timeouts.short });
   }
 
   /**
@@ -360,31 +360,31 @@ export class SkuCreatePage extends AdminBasePage {
     const categoryBtn = this.page.getByRole("button", {
       name: "카테고리 관리",
     });
-    await categoryBtn.click();
-    await this.wait(1000);
+    await this.clickWithRecovery(categoryBtn, { timeout: this.timeouts.medium });
+    await this.settleInteractiveUi({ timeout: this.timeouts.short });
     console.log(`ℹ️ 카테고리 모달 열림`);
 
     // 2. 상위 카테고리 클릭 (확장)
     const parentOption = this.page.getByText(parentCategory, { exact: true });
     if (await parentOption.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await parentOption.click();
-      await this.wait(500);
+      await this.clickWithRecovery(parentOption, { timeout: this.timeouts.short });
+      await this.settleInteractiveUi({ timeout: this.timeouts.short });
       console.log(`ℹ️ 상위 카테고리 확장: ${parentCategory}`);
     } else {
       console.warn(`⚠️ 상위 카테고리를 찾을 수 없음: ${parentCategory}`);
-      await this.page.keyboard.press("Escape");
+      await this.pressEscape();
       return;
     }
 
     // 3. 하위 카테고리 클릭 (선택)
     const childOption = this.page.getByText(childCategory, { exact: true });
     if (await childOption.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await childOption.click();
-      await this.wait(500);
+      await this.clickWithRecovery(childOption, { timeout: this.timeouts.short });
+      await this.settleInteractiveUi({ timeout: this.timeouts.short });
       console.log(`ℹ️ 하위 카테고리 선택: ${childCategory}`);
     } else {
       console.warn(`⚠️ 하위 카테고리를 찾을 수 없음: ${childCategory}`);
-      await this.page.keyboard.press("Escape");
+      await this.pressEscape();
       return;
     }
 
@@ -393,14 +393,14 @@ export class SkuCreatePage extends AdminBasePage {
     const isDisabled = await selectBtn.getAttribute("disabled");
 
     if (isDisabled === null) {
-      await selectBtn.click();
-      await this.wait(500);
+      await this.clickWithRecovery(selectBtn, { timeout: this.timeouts.short });
+      await this.settleInteractiveUi({ timeout: this.timeouts.short });
       console.log(
         `ℹ️ 카테고리 선택 완료: ${parentCategory} > ${childCategory}`,
       );
     } else {
       console.warn(`⚠️ 선택하기 버튼이 비활성화 상태`);
-      await this.page.keyboard.press("Escape");
+      await this.pressEscape();
     }
   }
 
@@ -413,14 +413,14 @@ export class SkuCreatePage extends AdminBasePage {
     const categoryBtn = this.page.getByRole("button", {
       name: "카테고리 관리",
     });
-    await categoryBtn.click();
-    await this.wait(1000);
+    await this.clickWithRecovery(categoryBtn, { timeout: this.timeouts.medium });
+    await this.settleInteractiveUi({ timeout: this.timeouts.short });
 
     // 2. 카테고리 클릭
     const option = this.page.getByText(category, { exact: true });
     if (await option.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await option.click();
-      await this.wait(500);
+      await this.clickWithRecovery(option, { timeout: this.timeouts.short });
+      await this.settleInteractiveUi({ timeout: this.timeouts.short });
     }
 
     // 3. 선택하기 버튼 클릭
@@ -428,12 +428,12 @@ export class SkuCreatePage extends AdminBasePage {
     const isDisabled = await selectBtn.getAttribute("disabled");
 
     if (isDisabled === null) {
-      await selectBtn.click();
-      await this.wait(500);
+      await this.clickWithRecovery(selectBtn, { timeout: this.timeouts.short });
+      await this.settleInteractiveUi({ timeout: this.timeouts.short });
       console.log(`ℹ️ 카테고리 선택 완료: ${category}`);
     } else {
       console.warn(`⚠️ 선택하기 버튼이 비활성화 상태`);
-      await this.page.keyboard.press("Escape");
+      await this.pressEscape();
     }
   }
 
@@ -454,8 +454,8 @@ export class SkuCreatePage extends AdminBasePage {
     await this.waitForOverlayToDisappear();
 
     // combobox 클릭하여 드롭다운 열기
-    await multiselect.click();
-    await this.wait(500);
+    await this.clickWithRecovery(multiselect, { timeout: this.timeouts.medium });
+    await this.settleInteractiveUi({ timeout: this.timeouts.short });
 
     // combobox 내 검색 입력 찾기 (다중 전략)
     let searchInput = multiselect.getByRole("textbox");
@@ -483,7 +483,10 @@ export class SkuCreatePage extends AdminBasePage {
 
     if (isInputVisible) {
       await searchInput.fill(searchTerm);
-      await this.wait(1500); // API 응답 대기
+      await this.waitForContentStable("body", {
+        timeout: this.timeouts.medium,
+        stableTime: 250,
+      }).catch(() => {});
     } else {
       console.log(
         `⚠️ ${fieldName} 검색 입력 필드를 찾을 수 없음 - 전체 옵션에서 선택 시도`,
@@ -502,7 +505,10 @@ export class SkuCreatePage extends AdminBasePage {
           `⚠️ ${fieldName} "${searchTerm}" 검색 결과 없음 - 전체 목록에서 선택 시도`,
         );
         await searchInput.clear();
-        await this.wait(1500);
+        await this.waitForContentStable("body", {
+          timeout: this.timeouts.medium,
+          stableTime: 250,
+        }).catch(() => {});
       }
 
       // 드롭다운 옵션 대기 (listbox 또는 기존 multiselect 구조)
@@ -527,7 +533,9 @@ export class SkuCreatePage extends AdminBasePage {
           await matchingOption.isVisible({ timeout: 2000 }).catch(() => false)
         ) {
           const optionText = await matchingOption.textContent();
-          await matchingOption.click();
+          await this.clickWithRecovery(matchingOption, {
+            timeout: this.timeouts.short,
+          });
           console.log(
             `ℹ️ ${fieldName} 선택${attempt > 0 ? "(폴백)" : ""}: ${optionText?.trim()}`,
           );
@@ -541,7 +549,9 @@ export class SkuCreatePage extends AdminBasePage {
             await firstOption.isVisible({ timeout: 1000 }).catch(() => false)
           ) {
             const optionText = await firstOption.textContent();
-            await firstOption.click();
+            await this.clickWithRecovery(firstOption, {
+              timeout: this.timeouts.short,
+            });
             console.log(`ℹ️ ${fieldName} 선택(첫번째): ${optionText?.trim()}`);
             selectedOption = true;
           }
@@ -575,7 +585,9 @@ export class SkuCreatePage extends AdminBasePage {
             !optionText.includes("undefined") &&
             optionText.trim().length > 0
           ) {
-            await matchingOption.click();
+            await this.clickWithRecovery(matchingOption, {
+              timeout: this.timeouts.short,
+            });
             console.log(
               `ℹ️ ${fieldName} 선택${attempt > 0 ? "(폴백)" : ""}: ${optionText?.trim()}`,
             );
@@ -585,7 +597,7 @@ export class SkuCreatePage extends AdminBasePage {
       }
     }
 
-    await this.wait(300);
+    await this.settleInteractiveUi({ timeout: this.timeouts.short });
     await this.closeModalIfVisible();
 
     if (!selectedOption) {
@@ -656,8 +668,10 @@ export class SkuCreatePage extends AdminBasePage {
       .first();
 
     if (await dateContainer.isVisible({ timeout: 2000 }).catch(() => false)) {
-      await dateContainer.click();
-      await this.wait(300);
+      await this.clickWithRecovery(dateContainer, {
+        timeout: this.timeouts.medium,
+      });
+      await this.settleInteractiveUi({ timeout: this.timeouts.short });
 
       // 날짜 입력 (보통 캘린더 팝업)
       // 직접 입력 시도
@@ -791,11 +805,16 @@ export class SkuCreatePage extends AdminBasePage {
 
     // 버튼이 viewport에 보이도록 스크롤
     await this.createButton.scrollIntoViewIfNeeded();
-    await this.wait(300);
+    await this.settleInteractiveUi({ timeout: this.timeouts.short });
 
     // 클릭 (네비게이션 발생 여부 확인)
-    await this.createButton.click();
-    await this.wait(1000);
+    await this.clickWithRecovery(this.createButton, {
+      timeout: this.timeouts.medium,
+    });
+    await this.waitForContentStable("body", {
+      timeout: this.timeouts.short,
+      stableTime: 200,
+    }).catch(() => {});
 
     console.log("ℹ️ 버튼 클릭 완료");
   }

@@ -208,6 +208,108 @@ export class EventCreatePage extends AdminBasePage {
     }
   }
 
+  private async waitForDropdownOptionsToSettle(): Promise<void> {
+    await this.page
+      .locator(".multiselect__option:visible")
+      .filter({ hasText: /조회 중/ })
+      .waitFor({ state: "hidden", timeout: 5000 })
+      .catch(() => {});
+
+    await this.waitForContentStable("body", {
+      timeout: this.timeouts.medium,
+      stableTime: 200,
+    }).catch(() => {});
+  }
+
+  private async selectCategoryField(
+    fieldLabel: "상품 카테고리" | "B2B 카테고리",
+    categoryName: string,
+  ): Promise<boolean> {
+    await this.waitForOverlayToDisappear();
+    await this.pressEscape();
+
+    const label = this.page.getByText(fieldLabel, { exact: true });
+    const fieldContainer = label.locator("..");
+    const placeholder = fieldContainer
+      .getByText("카테고리를 선택해주세요", { exact: true })
+      .first();
+    const multiselect = fieldContainer.locator(".multiselect").first();
+
+    const trigger = (await multiselect.isVisible().catch(() => false))
+      ? multiselect
+      : placeholder.locator("xpath=..");
+
+    if (!(await trigger.isVisible({ timeout: 3000 }).catch(() => false))) {
+      return false;
+    }
+
+    const beforeText = ((await fieldContainer.textContent()) ?? "").trim();
+
+    await trigger.scrollIntoViewIfNeeded({ timeout: 5000 });
+    await this.clickWithRecovery(trigger, {
+      timeout: this.timeouts.medium,
+    });
+    await this.waitForDropdownOptionsToSettle();
+
+    const excludePatterns = /검색결과가 없습니다|List is empty|조회 중/i;
+    const options = this.page
+      .locator(
+        '.multiselect__option:visible, [role="option"]:visible, li[role="option"]:visible, [class*="option"]:visible',
+      )
+      .filter({ hasNotText: excludePatterns });
+
+    const matchingOption = options.filter({ hasText: categoryName }).first();
+    const fallbackOption = options.first();
+
+    if (await matchingOption.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await this.clickWithRecovery(matchingOption, {
+        timeout: this.timeouts.short,
+      });
+    } else if (
+      await fallbackOption.isVisible({ timeout: 1000 }).catch(() => false)
+    ) {
+      const fallbackText = await fallbackOption.textContent();
+      await this.clickWithRecovery(fallbackOption, {
+        timeout: this.timeouts.short,
+      });
+      console.log(`ℹ️ ${fieldLabel} 대체 선택: ${fallbackText?.trim()}`);
+    } else {
+      await trigger.focus().catch(() => {});
+      await this.page.keyboard.press("ArrowDown").catch(() => {});
+      await this.page.keyboard.press("Enter").catch(() => {});
+    }
+
+    const confirmButton = this.page
+      .getByRole("button", { name: /선택|적용|확인/ })
+      .first();
+    if (await confirmButton.isVisible({ timeout: 1000 }).catch(() => false)) {
+      await this.clickWithRecovery(confirmButton, {
+        timeout: this.timeouts.short,
+      });
+    }
+
+    await this.settleInteractiveUi({ timeout: this.timeouts.short });
+
+    const afterText = ((await fieldContainer.textContent()) ?? "").trim();
+    if (afterText.includes("카테고리를 선택해주세요") || afterText === beforeText) {
+      const optionPreview = await options
+        .evaluateAll((elements) =>
+          elements
+            .map((element) => (element.textContent ?? "").trim())
+            .filter(Boolean)
+            .slice(0, 10),
+        )
+        .catch(() => []);
+      console.log(
+        `ℹ️ ${fieldLabel} 선택 후 값 미반영. visible options=${JSON.stringify(optionPreview)}`,
+      );
+    }
+
+    return (
+      !afterText.includes("카테고리를 선택해주세요") && afterText !== beforeText
+    );
+  }
+
   // --------------------------------------------------------------------------
   // 대분류 정보 선택
   // --------------------------------------------------------------------------
@@ -220,14 +322,10 @@ export class EventCreatePage extends AdminBasePage {
     await this.waitForOverlayToDisappear();
 
     // multiselect 클릭하여 드롭다운 열기
-    await this.majorCategoryMultiselect.click();
-
-    // 로딩 완료 대기 - "조회 중" 텍스트가 사라질 때까지
-    await this.page
-      .locator(".multiselect__option:visible")
-      .filter({ hasText: /조회 중/ })
-      .waitFor({ state: "hidden", timeout: 5000 })
-      .catch(() => {});
+    await this.clickWithRecovery(this.majorCategoryMultiselect, {
+      timeout: this.timeouts.medium,
+    });
+    await this.waitForDropdownOptionsToSettle();
 
     let targetOption;
 
@@ -253,9 +351,11 @@ export class EventCreatePage extends AdminBasePage {
     // 옵션 가시성 확인 후 텍스트 추출 (textContent 호출 전 가시성 체크 - 타임아웃 방지)
     if (await targetOption.isVisible({ timeout: 5000 }).catch(() => false)) {
       const optionText = (await targetOption.textContent()) || "";
-      await targetOption.click({ force: true });
+      await this.clickWithRecovery(targetOption, {
+        timeout: this.timeouts.short,
+      });
       console.log(`ℹ️ 대분류 선택: ${optionText.trim()}`);
-      await this.wait(500);
+      await this.settleInteractiveUi({ timeout: this.timeouts.short });
       return optionText.trim();
     }
 
@@ -268,7 +368,7 @@ export class EventCreatePage extends AdminBasePage {
       if (await searchInput.isVisible({ timeout: 2000 }).catch(() => false)) {
         const searchTerm = categoryName.replace(/[[\]]/g, "").trim();
         await searchInput.fill(searchTerm);
-        await this.wait(1500);
+        await this.waitForDropdownOptionsToSettle();
 
         const searchedOption = this.page
           .locator(".multiselect__option:visible")
@@ -280,9 +380,11 @@ export class EventCreatePage extends AdminBasePage {
           await searchedOption.isVisible({ timeout: 3000 }).catch(() => false)
         ) {
           const optionText = (await searchedOption.textContent()) || "";
-          await searchedOption.click({ force: true });
+          await this.clickWithRecovery(searchedOption, {
+            timeout: this.timeouts.short,
+          });
           console.log(`ℹ️ 대분류 검색 후 선택: ${optionText.trim()}`);
-          await this.wait(500);
+          await this.settleInteractiveUi({ timeout: this.timeouts.short });
           return optionText.trim();
         }
       }
@@ -297,7 +399,7 @@ export class EventCreatePage extends AdminBasePage {
     const searchInput = this.majorCategoryMultiselect.locator("input");
     if (await searchInput.isVisible({ timeout: 1000 }).catch(() => false)) {
       await searchInput.clear();
-      await this.wait(1000);
+      await this.waitForDropdownOptionsToSettle();
     }
 
     // 우선: [자동화테스트] 접두사가 아닌 실제 대분류 선택
@@ -311,9 +413,11 @@ export class EventCreatePage extends AdminBasePage {
       await realCategoryOption.isVisible({ timeout: 3000 }).catch(() => false)
     ) {
       const optionText = (await realCategoryOption.textContent()) || "";
-      await realCategoryOption.click({ force: true });
+      await this.clickWithRecovery(realCategoryOption, {
+        timeout: this.timeouts.short,
+      });
       console.log(`ℹ️ 대분류 폴백 선택 (실제 대분류): ${optionText.trim()}`);
-      await this.wait(500);
+      await this.settleInteractiveUi({ timeout: this.timeouts.short });
       return optionText.trim();
     }
 
@@ -325,9 +429,11 @@ export class EventCreatePage extends AdminBasePage {
 
     if (await fallbackOption.isVisible({ timeout: 3000 }).catch(() => false)) {
       const optionText = (await fallbackOption.textContent()) || "";
-      await fallbackOption.click({ force: true });
+      await this.clickWithRecovery(fallbackOption, {
+        timeout: this.timeouts.short,
+      });
       console.log(`ℹ️ 대분류 폴백 선택: ${optionText.trim()}`);
-      await this.wait(500);
+      await this.settleInteractiveUi({ timeout: this.timeouts.short });
       return optionText.trim();
     }
 
@@ -359,7 +465,10 @@ export class EventCreatePage extends AdminBasePage {
 
     // setInputFiles로 파일 업로드
     await this.fileInput.setInputFiles(absolutePath);
-    await this.wait(1000);
+    await this.settleInteractiveUi({
+      timeout: this.timeouts.medium,
+      stableTime: 250,
+    });
 
     console.log(`ℹ️ 이미지 업로드: ${absolutePath}`);
   }
@@ -373,75 +482,13 @@ export class EventCreatePage extends AdminBasePage {
    * @param categoryName 카테고리명 (예: '추천상품')
    */
   async selectProductCategory(categoryName: string): Promise<void> {
-    await this.waitForOverlayToDisappear();
-
-    // 이전 드롭다운이 열려있으면 닫기
-    await this.page.keyboard.press("Escape");
-
-    // "상품 카테고리" 레이블 옆 드롭다운 찾기 (Vue Multiselect 또는 커스텀 셀렉트)
-    const catLabel = this.page.getByText("상품 카테고리", { exact: true });
-    const catContainer = catLabel.locator("..");
-
-    // 1) Vue Multiselect (.multiselect 클래스)
-    const multiselect = catContainer.locator(".multiselect").first();
-    if (await multiselect.isVisible().catch(() => false)) {
-      await multiselect.scrollIntoViewIfNeeded({ timeout: 5000 });
-      await multiselect.click({ force: true });
-
-      // 로딩 완료 대기
-      await this.page
-        .locator(".multiselect__option:visible")
-        .filter({ hasText: "조회 중" })
-        .waitFor({ state: "hidden", timeout: 5000 })
-        .catch(() => {});
-
-      // 옵션 선택
-      const targetOption = this.page
-        .locator(".multiselect__option:visible")
-        .filter({ hasText: categoryName })
-        .filter({ hasNotText: /검색결과가 없습니다|List is empty/i })
-        .first();
-
-      if (await targetOption.isVisible({ timeout: 3000 }).catch(() => false)) {
-        await targetOption.click({ force: true });
-        console.log(`ℹ️ 상품 카테고리 선택 (multiselect): ${categoryName}`);
-        return;
-      }
+    const selected = await this.selectCategoryField("상품 카테고리", categoryName);
+    if (selected) {
+      console.log(`ℹ️ 상품 카테고리 선택: ${categoryName}`);
+      return;
     }
 
-    // 2) 커스텀 셀렉트 드롭다운 ("카테고리를 선택해주세요" 텍스트)
-    const customDropdown = catContainer
-      .getByText("카테고리를 선택해주세요")
-      .first();
-    if (await customDropdown.isVisible().catch(() => false)) {
-      await customDropdown.scrollIntoViewIfNeeded({ timeout: 5000 });
-      await customDropdown.click({ force: true });
-
-      // 드롭다운 옵션 대기 및 선택
-      const option = this.page
-        .locator('[class*="option"]:visible, li:visible')
-        .filter({ hasText: categoryName })
-        .first();
-
-      if (await option.isVisible({ timeout: 3000 }).catch(() => false)) {
-        await option.click({ force: true });
-        console.log(`ℹ️ 상품 카테고리 선택 (custom): ${categoryName}`);
-        return;
-      }
-
-      // 첫 번째 유효 옵션 선택 시도
-      const firstOption = this.page
-        .locator('[class*="option"]:visible, li[class*="item"]:visible')
-        .first();
-      if (await firstOption.isVisible({ timeout: 2000 }).catch(() => false)) {
-        const optionText = await firstOption.textContent();
-        await firstOption.click({ force: true });
-        console.log(`ℹ️ 상품 카테고리 대체 선택: ${optionText?.trim()}`);
-        return;
-      }
-    }
-
-    console.warn("⚠️ 상품 카테고리 드롭다운을 찾을 수 없음");
+    console.warn("⚠️ 상품 카테고리 선택 실패");
   }
 
   /**
@@ -449,54 +496,298 @@ export class EventCreatePage extends AdminBasePage {
    * @param categoryName 카테고리명 (예: '앨범')
    */
   async selectB2BCategory(categoryName: string): Promise<void> {
+    const selected = await this.selectCategoryField("B2B 카테고리", categoryName);
+    if (selected) {
+      console.log(`ℹ️ B2B 카테고리 선택: ${categoryName}`);
+      return;
+    }
+
+    console.log("ℹ️ B2B 카테고리 선택 실패");
+  }
+
+  async selectDisplayOption(optionLabel: "B2C+B2B" | "B2C" | "B2B"): Promise<void> {
     await this.waitForOverlayToDisappear();
 
-    // 이전 드롭다운이 열려있으면 닫기
-    await this.page.keyboard.press("Escape");
+    const clicked = await this.page.evaluate((targetLabel) => {
+      const labels = Array.from(document.querySelectorAll("p, div, span")).filter(
+        (element) => element.textContent?.trim() === "전시 옵션",
+      );
 
-    // "B2B 카테고리" 레이블 옆 드롭다운 찾기
-    const catLabel = this.page.getByText("B2B 카테고리", { exact: true });
-    const catContainer = catLabel.locator("..");
+      for (const label of labels) {
+        let current: HTMLElement | null =
+          label instanceof HTMLElement ? label.parentElement : null;
 
-    // 1) Vue Multiselect (.multiselect 클래스)
-    const multiselect = catContainer.locator(".multiselect").first();
-    if (await multiselect.isVisible().catch(() => false)) {
-      await multiselect.scrollIntoViewIfNeeded({ timeout: 5000 });
-      await multiselect.click({ force: true });
+        for (let depth = 0; depth < 6 && current; depth++) {
+          if (
+            current.children.length >= 2 &&
+            current.children[0]?.textContent?.includes("전시 옵션")
+          ) {
+            const optionGroup = current.children[1];
+            const matches = Array.from(
+              optionGroup.querySelectorAll("div, button, span"),
+            ).filter((element) => element.textContent?.trim() === targetLabel);
+            const clickable = matches
+              .map((element) =>
+                element instanceof HTMLElement
+                  ? element.className.includes("cursor-pointer")
+                    ? element
+                    : element.parentElement
+                  : null,
+              )
+              .find(
+                (element): element is HTMLElement =>
+                  element instanceof HTMLElement,
+              );
 
-      const targetOption = this.page
-        .locator(".multiselect__option:visible")
-        .filter({ hasText: categoryName })
-        .first();
+            if (clickable) {
+              clickable.click();
+              return true;
+            }
+          }
 
-      if (await targetOption.isVisible({ timeout: 3000 }).catch(() => false)) {
-        await targetOption.click({ force: true });
-        console.log(`ℹ️ B2B 카테고리 선택 (multiselect): ${categoryName}`);
+          current = current.parentElement;
+        }
+      }
+
+      return false;
+    }, optionLabel);
+
+    if (!clicked) {
+      const matchPreview = await this.page.evaluate(() =>
+        Array.from(document.querySelectorAll("p, span, div"))
+          .map((element) => ({
+            text: element.textContent?.trim() ?? "",
+            html: (element as HTMLElement).outerHTML?.slice(0, 200) ?? "",
+          }))
+          .filter((entry) =>
+            ["전시 옵션", "B2C+B2B", "B2C", "B2B"].includes(entry.text),
+          )
+          .slice(0, 12),
+      );
+      console.log(`ℹ️ 전시 옵션 DOM matches=${JSON.stringify(matchPreview)}`);
+      console.warn(`⚠️ 전시 옵션을 찾을 수 없음: ${optionLabel}`);
+      return;
+    }
+
+    await this.settleInteractiveUi({ timeout: this.timeouts.short });
+    console.log(`ℹ️ 전시 옵션 선택: ${optionLabel}`);
+  }
+
+  async selectDisplayLocation(locationName?: string): Promise<void> {
+    await this.waitForOverlayToDisappear();
+    await this.pressEscape();
+
+    const fieldMeta = await this.page.evaluate((desiredName) => {
+      const labels = Array.from(document.querySelectorAll("p, div, span")).filter(
+        (element) => element.textContent?.trim() === "노출 카테고리",
+      );
+
+      for (const label of labels) {
+        let field: HTMLElement | null = null;
+        let current: HTMLElement | null =
+          label instanceof HTMLElement ? label.parentElement : null;
+
+        for (let depth = 0; depth < 6 && current; depth++) {
+          if (
+            current.children.length >= 2 &&
+            current.children[0]?.textContent?.includes("노출 카테고리")
+          ) {
+            const sibling = current.children[1];
+            if (sibling instanceof HTMLElement) {
+              field = sibling;
+              break;
+            }
+          }
+
+          current = current.parentElement;
+        }
+
+        if (!field) continue;
+
+        const fieldText = (field.textContent ?? "").trim();
+        const select = field.querySelector("select");
+        if (select instanceof HTMLSelectElement) {
+          const options = Array.from(select.options)
+            .map((option) => ({
+              label: option.text.trim(),
+              value: option.value,
+            }))
+            .filter((option) => option.label && option.value);
+
+          const target =
+            options.find((option) =>
+              desiredName ? option.label.includes(desiredName) : true,
+            ) ?? options[0];
+
+          if (target) {
+            select.value = target.value;
+            select.dispatchEvent(new Event("change", { bubbles: true }));
+            return {
+              mode: "select",
+              afterText: (field.textContent ?? "").trim(),
+              chosenLabel: target.label,
+              fieldHtml: field.outerHTML.slice(0, 500),
+            };
+          }
+        }
+
+        const clickable = field.querySelector('[class*="cursor-pointer"]');
+        if (clickable instanceof HTMLElement) {
+          clickable.click();
+        } else {
+          field.click();
+        }
+        return {
+          mode: "click",
+          beforeText: fieldText,
+          fieldHtml: field.outerHTML.slice(0, 500),
+        };
+      }
+
+      return { mode: "missing" };
+    }, locationName ?? null);
+
+    if (fieldMeta.mode === "missing") {
+      const matchPreview = await this.page.evaluate(() =>
+        Array.from(document.querySelectorAll("p, span, div"))
+          .map((element) => ({
+            text: element.textContent?.trim() ?? "",
+            html: (element as HTMLElement).outerHTML?.slice(0, 200) ?? "",
+          }))
+          .filter((entry) =>
+            ["노출 카테고리", "노출위치"].includes(entry.text),
+          )
+          .slice(0, 12),
+      );
+      console.log(`ℹ️ 노출위치 DOM matches=${JSON.stringify(matchPreview)}`);
+      console.warn("⚠️ 노출위치 트리거를 찾을 수 없음");
+      return;
+    }
+
+    if (fieldMeta.mode === "select") {
+      await this.settleInteractiveUi({ timeout: this.timeouts.short });
+      console.log(`ℹ️ 노출위치 select 선택: ${fieldMeta.chosenLabel}`);
+      if (
+        fieldMeta.afterText &&
+        fieldMeta.afterText !== fieldMeta.chosenLabel &&
+        !fieldMeta.afterText.includes("노출위치")
+      ) {
+        console.log(`ℹ️ 노출위치 반영 완료: ${fieldMeta.afterText}`);
         return;
       }
     }
 
-    // 2) 커스텀 셀렉트 드롭다운
-    const customDropdown = catContainer
-      .getByText("카테고리를 선택해주세요")
+    const shippingOverlay = this.page.locator(".modal-overlay").first();
+    const shippingModalTitle = this.page
+      .locator(".modal-overlay")
+      .getByText("배송비 확인", { exact: true })
       .first();
-    if (await customDropdown.isVisible().catch(() => false)) {
-      await customDropdown.scrollIntoViewIfNeeded({ timeout: 5000 });
-      await customDropdown.click({ force: true });
-
-      const option = this.page
-        .locator('[class*="option"]:visible, li:visible')
-        .filter({ hasText: categoryName })
-        .first();
-
-      if (await option.isVisible({ timeout: 3000 }).catch(() => false)) {
-        await option.click({ force: true });
-        console.log(`ℹ️ B2B 카테고리 선택 (custom): ${categoryName}`);
-        return;
-      }
+    if (
+      (await shippingOverlay.isVisible({ timeout: 1500 }).catch(() => false)) &&
+      (await shippingModalTitle.isVisible({ timeout: 1500 }).catch(() => false))
+    ) {
+      const confirmButton = this.page.getByRole("button", {
+        name: "확인",
+        exact: true,
+      });
+      await this.clickWithRecovery(confirmButton.first(), {
+        timeout: this.timeouts.medium,
+      });
+      await shippingModalTitle
+        .waitFor({ state: "hidden", timeout: 5000 })
+        .catch(() => {});
+      await this.settleInteractiveUi({ timeout: this.timeouts.short });
+      console.log("ℹ️ 노출위치 배송비 확인 완료");
+      return;
     }
 
-    console.log("ℹ️ B2B 카테고리 드롭다운을 찾을 수 없음 — 스킵");
+    await this.waitForDropdownOptionsToSettle();
+    await this.page
+      .screenshot({
+        path: "/tmp/admin-event-display-location-open.png",
+        fullPage: true,
+      })
+      .catch(() => {});
+
+    const excludePatterns = /검색결과가 없습니다|List is empty|조회 중|노출위치/i;
+    const options = this.page
+      .locator(
+        '.multiselect__option:visible, [role="option"]:visible, li[role="option"]:visible',
+      )
+      .filter({ hasNotText: excludePatterns });
+
+    const targetOption = locationName
+      ? options.filter({ hasText: locationName }).first()
+      : options.first();
+
+    if (await targetOption.isVisible({ timeout: 2000 }).catch(() => false)) {
+      const optionText = await targetOption.textContent();
+      await this.clickWithRecovery(targetOption, {
+        timeout: this.timeouts.short,
+      });
+      console.log(`ℹ️ 노출위치 선택: ${optionText?.trim()}`);
+    } else {
+      await this.page.keyboard.press("ArrowDown").catch(() => {});
+      await this.page.keyboard.press("Enter").catch(() => {});
+    }
+
+    const confirmButton = this.page
+      .getByRole("button", { name: /선택|적용|확인/ })
+      .first();
+    if (await confirmButton.isVisible({ timeout: 1000 }).catch(() => false)) {
+      await this.clickWithRecovery(confirmButton, {
+        timeout: this.timeouts.short,
+      });
+    }
+
+    await this.settleInteractiveUi({ timeout: this.timeouts.short });
+    const afterText = await this.page.evaluate(() => {
+      const labels = Array.from(document.querySelectorAll("p")).filter(
+        (element) => element.textContent?.trim() === "노출 카테고리",
+      );
+      for (const label of labels) {
+        const row = label.parentElement;
+        if (!row || row.children.length < 2) continue;
+        return (row.children[1].textContent ?? "").trim();
+      }
+      return "";
+    });
+    const beforeText =
+      fieldMeta.mode === "click" ? (fieldMeta.beforeText ?? "").trim() : "";
+    if (afterText === beforeText || afterText.includes("노출위치")) {
+      const optionPreview = await options
+        .evaluateAll((elements) =>
+          elements
+            .map((element) => (element.textContent ?? "").trim())
+            .filter(Boolean)
+            .slice(0, 10),
+        )
+        .catch(() => []);
+      const buttonPreview = await this.page
+        .locator("button:visible")
+        .evaluateAll((elements) =>
+          elements
+            .map((element) => (element.textContent ?? "").trim())
+            .filter(Boolean)
+            .slice(0, 10),
+        )
+        .catch(() => []);
+      const dialogText = await this.page
+        .locator('[role="dialog"]:visible, [class*="modal"]:visible, [class*="popup"]:visible')
+        .first()
+        .textContent()
+        .catch(() => "");
+      console.log(
+        `ℹ️ 노출위치 선택 후 값 미반영. visible options=${JSON.stringify(optionPreview)}`,
+      );
+      console.log(`ℹ️ 노출위치 클릭 후 visible buttons=${JSON.stringify(buttonPreview)}`);
+      console.log(`ℹ️ 노출위치 클릭 후 visible dialog=${dialogText?.trim().slice(0, 300)}`);
+      console.log(`ℹ️ 노출위치 field=${fieldMeta.fieldHtml ?? ""}`);
+      console.warn("⚠️ 노출위치 선택 실패");
+      return;
+    }
+
+    console.log(`ℹ️ 노출위치 반영 완료: ${afterText}`);
   }
 
   // --------------------------------------------------------------------------
@@ -561,8 +852,11 @@ export class EventCreatePage extends AdminBasePage {
     await input.scrollIntoViewIfNeeded();
 
     // readonly input 클릭으로 달력 열기
-    await input.click({ force: true });
-    await this.wait(800);
+    await this.clickWithRecovery(input, { timeout: this.timeouts.medium });
+    await this.waitForContentStable("body", {
+      timeout: this.timeouts.short,
+      stableTime: 250,
+    }).catch(() => {});
 
     // 달력 열림 확인 — img[alt="left-arrow"]로 감지 (timepicker 제외)
     let calendarVisible = await this.page
@@ -573,8 +867,11 @@ export class EventCreatePage extends AdminBasePage {
     // 안 열리면 wrapper div 클릭 시도
     if (!calendarVisible) {
       const wrapper = input.locator("..");
-      await wrapper.click({ force: true });
-      await this.wait(800);
+      await this.clickWithRecovery(wrapper, { timeout: this.timeouts.medium });
+      await this.waitForContentStable("body", {
+        timeout: this.timeouts.short,
+        stableTime: 250,
+      }).catch(() => {});
       calendarVisible = await this.page
         .locator('img[alt="left-arrow"]')
         .isVisible({ timeout: 3000 })
@@ -587,7 +884,10 @@ export class EventCreatePage extends AdminBasePage {
         el.click();
         el.focus();
       });
-      await this.wait(800);
+      await this.waitForContentStable("body", {
+        timeout: this.timeouts.short,
+        stableTime: 250,
+      }).catch(() => {});
       calendarVisible = await this.page
         .locator('img[alt="left-arrow"]')
         .isVisible({ timeout: 3000 })
@@ -644,7 +944,7 @@ export class EventCreatePage extends AdminBasePage {
       }, todayDate);
 
       if (clicked) {
-        await this.wait(500);
+        await this.settleInteractiveUi({ timeout: this.timeouts.short });
         console.log(`ℹ️ 판매기간 시작일: ${todayDate}일 선택 완료 (달력)`);
       } else {
         console.warn(`⚠️ 달력 내 ${todayDate}일 셀 미발견`);
@@ -669,8 +969,9 @@ export class EventCreatePage extends AdminBasePage {
 
     await this.addOptionButton.scrollIntoViewIfNeeded();
 
-    // force 클릭 사용
-    await this.addOptionButton.click({ force: true });
+    await this.clickWithRecovery(this.addOptionButton, {
+      timeout: this.timeouts.medium,
+    });
     await this.page.waitForLoadState("domcontentloaded");
     console.log("ℹ️ 옵션(리워드) 추가됨");
   }
@@ -686,8 +987,10 @@ export class EventCreatePage extends AdminBasePage {
 
     // 옵션 영역의 한국어 탭 클릭 (보통 첫 번째 또는 두 번째)
     if (tabCount > 0) {
-      await optionKoTabs.nth(0).click({ force: true });
-      await this.wait(300);
+      await this.clickWithRecovery(optionKoTabs.nth(0), {
+        timeout: this.timeouts.medium,
+      });
+      await this.settleInteractiveUi({ timeout: this.timeouts.short });
     }
 
     // 옵션명 입력 필드 찾기 (여러 개 있을 수 있음)
@@ -697,9 +1000,9 @@ export class EventCreatePage extends AdminBasePage {
     if (inputCount > 0) {
       const optionInput = optionInputs.first();
       await optionInput.scrollIntoViewIfNeeded();
-      await this.wait(300);
-      await optionInput.click({ force: true });
-      await this.wait(200);
+      await this.clickWithRecovery(optionInput, {
+        timeout: this.timeouts.medium,
+      });
       await optionInput.fill(optionName);
       console.log(`ℹ️ 옵션명(한국어) 입력: ${optionName}`);
     } else {
@@ -717,8 +1020,10 @@ export class EventCreatePage extends AdminBasePage {
     const tabCount = await optionEnTabs.count();
 
     if (tabCount > 0) {
-      await optionEnTabs.nth(0).click({ force: true });
-      await this.wait(300);
+      await this.clickWithRecovery(optionEnTabs.nth(0), {
+        timeout: this.timeouts.medium,
+      });
+      await this.settleInteractiveUi({ timeout: this.timeouts.short });
     }
 
     // 영어 탭에서 옵션명 입력 필드 찾기
@@ -728,9 +1033,9 @@ export class EventCreatePage extends AdminBasePage {
     if (inputCount > 0) {
       const optionInput = optionInputs.first();
       await optionInput.scrollIntoViewIfNeeded();
-      await this.wait(300);
-      await optionInput.click({ force: true });
-      await this.wait(200);
+      await this.clickWithRecovery(optionInput, {
+        timeout: this.timeouts.medium,
+      });
       await optionInput.fill(optionName);
       console.log(`ℹ️ 옵션명(영어) 입력: ${optionName}`);
     } else {
@@ -752,7 +1057,7 @@ export class EventCreatePage extends AdminBasePage {
     // 옵션 테이블 영역 스크롤
     const optionSection = this.page.locator("text=옵션(리워드)").first();
     await optionSection.scrollIntoViewIfNeeded();
-    await this.wait(500);
+    await this.settleInteractiveUi({ timeout: this.timeouts.short });
 
     // 가격 셀 찾기
     let priceCell = this.page.getByText("₩0").first();
@@ -768,8 +1073,7 @@ export class EventCreatePage extends AdminBasePage {
     }
 
     if (hasPriceCell) {
-      await priceCell.click();
-      await this.wait(500);
+      await this.clickWithRecovery(priceCell, { timeout: this.timeouts.medium });
 
       // 가격 설정 팝업 대기
       const pricePopup = this.page.getByText("가격설정");
@@ -785,7 +1089,7 @@ export class EventCreatePage extends AdminBasePage {
         if (inputCount >= 1) {
           await priceInputs.nth(0).fill(String(originalPrice));
           console.log(`ℹ️ 할인전 가격 입력: ${originalPrice}`);
-          await this.wait(300);
+          await this.settleInteractiveUi({ timeout: this.timeouts.short });
         }
 
         // 할인율 입력 - 여러 패턴 시도
@@ -820,7 +1124,7 @@ export class EventCreatePage extends AdminBasePage {
           await priceInputs.nth(1).fill(String(discountRate));
           console.log(`ℹ️ 할인률 입력 (두 번째 필드): ${discountRate}%`);
           discountFilled = true;
-          await this.wait(300);
+          await this.settleInteractiveUi({ timeout: this.timeouts.short });
         }
 
         // 최종 할인가 계산해서 입력 (세 번째 필드가 있으면)
@@ -830,17 +1134,21 @@ export class EventCreatePage extends AdminBasePage {
           );
           await priceInputs.nth(2).fill(String(finalPrice));
           console.log(`ℹ️ 최종 할인가 입력: ${finalPrice}`);
-          await this.wait(300);
+          await this.settleInteractiveUi({ timeout: this.timeouts.short });
         }
 
         // 적용하기 버튼 클릭
         const applyButton = this.page.getByRole("button", { name: "적용하기" });
         if (await applyButton.isVisible({ timeout: 2000 }).catch(() => false)) {
-          await applyButton.click();
+          await this.clickWithRecovery(applyButton, {
+            timeout: this.timeouts.medium,
+          });
           console.log(
             `ℹ️ 가격 설정 완료: 할인전 ${originalPrice}원, 할인률 ${discountRate}%`,
           );
-          await this.wait(500);
+          await pricePopup.waitFor({ state: "hidden", timeout: 3000 }).catch(
+            () => {},
+          );
         }
       } else {
         console.warn("⚠️ 가격 설정 팝업이 열리지 않음");
@@ -851,7 +1159,7 @@ export class EventCreatePage extends AdminBasePage {
       );
     }
 
-    await this.wait(300);
+    await this.settleInteractiveUi({ timeout: this.timeouts.short });
   }
 
   /**
@@ -864,7 +1172,7 @@ export class EventCreatePage extends AdminBasePage {
     // 옵션 테이블 영역 스크롤
     const optionSection = this.page.locator("text=옵션(리워드)").first();
     await optionSection.scrollIntoViewIfNeeded();
-    await this.wait(500);
+    await this.settleInteractiveUi({ timeout: this.timeouts.short });
 
     // 가격 셀 찾기 (여러 패턴 지원)
     // 1. ₩0 (초기 상태)
@@ -894,8 +1202,7 @@ export class EventCreatePage extends AdminBasePage {
     }
 
     if (hasPriceCell) {
-      await priceCell.click();
-      await this.wait(500);
+      await this.clickWithRecovery(priceCell, { timeout: this.timeouts.medium });
 
       // 가격 설정 팝업 대기
       const pricePopup = this.page.getByText("가격설정");
@@ -912,9 +1219,13 @@ export class EventCreatePage extends AdminBasePage {
         // 적용하기 버튼 클릭
         const applyButton = this.page.getByRole("button", { name: "적용하기" });
         if (await applyButton.isVisible({ timeout: 2000 }).catch(() => false)) {
-          await applyButton.click();
+          await this.clickWithRecovery(applyButton, {
+            timeout: this.timeouts.medium,
+          });
           console.log(`ℹ️ 가격 설정 완료: ${finalPrice}원`);
-          await this.wait(500);
+          await pricePopup.waitFor({ state: "hidden", timeout: 3000 }).catch(
+            () => {},
+          );
         }
       } else {
         console.warn("⚠️ 가격 설정 팝업이 열리지 않음 - 기존 가격 유지");
@@ -926,7 +1237,7 @@ export class EventCreatePage extends AdminBasePage {
       );
     }
 
-    await this.wait(300);
+    await this.settleInteractiveUi({ timeout: this.timeouts.short });
   }
 
   /**
@@ -982,10 +1293,11 @@ export class EventCreatePage extends AdminBasePage {
 
     if (await addItemButton.isVisible({ timeout: 3000 }).catch(() => false)) {
       await addItemButton.scrollIntoViewIfNeeded();
-      await this.wait(300);
-      await addItemButton.click();
+      await this.settleInteractiveUi({ timeout: this.timeouts.short });
+      await this.clickWithRecovery(addItemButton, {
+        timeout: this.timeouts.medium,
+      });
       console.log("ℹ️ 품목 추가 버튼 클릭");
-      await this.wait(1000);
 
       // 품목 추가 팝업 대기
       const popup = this.page.locator("text=옵션 품목 추가하기");
@@ -1005,8 +1317,10 @@ export class EventCreatePage extends AdminBasePage {
           if (
             await cancelButton.isVisible({ timeout: 1000 }).catch(() => false)
           ) {
-            await cancelButton.click({ force: true });
-            await this.wait(500);
+            await this.clickWithRecovery(cancelButton, {
+              timeout: this.timeouts.short,
+            });
+            await this.settleInteractiveUi({ timeout: this.timeouts.short });
           }
           return false;
         }
@@ -1021,18 +1335,29 @@ export class EventCreatePage extends AdminBasePage {
             .isVisible({ timeout: 2000 })
             .catch(() => false)
         ) {
-          await firstItemCheckbox.click({ force: true });
+          await this.clickWithRecovery(firstItemCheckbox, {
+            timeout: this.timeouts.medium,
+          }).catch(async () => {
+            await firstItemCheckbox.evaluate((el) => {
+              (el as HTMLInputElement).click();
+            });
+          });
+          await expect(firstItemCheckbox).toBeChecked({
+            timeout: this.timeouts.medium,
+          });
           console.log("ℹ️ 첫 번째 품목 선택");
-          await this.wait(500);
+          await this.settleInteractiveUi({ timeout: this.timeouts.short });
 
           // "품목 추가하기" 버튼 클릭
           const addButton = this.page.getByRole("button", {
             name: "품목 추가하기",
           });
           if (await addButton.isEnabled({ timeout: 2000 })) {
-            await addButton.click({ force: true });
+            await this.clickWithRecovery(addButton, {
+              timeout: this.timeouts.medium,
+            });
             console.log("✅ 품목 추가 완료");
-            await this.wait(500);
+            await this.settleInteractiveUi({ timeout: this.timeouts.short });
             return true;
           }
         }
@@ -1055,7 +1380,7 @@ export class EventCreatePage extends AdminBasePage {
     // 옵션 테이블 영역으로 스크롤
     const optionSection = this.page.locator("text=옵션(리워드)").first();
     await optionSection.scrollIntoViewIfNeeded();
-    await this.wait(300);
+    await this.settleInteractiveUi({ timeout: this.timeouts.short });
 
     // 이미 판매량 기준이 설정되어 있는지 확인
     // 체크박스가 체크된 상태인지 확인
@@ -1087,9 +1412,11 @@ export class EventCreatePage extends AdminBasePage {
     if (
       await salesStandardCell.isVisible({ timeout: 3000 }).catch(() => false)
     ) {
-      await salesStandardCell.click();
+      await this.clickWithRecovery(salesStandardCell, {
+        timeout: this.timeouts.medium,
+      });
       console.log("ℹ️ 판매량 기준 드롭다운 클릭");
-      await this.wait(500);
+      await this.settleInteractiveUi({ timeout: this.timeouts.short });
 
       // 첫 번째 옵션 선택 (예: "음반")
       const option = this.page
@@ -1099,7 +1426,7 @@ export class EventCreatePage extends AdminBasePage {
 
       if (await option.isVisible({ timeout: 2000 }).catch(() => false)) {
         const optionText = (await option.textContent()) || "";
-        await option.click({ force: true });
+        await this.clickWithRecovery(option, { timeout: this.timeouts.short });
         console.log(`ℹ️ 판매량 기준 선택: ${optionText.trim()}`);
       }
     } else {
@@ -1107,7 +1434,7 @@ export class EventCreatePage extends AdminBasePage {
       console.log("ℹ️ 판매량 기준 드롭다운을 찾지 못함 - 기존 값 유지");
     }
 
-    await this.wait(300);
+    await this.settleInteractiveUi({ timeout: this.timeouts.short });
   }
 
   // --------------------------------------------------------------------------
@@ -1122,7 +1449,7 @@ export class EventCreatePage extends AdminBasePage {
     // 상품설명 영역으로 스크롤
     const descSection = this.page.locator("text=상품설명").first();
     await descSection.scrollIntoViewIfNeeded();
-    await this.wait(300);
+    await this.settleInteractiveUi({ timeout: this.timeouts.short });
 
     // 상품설명 영역의 한국어 탭 클릭
     const descKoTabs = this.page
@@ -1133,8 +1460,10 @@ export class EventCreatePage extends AdminBasePage {
       .locator("..")
       .locator('button:has-text("한국어")');
     if ((await descKoTabs.count()) > 0) {
-      await descKoTabs.first().click({ force: true });
-      await this.wait(300);
+      await this.clickWithRecovery(descKoTabs.first(), {
+        timeout: this.timeouts.medium,
+      });
+      await this.settleInteractiveUi({ timeout: this.timeouts.short });
     }
 
     // tiptap 에디터에 텍스트 입력 - contenteditable이 true인 것만 선택
@@ -1151,14 +1480,14 @@ export class EventCreatePage extends AdminBasePage {
       await editor.evaluate((el: HTMLElement) => {
         el.scrollIntoView({ behavior: "instant", block: "center" });
       });
-      await this.wait(500);
+      await this.settleInteractiveUi({ timeout: this.timeouts.short });
 
       // JavaScript로 focus 및 click
       await editor.evaluate((el: HTMLElement) => {
         el.focus();
         el.click();
       });
-      await this.wait(300);
+      await this.settleInteractiveUi({ timeout: this.timeouts.short });
 
       // 텍스트 입력
       await this.page.keyboard.type(description);
@@ -1178,7 +1507,7 @@ export class EventCreatePage extends AdminBasePage {
       }
     }
 
-    await this.wait(300);
+    await this.settleInteractiveUi({ timeout: this.timeouts.short });
   }
 
   /**
@@ -1195,8 +1524,10 @@ export class EventCreatePage extends AdminBasePage {
       .locator("..")
       .locator('button:has-text("영어")');
     if ((await descEnTabs.count()) > 0) {
-      await descEnTabs.first().click({ force: true });
-      await this.wait(300);
+      await this.clickWithRecovery(descEnTabs.first(), {
+        timeout: this.timeouts.medium,
+      });
+      await this.settleInteractiveUi({ timeout: this.timeouts.short });
 
       // 영어 탭의 에디터에 텍스트 입력 - contenteditable이 true인 것만 선택
       const descEditors = this.page.locator(
@@ -1211,14 +1542,14 @@ export class EventCreatePage extends AdminBasePage {
         await editor.evaluate((el: HTMLElement) => {
           el.scrollIntoView({ behavior: "instant", block: "center" });
         });
-        await this.wait(500);
+        await this.settleInteractiveUi({ timeout: this.timeouts.short });
 
         // JavaScript로 focus 및 click
         await editor.evaluate((el: HTMLElement) => {
           el.focus();
           el.click();
         });
-        await this.wait(300);
+        await this.settleInteractiveUi({ timeout: this.timeouts.short });
 
         // 텍스트 입력
         await this.page.keyboard.type(description);
@@ -1230,7 +1561,7 @@ export class EventCreatePage extends AdminBasePage {
       }
     }
 
-    await this.wait(300);
+    await this.settleInteractiveUi({ timeout: this.timeouts.short });
   }
 
   // --------------------------------------------------------------------------
@@ -1243,7 +1574,7 @@ export class EventCreatePage extends AdminBasePage {
   async submitAndWaitForList(): Promise<void> {
     // 지금 등록하기 버튼으로 스크롤
     await this.submitButton.scrollIntoViewIfNeeded();
-    await this.wait(300);
+    await this.settleInteractiveUi({ timeout: this.timeouts.short });
 
     // 버튼 활성화 확인
     const isDisabled = await this.submitButton.isDisabled();
@@ -1254,7 +1585,9 @@ export class EventCreatePage extends AdminBasePage {
     }
 
     // 등록 버튼 클릭
-    await this.submitButton.click();
+    await this.clickWithRecovery(this.submitButton, {
+      timeout: this.timeouts.medium,
+    });
     console.log("ℹ️ 지금 등록하기 버튼 클릭");
 
     // 목록 페이지로 리다이렉트 대기
@@ -1297,8 +1630,7 @@ export class EventCreatePage extends AdminBasePage {
     }
 
     if (options.price) {
-      await this.setPrice(
-        options.price.finalPrice,
+      await this.setPriceWithDiscount(
         options.price.originalPrice,
         options.price.discountRate,
       );

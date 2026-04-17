@@ -92,7 +92,6 @@ async function fillReasonModal(page: Page, modal: Locator, reason: string) {
       .locator('[role="combobox"], .ant-select, [class*="select"]')
       .first();
     await trigger.click();
-    await page.waitForTimeout(500);
     // 옵션은 모달 밖 portal에 뜰 수 있어 page 전체에서 검색 — 더 넓은 셀렉터
     const option = page
       .locator(
@@ -100,6 +99,7 @@ async function fillReasonModal(page: Page, modal: Locator, reason: string) {
       )
       .filter({ hasText: new RegExp(reason) })
       .first();
+    await option.waitFor({ state: "visible", timeout: 5000 }).catch(() => {});
     const optCount = await option.count();
     if (optCount === 0) {
       // 디버그: 현재 보이는 옵션 후보들 로깅

@@ -7,12 +7,20 @@
  * 브라우저가 열리면 수동으로 로그인하고, 로그인 완료 후 자동으로 세션이 저장됩니다.
  */
 
-import { test, expect, Page, Browser, BrowserContext } from "@playwright/test";
+import {
+  test,
+  expect,
+  Page,
+  Browser,
+  BrowserContext,
+  Locator,
+} from "@playwright/test";
 import * as fs from "fs";
 import * as path from "path";
+import { sleep, waitForPageReady } from "./helpers/manual-auth-session";
 
 type StoredCookie = { name: string; value: string; expires?: number };
-type StorageState = Awaited<ReturnType<Page["context"]["storageState"]>>;
+type StorageState = Awaited<ReturnType<BrowserContext["storageState"]>>;
 type AuthSnapshot = {
   hasRefreshToken: boolean;
   hasLoggedInUser: boolean;
@@ -44,7 +52,9 @@ async function hasVisibleLoginEntry(page: Page): Promise<boolean> {
   const candidates = getLoginEntryCandidates(page);
 
   for (const candidate of candidates) {
-    const visible = await candidate.isVisible({ timeout: 1000 }).catch(() => false);
+    const visible = await candidate
+      .isVisible({ timeout: 1000 })
+      .catch(() => false);
     if (visible) {
       return true;
     }
@@ -55,14 +65,15 @@ async function hasVisibleLoginEntry(page: Page): Promise<boolean> {
 
 async function clickVisibleLoginEntry(page: Page): Promise<boolean> {
   for (const candidate of getLoginEntryCandidates(page)) {
-    const visible = await candidate.isVisible({ timeout: 1000 }).catch(() => false);
+    const visible = await candidate
+      .isVisible({ timeout: 1000 })
+      .catch(() => false);
     if (!visible) {
       continue;
     }
 
-    await candidate.click({ force: true }).catch(() => {});
-    await page.waitForLoadState("domcontentloaded").catch(() => {});
-    await page.waitForTimeout(3000).catch(() => {});
+    await clickLocatorWithFallback(candidate);
+    await waitForPageReady(page, { networkIdleTimeout: 5000 });
     return true;
   }
 
@@ -70,12 +81,17 @@ async function clickVisibleLoginEntry(page: Page): Promise<boolean> {
 }
 
 function getLatestOpenPage(context: BrowserContext): Page | null {
-  const openPages = context.pages().filter((candidate) => !candidate.isClosed());
+  const openPages = context
+    .pages()
+    .filter((candidate) => !candidate.isClosed());
   return openPages.at(-1) || null;
 }
 
 async function clickVisibleLoginEntryAndResolvePage(page: Page): Promise<Page> {
-  const popupPromise = page.context().waitForEvent("page", { timeout: 5000 }).catch(() => null);
+  const popupPromise = page
+    .context()
+    .waitForEvent("page", { timeout: 5000 })
+    .catch(() => null);
   const clicked = await clickVisibleLoginEntry(page);
   if (!clicked) {
     return page;
@@ -83,8 +99,7 @@ async function clickVisibleLoginEntryAndResolvePage(page: Page): Promise<Page> {
 
   const popup = await popupPromise;
   if (popup && !popup.isClosed()) {
-    await popup.waitForLoadState("domcontentloaded").catch(() => {});
-    await popup.waitForTimeout(3000).catch(() => {});
+    await waitForPageReady(popup, { networkIdleTimeout: 5000 });
     return popup;
   }
 
@@ -119,16 +134,16 @@ async function dismissBlockingModals(page: Page): Promise<void> {
   for (const text of doNotShowTexts) {
     const candidate = page.getByText(text, { exact: false }).first();
     if (await candidate.isVisible({ timeout: 800 }).catch(() => false)) {
-      await candidate.click({ force: true }).catch(() => {});
-      await page.waitForTimeout(500);
+      await clickLocatorWithFallback(candidate).catch(() => {});
+      await candidate.waitFor({ state: "hidden", timeout: 1000 }).catch(() => {});
     }
   }
 
   for (const text of closeTexts) {
     const candidate = page.getByText(text, { exact: true }).first();
     if (await candidate.isVisible({ timeout: 800 }).catch(() => false)) {
-      await candidate.click({ force: true }).catch(() => {});
-      await page.waitForTimeout(500);
+      await clickLocatorWithFallback(candidate).catch(() => {});
+      await candidate.waitFor({ state: "hidden", timeout: 1000 }).catch(() => {});
     }
   }
 
@@ -137,8 +152,25 @@ async function dismissBlockingModals(page: Page): Promise<void> {
     .first();
   if (await overlay.isVisible({ timeout: 500 }).catch(() => false)) {
     await page.keyboard.press("Escape").catch(() => {});
-    await page.waitForTimeout(500);
+    await overlay.waitFor({ state: "hidden", timeout: 1000 }).catch(() => {});
   }
+}
+
+async function clickLocatorWithFallback(locator: Locator): Promise<void> {
+  await locator.scrollIntoViewIfNeeded().catch(() => {});
+  await locator.click({ timeout: 3000 }).catch(async () => {
+    const handle = await locator.elementHandle();
+    if (!handle) {
+      throw new Error("클릭 대상 elementHandle을 찾지 못했습니다.");
+    }
+    try {
+      await handle.evaluate((el) => {
+        (el as HTMLElement).click();
+      });
+    } finally {
+      await handle.dispose().catch(() => {});
+    }
+  });
 }
 
 function getAuthSnapshotFromState(state: StorageState): AuthSnapshot {
@@ -151,7 +183,9 @@ function getAuthSnapshotFromState(state: StorageState): AuthSnapshot {
   const hasLoggedInUser = state.origins.some(
     (origin) =>
       /makestar\.com/i.test(origin.origin) &&
-      (origin.localStorage || []).some((entry) => entry.name === "LOGGED_IN_USER"),
+      (origin.localStorage || []).some(
+        (entry) => entry.name === "LOGGED_IN_USER",
+      ),
   );
 
   const hasAlbumBuddyIndexedDb = state.origins.some((origin) => {
@@ -159,13 +193,16 @@ function getAuthSnapshotFromState(state: StorageState): AuthSnapshot {
       return false;
     }
 
-    const indexedDbs = (
-      origin as typeof origin & {
-        indexedDB?: Array<{ name?: string }>;
-      }
-    ).indexedDB || [];
+    const indexedDbs =
+      (
+        origin as typeof origin & {
+          indexedDB?: Array<{ name?: string }>;
+        }
+      ).indexedDB || [];
 
-    return indexedDbs.some((db) => /firebaseLocalStorageDb/i.test(db.name || ""));
+    return indexedDbs.some((db) =>
+      /firebaseLocalStorageDb/i.test(db.name || ""),
+    );
   });
 
   return {
@@ -185,7 +222,7 @@ async function gotoWithRetry(page: Page, url: string): Promise<void> {
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     try {
       await page.goto(url, { waitUntil: "domcontentloaded" });
-      return;
+      break;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (
@@ -194,7 +231,7 @@ async function gotoWithRetry(page: Page, url: string): Promise<void> {
       ) {
         throw error;
       }
-      await page.waitForTimeout(1000);
+      await sleep(1000);
     }
   }
 }
@@ -224,19 +261,16 @@ async function saveAlbumBuddySessionStorage(page: Page): Promise<void> {
 }
 
 async function restoreAlbumBuddySessionStorage(page: Page): Promise<void> {
-  if (!fs.existsSync(AB_SESSION_FILE)) {
-    return;
+  if (fs.existsSync(AB_SESSION_FILE)) {
+    const payload = JSON.parse(fs.readFileSync(AB_SESSION_FILE, "utf-8"));
+    await page.addInitScript((data) => {
+      if (window.location.origin === data.origin) {
+        for (const [key, value] of Object.entries(data.entries || {})) {
+          window.sessionStorage.setItem(key, String(value));
+        }
+      }
+    }, payload);
   }
-
-  const payload = JSON.parse(fs.readFileSync(AB_SESSION_FILE, "utf-8"));
-  await page.addInitScript((data) => {
-    if (window.location.origin !== data.origin) {
-      return;
-    }
-    for (const [key, value] of Object.entries(data.entries || {})) {
-      window.sessionStorage.setItem(key, String(value));
-    }
-  }, payload);
 }
 
 async function getDashboardSessionIndicators(page: Page): Promise<{
@@ -244,7 +278,10 @@ async function getDashboardSessionIndicators(page: Page): Promise<{
   hasOrderRows: boolean;
   hasMeaningfulCounters: boolean;
 }> {
-  const bodyText = await page.locator("body").innerText().catch(() => "");
+  const bodyText = await page
+    .locator("body")
+    .innerText()
+    .catch(() => "");
   const counterLabels = [
     "Waiting",
     "Pending",
@@ -257,7 +294,10 @@ async function getDashboardSessionIndicators(page: Page): Promise<{
   const hasMeaningfulCounters = counterLabels.some((label) =>
     new RegExp(`\\b([1-9]\\d*)\\s+${label}\\b`, "i").test(bodyText),
   );
-  const rowCount = await page.locator("table tr").count().catch(() => 0);
+  const rowCount = await page
+    .locator("table tr")
+    .count()
+    .catch(() => 0);
 
   return {
     hasNoItemsRegistered: /No items registered\./i.test(bodyText),
@@ -291,7 +331,10 @@ async function isAuthenticatedDashboard(page: Page): Promise<boolean> {
     return false;
   }
 
-  const bodyText = await page.locator("body").innerText().catch(() => "");
+  const bodyText = await page
+    .locator("body")
+    .innerText()
+    .catch(() => "");
   return (
     !/log in or sign up|enter your email|continue/i.test(bodyText) &&
     /my orders|my packages/i.test(bodyText)
@@ -307,24 +350,33 @@ async function waitForAuthenticatedDashboard(
     if (await isAuthenticatedDashboard(page)) {
       return true;
     }
-    await page.waitForTimeout(1000);
+    await sleep(1000);
   }
   return false;
 }
 
-async function waitForAlbumBuddyRedirect(page: Page, timeoutMs: number = 15000): Promise<void> {
+async function waitForAlbumBuddyRedirect(
+  page: Page,
+  timeoutMs: number = 15000,
+): Promise<void> {
   const startedAt = Date.now();
+  let redirected = false;
   while (Date.now() - startedAt < timeoutMs) {
     if (page.isClosed()) {
-      return;
+      break;
     }
 
     const currentUrl = page.url();
     if (currentUrl.includes("albumbuddy.kr")) {
-      return;
+      redirected = true;
+      break;
     }
 
-    await page.waitForTimeout(1000).catch(() => {});
+    await sleep(1000);
+  }
+
+  if (redirected) {
+    await page.waitForLoadState("domcontentloaded").catch(() => {});
   }
 }
 
@@ -333,11 +385,16 @@ async function verifySavedSession(browser: Browser | null): Promise<boolean> {
     return false;
   }
 
-  const verifyContext = await browser.newContext({ storageState: AB_AUTH_FILE });
+  const verifyContext = await browser.newContext({
+    storageState: AB_AUTH_FILE,
+  });
   const verifyPage = await verifyContext.newPage();
   await restoreAlbumBuddySessionStorage(verifyPage);
-  await gotoWithRetry(verifyPage, `${ALBUMBUDDY_BASE_URL}/dashboard/purchasing`);
-  await verifyPage.waitForTimeout(3000);
+  await gotoWithRetry(
+    verifyPage,
+    `${ALBUMBUDDY_BASE_URL}/dashboard/purchasing`,
+  );
+  await waitForPageReady(verifyPage, { networkIdleTimeout: 5000 });
   const verified = await isAuthenticatedDashboard(verifyPage);
   await verifyContext.close();
   return verified;
@@ -363,7 +420,7 @@ async function tryBootstrapFromGlobalAuth(
     const seededPage = await seededContext.newPage();
     await gotoWithRetry(seededPage, ALBUMBUDDY_AUTH_URL);
     await waitForAlbumBuddyRedirect(seededPage, 15000);
-    await seededPage.waitForTimeout(3000).catch(() => {});
+    await waitForPageReady(seededPage, { networkIdleTimeout: 5000 });
     await dismissBlockingModals(seededPage);
 
     const seededSnapshot = await getAuthSnapshot(seededPage);
@@ -372,9 +429,8 @@ async function tryBootstrapFromGlobalAuth(
       .locator("body")
       .innerText()
       .catch(() => "");
-    const seededHasAuthPrompt = /log in or sign up|enter your email|continue/i.test(
-      seededBodyText,
-    );
+    const seededHasAuthPrompt =
+      /log in or sign up|enter your email|continue/i.test(seededBodyText);
     const seededLoginControls = await seededPage
       .locator('button, a, [role="button"], [role="link"]')
       .evaluateAll((nodes) =>
@@ -397,7 +453,9 @@ async function tryBootstrapFromGlobalAuth(
       `[bootstrap] url=${seededPage.url()} refresh=${seededSnapshot.hasRefreshToken} user=${seededSnapshot.hasLoggedInUser} abIndexedDb=${seededSnapshot.hasAlbumBuddyIndexedDb} loginVisible=${seededLoginVisible} authPrompt=${seededHasAuthPrompt}`,
     );
     if (seededLoginControls.length > 0) {
-      console.log(`[bootstrap-login-controls] ${JSON.stringify(seededLoginControls)}`);
+      console.log(
+        `[bootstrap-login-controls] ${JSON.stringify(seededLoginControls)}`,
+      );
     }
 
     let activeSeededPage = seededPage;
@@ -408,9 +466,11 @@ async function tryBootstrapFromGlobalAuth(
       (seededPage.url().includes("auth.makestar.com") ||
         seededPage.url().includes("www.makestar.com"))
     ) {
-      console.log("[bootstrap] Makestar 인증 상태에서 dashboard로 직접 이동 시도");
+      console.log(
+        "[bootstrap] Makestar 인증 상태에서 dashboard로 직접 이동 시도",
+      );
       await gotoWithRetry(seededPage, ALBUMBUDDY_DASHBOARD_URL);
-      await seededPage.waitForTimeout(3000).catch(() => {});
+      await waitForPageReady(seededPage, { networkIdleTimeout: 5000 });
       await dismissBlockingModals(seededPage);
     }
 
@@ -450,7 +510,7 @@ async function checkExistingSession(page: Page): Promise<boolean> {
     await page.context().addCookies(cookies);
     await restoreAlbumBuddySessionStorage(page);
     await gotoWithRetry(page, `${ALBUMBUDDY_BASE_URL}/dashboard/purchasing`);
-    await page.waitForTimeout(3000);
+    await waitForPageReady(page, { networkIdleTimeout: 5000 });
 
     return isAuthenticatedDashboard(page);
   } catch {
@@ -461,182 +521,190 @@ async function checkExistingSession(page: Page): Promise<boolean> {
 test("AlbumBuddy 로그인 세션 저장 (수동 로그인)", async ({
   page,
   context,
-  headless,
 }) => {
   const runtimeBrowser = page.context().browser();
   let activePage = page;
 
   // headless 모드에서는 기존 세션 유효성만 확인 (수동 로그인 불가)
-  // @ts-ignore - headless는 playwright 테스트 컨텍스트에서 제공되지 않으므로 use 설정에서 확인
   const isHeadless = !process.env.HEADED && process.env.CI !== undefined;
 
   if (isHeadless || process.env.CI) {
     console.log("📋 Headless/CI 모드: 기존 세션 유효성 확인");
     const sessionValid = await checkExistingSession(page);
+    expect(
+      sessionValid,
+      "Headless/CI 모드에서는 기존 AlbumBuddy 세션이 유효해야 합니다",
+    ).toBe(true);
     if (sessionValid) {
       console.log("✅ 기존 세션이 유효합니다. 수동 로그인 생략.");
-      return;
+    } else {
+      console.error("❌ 세션이 유효하지 않습니다. 수동 로그인이 필요합니다.");
+      console.log(
+        "   npx playwright test tests/ab-save-auth.spec.ts --headed --project=chromium",
+      );
+      throw new Error(
+        "세션 만료 또는 없음 - 수동 로그인 필요 (--headed 모드로 실행)",
+      );
     }
-    console.error("❌ 세션이 유효하지 않습니다. 수동 로그인이 필요합니다.");
-    console.log(
-      "   npx playwright test tests/ab-save-auth.spec.ts --headed --project=chromium",
-    );
-    throw new Error(
-      "세션 만료 또는 없음 - 수동 로그인 필요 (--headed 모드로 실행)",
-    );
-  }
-
-  test.setTimeout(300000); // 5분 timeout
-
-  console.log("");
-  console.log("=".repeat(70));
-  console.log("🔐 AlbumBuddy 로그인 세션 저장 도구");
-  console.log("=".repeat(70));
-  console.log("");
-
-  if (await tryBootstrapFromGlobalAuth(runtimeBrowser)) {
-    console.log("✅ auth.json 기반으로 AlbumBuddy 세션 저장 완료");
-    return;
-  }
-
-  // AlbumBuddy 인증 페이지로 직접 이동
-  console.log("🌐 AlbumBuddy 로그인 페이지로 이동 중...");
-  await gotoWithRetry(page, ALBUMBUDDY_AUTH_URL);
-  await waitForAlbumBuddyRedirect(page, 15000);
-  await page.waitForTimeout(2000);
-  await dismissBlockingModals(page);
-
-  console.log("");
-  console.log("┌" + "─".repeat(68) + "┐");
-  console.log("│" + " ".repeat(20) + "📋 로그인 안내" + " ".repeat(33) + "│");
-  console.log("├" + "─".repeat(68) + "┤");
-  console.log(
-    "│ 1. 브라우저에서 이메일/비밀번호로 로그인하세요                   │",
-  );
-  console.log(
-    "│ 2. 로그인 완료 후 Dashboard 페이지로 이동되면 자동 저장됩니다    │",
-  );
-  console.log(
-    "│ 3. 최대 3분 동안 대기합니다                                      │",
-  );
-  console.log("└" + "─".repeat(68) + "┘");
-  console.log("");
-
-  // 로그인 완료 대기
-  let loginSuccess = false;
-  const maxWaitTime = 180000; // 3분
-  const checkInterval = 2000; // 2초마다 확인
-  const startTime = Date.now();
-
-  while (Date.now() - startTime < maxWaitTime) {
-    activePage = resolveActivePage(activePage);
-    if (activePage.isClosed()) {
-      throw new Error("로그인 도중 활성 페이지를 찾을 수 없습니다");
-    }
-
-    const currentUrl = activePage.url();
-    const activeSnapshot = await getAuthSnapshot(activePage);
-    const activeBodyText = await activePage.locator("body").innerText().catch(() => "");
-    const activeHasAuthPrompt = /log in or sign up|enter your email|continue/i.test(
-      activeBodyText,
-    );
-
-    // 로그인 성공 조건: 보호 페이지에 있고, guest shell이 아니라 실제 로그인 상태일 것
-    if (await isAuthenticatedDashboard(activePage)) {
-      loginSuccess = true;
-      console.log("");
-      console.log("✅ 로그인 감지! 세션 저장 중...");
-      break;
-    }
-
-    if (
-      (currentUrl.includes("auth.makestar.com") ||
-        currentUrl.includes("www.makestar.com")) &&
-      activeSnapshot.hasRefreshToken &&
-      activeSnapshot.hasLoggedInUser &&
-      !activeHasAuthPrompt
-    ) {
-      await gotoWithRetry(activePage, ALBUMBUDDY_DASHBOARD_URL);
-      await activePage.waitForTimeout(2000).catch(() => {});
-      await dismissBlockingModals(activePage);
-      activePage = resolveActivePage(activePage);
-
-      if (await isAuthenticatedDashboard(activePage)) {
-        loginSuccess = true;
-        console.log("");
-        console.log("✅ auth 페이지에서 dashboard 진입 성공! 세션 저장 중...");
-        break;
-      }
-    }
-
-    // 인증 완료 후 홈/기타 페이지에 떨어진 경우 dashboard로 재확인
-    if (
-      currentUrl.includes("albumbuddy.kr") &&
-      !currentUrl.includes("/dashboard/")
-    ) {
-      await dismissBlockingModals(activePage);
-
-      // Dashboard로 이동 시도
-      await gotoWithRetry(activePage, ALBUMBUDDY_DASHBOARD_URL);
-      await activePage.waitForTimeout(2000).catch(() => {});
-      activePage = resolveActivePage(activePage);
-
-      if (await isAuthenticatedDashboard(activePage)) {
-        loginSuccess = true;
-        console.log("");
-        console.log("✅ 로그인 성공! 세션 저장 중...");
-        break;
-      }
-    }
-
-    await activePage.waitForTimeout(checkInterval).catch(() => {});
-    const elapsed = Math.floor((Date.now() - startTime) / 1000);
-    process.stdout.write(
-      `\r⏳ 로그인 대기 중... (${elapsed}초/${maxWaitTime / 1000}초)`,
-    );
-  }
-
-  console.log("");
-
-  if (loginSuccess) {
-    // 세션 저장
-    await context.storageState({ path: AB_AUTH_FILE, indexedDB: true });
-    await saveAlbumBuddySessionStorage(activePage);
-
-    console.log("");
-    console.log("=".repeat(70));
-    console.log("🎉 AlbumBuddy 로그인 세션 저장 완료!");
-    console.log("=".repeat(70));
-    console.log("");
-    console.log(`📁 저장 위치: ${AB_AUTH_FILE}`);
-    console.log("");
-    console.log("📌 다음 단계:");
-    console.log("   이제 테스트를 실행하면 로그인된 상태로 시작합니다:");
-    console.log(
-      "   npx playwright test tests/ab_monitoring_pom.spec.ts --project=chromium",
-    );
-    console.log("");
-
-    // 저장된 세션 확인
-    expect(fs.existsSync(AB_AUTH_FILE)).toBeTruthy();
-    const authData = JSON.parse(fs.readFileSync(AB_AUTH_FILE, "utf-8"));
-    console.log(`🍪 저장된 쿠키 수: ${authData.cookies?.length || 0}개`);
-    console.log(`🧠 저장된 sessionStorage 파일: ${AB_SESSION_FILE}`);
-    console.log("");
-
-    const verified = await verifySavedSession(runtimeBrowser);
-    expect(
-      verified,
-      "방금 저장한 세션이 새 컨텍스트에서도 실제 로그인 상태여야 합니다",
-    ).toBe(true);
   } else {
+    test.setTimeout(300000); // 5분 timeout
+
     console.log("");
-    console.error("❌ 로그인 시간 초과");
-    console.log(
-      "다시 시도: npx playwright test tests/ab-save-auth.spec.ts --headed --project=chromium",
-    );
+    console.log("=".repeat(70));
+    console.log("🔐 AlbumBuddy 로그인 세션 저장 도구");
+    console.log("=".repeat(70));
     console.log("");
-    throw new Error("로그인 시간 초과");
+
+    const bootstrapped = await tryBootstrapFromGlobalAuth(runtimeBrowser);
+    if (bootstrapped) {
+      console.log("✅ auth.json 기반으로 AlbumBuddy 세션 저장 완료");
+    } else {
+      // AlbumBuddy 인증 페이지로 직접 이동
+      console.log("🌐 AlbumBuddy 로그인 페이지로 이동 중...");
+      await gotoWithRetry(page, ALBUMBUDDY_AUTH_URL);
+      await waitForAlbumBuddyRedirect(page, 15000);
+      await waitForPageReady(page, { networkIdleTimeout: 5000 });
+      await dismissBlockingModals(page);
+
+      console.log("");
+      console.log("┌" + "─".repeat(68) + "┐");
+      console.log("│" + " ".repeat(20) + "📋 로그인 안내" + " ".repeat(33) + "│");
+      console.log("├" + "─".repeat(68) + "┤");
+      console.log(
+        "│ 1. 브라우저에서 이메일/비밀번호로 로그인하세요                   │",
+      );
+      console.log(
+        "│ 2. 로그인 완료 후 Dashboard 페이지로 이동되면 자동 저장됩니다    │",
+      );
+      console.log(
+        "│ 3. 최대 3분 동안 대기합니다                                      │",
+      );
+      console.log("└" + "─".repeat(68) + "┘");
+      console.log("");
+
+      // 로그인 완료 대기
+      let loginSuccess = false;
+      const maxWaitTime = 180000; // 3분
+      const checkInterval = 2000; // 2초마다 확인
+      const startTime = Date.now();
+
+      while (Date.now() - startTime < maxWaitTime) {
+        activePage = resolveActivePage(activePage);
+        if (activePage.isClosed()) {
+          throw new Error("로그인 도중 활성 페이지를 찾을 수 없습니다");
+        }
+
+        const currentUrl = activePage.url();
+        const activeSnapshot = await getAuthSnapshot(activePage);
+        const activeBodyText = await activePage
+          .locator("body")
+          .innerText()
+          .catch(() => "");
+        const activeHasAuthPrompt =
+          /log in or sign up|enter your email|continue/i.test(activeBodyText);
+
+        // 로그인 성공 조건: 보호 페이지에 있고, guest shell이 아니라 실제 로그인 상태일 것
+        if (await isAuthenticatedDashboard(activePage)) {
+          loginSuccess = true;
+          console.log("");
+          console.log("✅ 로그인 감지! 세션 저장 중...");
+          break;
+        }
+
+        if (
+          (currentUrl.includes("auth.makestar.com") ||
+            currentUrl.includes("www.makestar.com")) &&
+          activeSnapshot.hasRefreshToken &&
+          activeSnapshot.hasLoggedInUser &&
+          !activeHasAuthPrompt
+        ) {
+          await gotoWithRetry(activePage, ALBUMBUDDY_DASHBOARD_URL);
+          await waitForPageReady(activePage, { networkIdleTimeout: 5000 });
+          await dismissBlockingModals(activePage);
+          activePage = resolveActivePage(activePage);
+
+          if (await isAuthenticatedDashboard(activePage)) {
+            loginSuccess = true;
+            console.log("");
+            console.log("✅ auth 페이지에서 dashboard 진입 성공! 세션 저장 중...");
+            break;
+          }
+        }
+
+        // 인증 완료 후 홈/기타 페이지에 떨어진 경우 dashboard로 재확인
+        // (auth 신호가 있을 때만 navigate — 로그인 입력 중 깜빡임 방지)
+        if (
+          currentUrl.includes("albumbuddy.kr") &&
+          !currentUrl.includes("/dashboard/") &&
+          activeSnapshot.hasRefreshToken &&
+          activeSnapshot.hasLoggedInUser &&
+          !activeHasAuthPrompt
+        ) {
+          await dismissBlockingModals(activePage);
+
+          // Dashboard로 이동 시도
+          await gotoWithRetry(activePage, ALBUMBUDDY_DASHBOARD_URL);
+          await waitForPageReady(activePage, { networkIdleTimeout: 5000 });
+          activePage = resolveActivePage(activePage);
+
+          if (await isAuthenticatedDashboard(activePage)) {
+            loginSuccess = true;
+            console.log("");
+            console.log("✅ 로그인 성공! 세션 저장 중...");
+            break;
+          }
+        }
+
+        await sleep(checkInterval);
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        process.stdout.write(
+          `\r⏳ 로그인 대기 중... (${elapsed}초/${maxWaitTime / 1000}초)`,
+        );
+      }
+
+      console.log("");
+
+      if (loginSuccess) {
+        // 세션 저장
+        await context.storageState({ path: AB_AUTH_FILE, indexedDB: true });
+        await saveAlbumBuddySessionStorage(activePage);
+
+        console.log("");
+        console.log("=".repeat(70));
+        console.log("🎉 AlbumBuddy 로그인 세션 저장 완료!");
+        console.log("=".repeat(70));
+        console.log("");
+        console.log(`📁 저장 위치: ${AB_AUTH_FILE}`);
+        console.log("");
+        console.log("📌 다음 단계:");
+        console.log("   이제 테스트를 실행하면 로그인된 상태로 시작합니다:");
+        console.log(
+          "   npx playwright test tests/ab_monitoring_pom.spec.ts --project=chromium",
+        );
+        console.log("");
+
+        // 저장된 세션 확인
+        expect(fs.existsSync(AB_AUTH_FILE)).toBeTruthy();
+        const authData = JSON.parse(fs.readFileSync(AB_AUTH_FILE, "utf-8"));
+        console.log(`🍪 저장된 쿠키 수: ${authData.cookies?.length || 0}개`);
+        console.log(`🧠 저장된 sessionStorage 파일: ${AB_SESSION_FILE}`);
+        console.log("");
+
+        const verified = await verifySavedSession(runtimeBrowser);
+        expect(
+          verified,
+          "방금 저장한 세션이 새 컨텍스트에서도 실제 로그인 상태여야 합니다",
+        ).toBe(true);
+      } else {
+        console.log("");
+        console.error("❌ 로그인 시간 초과");
+        console.log(
+          "다시 시도: npx playwright test tests/ab-save-auth.spec.ts --headed --project=chromium",
+        );
+        console.log("");
+        throw new Error("로그인 시간 초과");
+      }
+    }
   }
 });
 
@@ -697,11 +765,16 @@ test("기존 AlbumBuddy 세션 유효성 확인", async ({ page }) => {
     throw new Error("브라우저 인스턴스를 찾을 수 없습니다");
   }
 
-  const verifyContext = await browser.newContext({ storageState: AB_AUTH_FILE });
+  const verifyContext = await browser.newContext({
+    storageState: AB_AUTH_FILE,
+  });
   const verifyPage = await verifyContext.newPage();
   await restoreAlbumBuddySessionStorage(verifyPage);
-  await gotoWithRetry(verifyPage, `${ALBUMBUDDY_BASE_URL}/dashboard/purchasing`);
-  await verifyPage.waitForTimeout(3000);
+  await gotoWithRetry(
+    verifyPage,
+    `${ALBUMBUDDY_BASE_URL}/dashboard/purchasing`,
+  );
+  await waitForPageReady(verifyPage, { networkIdleTimeout: 5000 });
 
   const isLoggedIn = await isAuthenticatedDashboard(verifyPage);
 

@@ -31,6 +31,25 @@ import {
 // ============================================================================
 applyAdminTestConfig("회원관리");
 
+type UserMetrics = Awaited<ReturnType<UserListPage["getResultMetrics"]>>;
+
+function expectNoResultMessage(metrics: UserMetrics, context: string): void {
+  expect(
+    metrics.hasNoResultMessage,
+    `❌ ${context}: 결과 없음 상태인데 안내 메시지가 없습니다.`,
+  ).toBeTruthy();
+}
+
+function expectHasUserRows(metrics: UserMetrics, context: string): void {
+  expect(
+    metrics.noResultState,
+    `❌ ${context}: 결과 없음 상태라 검증을 진행할 수 없습니다.`,
+  ).toBe(false);
+  expect(metrics.rowCount, `❌ ${context}: 목록 데이터가 없습니다.`).toBeGreaterThan(
+    0,
+  );
+}
+
 // ##############################################################################
 // 회원관리 목록
 // ##############################################################################
@@ -62,78 +81,75 @@ test.describe.serial("회원관리 목록 @feature:admin_makestar.user.list", ()
     const metrics = await userPage.getResultMetrics();
 
     if (metrics.noResultState) {
+      expectNoResultMessage(metrics, "회원 목록 데이터 로드");
+    } else {
+      expectHasUserRows(metrics, "회원 목록 데이터 로드");
+
+      const pageLimit = await userPage.getPerPageLimit(10);
       expect(
-        metrics.hasNoResultMessage,
-        "❌ 결과 없음 상태인데 메시지가 없습니다.",
-      ).toBeTruthy();
-      return;
+        metrics.rowCount,
+        `❌ 행 수(${metrics.rowCount})가 페이지 제한(${pageLimit})을 초과합니다.`,
+      ).toBeLessThanOrEqual(pageLimit);
+      console.log(
+        `  ✅ 데이터 로드 검증: ${metrics.rowCount}행 (제한: ${pageLimit})`,
+      );
     }
-
-    expect(
-      metrics.rowCount,
-      "❌ 테이블 데이터가 로드되지 않았습니다.",
-    ).toBeGreaterThan(0);
-
-    const pageLimit = await userPage.getPerPageLimit(10);
-    expect(
-      metrics.rowCount,
-      `❌ 행 수(${metrics.rowCount})가 페이지 제한(${pageLimit})을 초과합니다.`,
-    ).toBeLessThanOrEqual(pageLimit);
-    console.log(
-      `  ✅ 데이터 로드 검증: ${metrics.rowCount}행 (제한: ${pageLimit})`,
-    );
   });
 
   test("USR-DATA-01: 필수 컬럼 빈 값 검증 (이메일, 유저코드) + 선택 컬럼 경고", async () => {
     const metrics = await userPage.getResultMetrics();
-    if (metrics.noResultState) return;
+    if (metrics.noResultState) {
+      expectNoResultMessage(metrics, "필수 컬럼 검증");
+    } else {
+      const rows = Math.min(metrics.rowCount, 10);
+      let emptyNicknameCount = 0;
+      let emptyNameCount = 0;
 
-    const rows = Math.min(metrics.rowCount, 10);
-    let emptyNicknameCount = 0;
-    let emptyNameCount = 0;
+      for (let i = 0; i < rows; i++) {
+        // 필수: 이메일 (col 2), 유저코드 (col 3) — 가입 시 반드시 생성됨
+        const email = (await userPage.getCellText(i, 2)).trim();
+        expect(
+          userPage.isMeaningfulValue(email),
+          `❌ 행 ${i}: 이메일 컬럼이 비어있음`,
+        ).toBe(true);
 
-    for (let i = 0; i < rows; i++) {
-      // 필수: 이메일 (col 2), 유저코드 (col 3) — 가입 시 반드시 생성됨
-      const email = (await userPage.getCellText(i, 2)).trim();
-      expect(
-        userPage.isMeaningfulValue(email),
-        `❌ 행 ${i}: 이메일 컬럼이 비어있음`,
-      ).toBe(true);
+        const userCode = (await userPage.getCellText(i, 3)).trim();
+        expect(
+          userPage.isMeaningfulValue(userCode),
+          `❌ 행 ${i}: 유저코드 컬럼이 비어있음`,
+        ).toBe(true);
 
-      const userCode = (await userPage.getCellText(i, 3)).trim();
-      expect(
-        userPage.isMeaningfulValue(userCode),
-        `❌ 행 ${i}: 유저코드 컬럼이 비어있음`,
-      ).toBe(true);
+        // 선택: 닉네임 (col 4), 이름 (col 5) — 커머스 가입 시 미입력 가능
+        const nickname = (await userPage.getCellText(i, 4)).trim();
+        if (!userPage.isMeaningfulValue(nickname)) emptyNicknameCount++;
 
-      // 선택: 닉네임 (col 4), 이름 (col 5) — 커머스 가입 시 미입력 가능
-      const nickname = (await userPage.getCellText(i, 4)).trim();
-      if (!userPage.isMeaningfulValue(nickname)) emptyNicknameCount++;
+        const name = (await userPage.getCellText(i, 5)).trim();
+        if (!userPage.isMeaningfulValue(name)) emptyNameCount++;
+      }
 
-      const name = (await userPage.getCellText(i, 5)).trim();
-      if (!userPage.isMeaningfulValue(name)) emptyNameCount++;
+      if (emptyNicknameCount > 0 || emptyNameCount > 0) {
+        console.log(
+          `  ⚠️ 프로필 미완성 회원: 닉네임 비어있음 ${emptyNicknameCount}건, 이름 비어있음 ${emptyNameCount}건 (커머스 가입 시 미입력 허용)`,
+        );
+      }
+      console.log(`  ✅ ${rows}개 행 필수 컬럼(이메일, 유저코드) 검증 완료`);
     }
-
-    if (emptyNicknameCount > 0 || emptyNameCount > 0) {
-      console.log(
-        `  ⚠️ 프로필 미완성 회원: 닉네임 비어있음 ${emptyNicknameCount}건, 이름 비어있음 ${emptyNameCount}건 (커머스 가입 시 미입력 허용)`,
-      );
-    }
-    console.log(`  ✅ ${rows}개 행 필수 컬럼(이메일, 유저코드) 검증 완료`);
   });
 
   test("USR-DATA-02: 목록 건수와 테이블 행 수 일관성 검증", async () => {
     const metrics = await userPage.getResultMetrics();
-    if (metrics.noResultState) return;
+    if (metrics.noResultState) {
+      expectNoResultMessage(metrics, "회원 목록 건수 일관성 검증");
+    } else {
+      const pageLimit = await userPage.getPerPageLimit(10);
 
-    const pageLimit = await userPage.getPerPageLimit(10);
-
-    expect(metrics.rowCount, "❌ 행 수가 0입니다.").toBeGreaterThan(0);
-    expect(
-      metrics.rowCount,
-      `❌ 행 수(${metrics.rowCount})가 페이지 제한(${pageLimit})을 초과합니다.`,
-    ).toBeLessThanOrEqual(pageLimit);
-    console.log(`  ✅ 건수 일관성: ${metrics.rowCount}행 (제한: ${pageLimit})`);
+      expect(metrics.rowCount, "❌ 행 수가 0입니다.").toBeGreaterThan(0);
+      expect(
+        metrics.rowCount,
+        `❌ 행 수(${metrics.rowCount})가 페이지 제한(${pageLimit})을 초과합니다.`,
+      ).toBeLessThanOrEqual(pageLimit);
+      console.log(`  ✅ 건수 일관성: ${metrics.rowCount}행 (제한: ${pageLimit})`);
+    }
   });
 });
 
@@ -149,13 +165,13 @@ test.describe.serial("탭 기능 @feature:admin_makestar.user.list", () => {
 
   test("USR-TAB-01: B2C/B2B 회원관리 탭 전환 검증", async () => {
     const hasTabs = await userPage.hasTabNavigation();
-    if (!hasTabs) {
-      console.log("  ℹ️ 건너뜀: B2C/B2B 탭이 페이지에 존재하지 않음");
-      return;
-    }
+    expect(hasTabs, "❌ B2C/B2B 회원관리 탭이 페이지에 존재하지 않습니다").toBe(
+      true,
+    );
 
     // 초기 상태 기록 (기본 탭: B2C회원관리)
     const initialMetrics = await userPage.getResultMetrics();
+    expectHasUserRows(initialMetrics, "탭 전환 전 B2C 회원 목록");
     const initialFingerprint = await userPage.getFirstRowFingerprint();
 
     // B2B 탭으로 전환
@@ -316,17 +332,11 @@ test.describe.serial("필터 기능 @feature:admin_makestar.user.list", () => {
 
   test("USR-FLT-01: 회원상태 필터 적용 검증", async () => {
     const initialMetrics = await userPage.getResultMetrics();
-    if (initialMetrics.noResultState) {
-      console.log("  ℹ️ 건너뜀: 목록 데이터 없음 (noResultState)");
-      return;
-    }
+    expectHasUserRows(initialMetrics, "회원상태 필터 적용 전 회원 목록");
 
     // 확장 검색 모드로 전환 (필터 사용을 위해)
     const expanded = await userPage.expandSearchMode();
-    if (!expanded) {
-      console.log("  ℹ️ 건너뜀: 확장 검색 모드 전환 불가");
-      return;
-    }
+    expect(expanded, "❌ 확장 검색 모드로 전환할 수 없습니다.").toBe(true);
 
     // 회원상태 셀렉트에서 첫 번째 옵션 선택
     const selectedOption = await userPage.selectFirstStatusOption();
@@ -339,9 +349,10 @@ test.describe.serial("필터 기능 @feature:admin_makestar.user.list", () => {
     const searchBtnVisible = await userPage.submitSearchButton
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    if (searchBtnVisible) {
-      await userPage.clickSearchAndWait();
-    }
+    expect(searchBtnVisible, "❌ 조회 버튼이 보이지 않아 필터를 적용할 수 없습니다.").toBe(
+      true,
+    );
+    await userPage.clickSearchAndWait();
 
     const filteredMetrics = await userPage.getResultMetrics();
 
@@ -364,22 +375,16 @@ test.describe.serial("필터 기능 @feature:admin_makestar.user.list", () => {
   test("USR-FLT-02: 가입서비스 필터 적용 검증", async ({ page }) => {
     // 확장 검색 모드로 전환 (서비스 필터 버튼은 확장 모드에서만 표시)
     const expanded = await userPage.expandSearchMode();
-    if (!expanded) {
-      console.log("  ℹ️ 건너뜀: 확장 검색 모드 전환 불가");
-      return;
-    }
+    expect(expanded, "❌ 확장 검색 모드로 전환할 수 없습니다.").toBe(true);
 
     const hasServiceButtons = await userPage.hasServiceFilterButtons();
-    if (!hasServiceButtons) {
-      console.log("  ℹ️ 건너뜀: 가입서비스 필터 버튼 미존재");
-      return;
-    }
+    expect(
+      hasServiceButtons,
+      "❌ 가입서비스 필터 버튼이 없어 서비스 필터를 검증할 수 없습니다.",
+    ).toBe(true);
 
     const initialMetrics = await userPage.getResultMetrics();
-    if (initialMetrics.noResultState) {
-      console.log("  ℹ️ 건너뜀: 목록 데이터 없음 (noResultState)");
-      return;
-    }
+    expectHasUserRows(initialMetrics, "가입서비스 필터 적용 전 회원 목록");
 
     // 초기 데이터 지문 저장
     const initialFingerprint = await userPage.getFirstRowFingerprint();
@@ -391,10 +396,11 @@ test.describe.serial("필터 기능 @feature:admin_makestar.user.list", () => {
     const searchBtnVisible = await userPage.submitSearchButton
       .isVisible({ timeout: 5000 })
       .catch(() => false);
-    if (searchBtnVisible) {
-      await userPage.clickSearchAndWait();
-      await page.waitForLoadState("networkidle").catch(() => {});
-    }
+    expect(searchBtnVisible, "❌ 조회 버튼이 보이지 않아 서비스 필터를 적용할 수 없습니다.").toBe(
+      true,
+    );
+    await userPage.clickSearchAndWait();
+    await page.waitForLoadState("networkidle").catch(() => {});
 
     const filteredMetrics = await userPage.getResultMetrics();
 
@@ -439,71 +445,71 @@ test.describe.serial("페이지네이션 @feature:admin_makestar.user.list", () 
 
   test("USR-PAGIN-01: 다음 페이지 이동 검증", async ({ page }) => {
     const firstMetrics = await userPage.getResultMetrics();
-
-    if (firstMetrics.noResultState) {
-      console.log("  ℹ️ 건너뜀: 목록 데이터 없음");
-      expect(firstMetrics.hasNoResultMessage).toBeTruthy();
-      return;
-    }
+    expectHasUserRows(firstMetrics, "다음 페이지 이동 전 회원 목록");
 
     const canGoNext = await userPage.canGoToNextPage();
     if (!canGoNext) {
-      console.log("  ℹ️ 건너뜀: 단일 페이지 — 페이지네이션 불필요");
-      return;
+      const pageLimit = await userPage.getPerPageLimit(10);
+      expect(
+        firstMetrics.rowCount,
+        `단일 페이지 상태인데 행 수(${firstMetrics.rowCount})가 페이지 제한(${pageLimit})을 초과합니다.`,
+      ).toBeLessThanOrEqual(pageLimit);
+      console.log("  ✅ 단일 페이지 상태 확인 — 다음 페이지 이동 불필요");
+    } else {
+      const beforeUrl = page.url();
+      const beforeFirstRow = await userPage.getFirstRowFingerprint();
+
+      const moved = await userPage.goToNextPageSafely();
+      expect(moved, "❌ 다음 페이지 이동에 실패했습니다.").toBeTruthy();
+
+      // 데이터 로드 안정화 대기
+      await page.waitForLoadState("networkidle").catch(() => {});
+      await userPage.waitForTableOrNoResult();
+
+      const afterUrl = page.url();
+      const afterFirstRow = await userPage.getFirstRowFingerprint();
+      const afterPage = await userPage.getCurrentPageNumber();
+
+      const urlChanged = beforeUrl !== afterUrl;
+      const rowChanged =
+        beforeFirstRow.length > 0 &&
+        afterFirstRow.length > 0 &&
+        beforeFirstRow !== afterFirstRow;
+      const pageIsSecond = afterPage >= 2;
+
+      expect(
+        urlChanged || rowChanged || pageIsSecond,
+        `다음 페이지 이동 후 식별자 변화가 없습니다. url:${beforeUrl}->${afterUrl}, page:${afterPage}`,
+      ).toBeTruthy();
     }
-
-    const beforeUrl = page.url();
-    const beforeFirstRow = await userPage.getFirstRowFingerprint();
-
-    const moved = await userPage.goToNextPageSafely();
-    expect(moved, "❌ 다음 페이지 이동에 실패했습니다.").toBeTruthy();
-
-    // 데이터 로드 안정화 대기
-    await page.waitForLoadState("networkidle").catch(() => {});
-    await userPage.waitForTableOrNoResult();
-
-    const afterUrl = page.url();
-    const afterFirstRow = await userPage.getFirstRowFingerprint();
-    const afterPage = await userPage.getCurrentPageNumber();
-
-    const urlChanged = beforeUrl !== afterUrl;
-    const rowChanged =
-      beforeFirstRow.length > 0 &&
-      afterFirstRow.length > 0 &&
-      beforeFirstRow !== afterFirstRow;
-    const pageIsSecond = afterPage >= 2;
-
-    expect(
-      urlChanged || rowChanged || pageIsSecond,
-      `다음 페이지 이동 후 식별자 변화가 없습니다. url:${beforeUrl}->${afterUrl}, page:${afterPage}`,
-    ).toBeTruthy();
   });
 
   test("USR-PAGIN-02: 이전 페이지 복귀 검증", async () => {
     const canGoNext = await userPage.canGoToNextPage();
     if (!canGoNext) {
-      console.log("  ℹ️ 건너뜀: 단일 페이지 — 페이지네이션 불필요");
-      return;
-    }
+      const metrics = await userPage.getResultMetrics();
+      expectHasUserRows(metrics, "이전 페이지 복귀 전 회원 목록");
+      console.log("  ✅ 단일 페이지 상태 확인 — 이전 페이지 복귀 불필요");
+    } else {
+      // 2페이지로 이동
+      const moved = await userPage.goToNextPageSafely();
+      expect(moved, "❌ 다음 페이지 이동에 실패했습니다.").toBeTruthy();
 
-    // 2페이지로 이동
-    const moved = await userPage.goToNextPageSafely();
-    expect(moved, "❌ 다음 페이지 이동에 실패했습니다.").toBeTruthy();
+      const secondPageFingerprint = await userPage.getFirstRowFingerprint();
 
-    const secondPageFingerprint = await userPage.getFirstRowFingerprint();
+      // 1페이지로 복귀
+      const returned = await userPage.goToPreviousPageSafely();
+      expect(returned, "❌ 이전 페이지 복귀에 실패했습니다.").toBeTruthy();
 
-    // 1페이지로 복귀
-    const returned = await userPage.goToPreviousPageSafely();
-    expect(returned, "❌ 이전 페이지 복귀에 실패했습니다.").toBeTruthy();
+      const firstPageFingerprint = await userPage.getFirstRowFingerprint();
 
-    const firstPageFingerprint = await userPage.getFirstRowFingerprint();
-
-    // 2페이지와 1페이지의 데이터가 다르면 성공
-    if (secondPageFingerprint.length > 0 && firstPageFingerprint.length > 0) {
-      expect(
-        firstPageFingerprint,
-        "이전 페이지 복귀 후 동일한 데이터가 표시됩니다.",
-      ).not.toBe(secondPageFingerprint);
+      // 2페이지와 1페이지의 데이터가 다르면 성공
+      if (secondPageFingerprint.length > 0 && firstPageFingerprint.length > 0) {
+        expect(
+          firstPageFingerprint,
+          "이전 페이지 복귀 후 동일한 데이터가 표시됩니다.",
+        ).not.toBe(secondPageFingerprint);
+      }
     }
   });
 });
@@ -545,10 +551,7 @@ test.describe.serial("액션 @feature:admin_makestar.user.list", () => {
 
   test("USR-ACTION-02: 전체 선택/해제 체크박스 검증", async () => {
     const metrics = await userPage.getResultMetrics();
-    if (metrics.noResultState) {
-      console.log("  ℹ️ 건너뜀: 목록 데이터 없음");
-      return;
-    }
+    expectHasUserRows(metrics, "전체 선택/해제 체크박스 검증");
 
     // 전체 선택
     await userPage.checkAllRows();
@@ -561,10 +564,11 @@ test.describe.serial("액션 @feature:admin_makestar.user.list", () => {
 
   test("USR-ACTION-03: 개별 행 체크박스 선택/해제 검증", async () => {
     const metrics = await userPage.getResultMetrics();
-    if (metrics.noResultState || metrics.rowCount < 2) {
-      console.log(`  ℹ️ 건너뜀: 행 수 부족 (rowCount: ${metrics.rowCount})`);
-      return;
-    }
+    expectHasUserRows(metrics, "개별 행 체크박스 검증");
+    expect(
+      metrics.rowCount,
+      `❌ 개별 체크박스 검증에는 최소 2개 행이 필요합니다. 현재 rowCount=${metrics.rowCount}`,
+    ).toBeGreaterThanOrEqual(2);
 
     // 첫 번째 행만 체크
     const firstCheckbox = userPage.getRowCheckbox(0);
@@ -597,10 +601,7 @@ test.describe.serial("상세 페이지 @feature:admin_makestar.user.detail", () 
 
   test("USR-DETAIL-01: 상세 페이지 진입 및 기본정보 확인", async ({ page }) => {
     const metrics = await userPage.getResultMetrics();
-    if (metrics.noResultState) {
-      console.log("  ℹ️ 건너뜀: 목록 데이터 없음");
-      return;
-    }
+    expectHasUserRows(metrics, "회원 상세 페이지 진입");
 
     // 첫 행 클릭하여 상세 페이지 이동
     const detailUrl = await userPage.clickFirstRowAndNavigate();
@@ -626,10 +627,7 @@ test.describe.serial("상세 페이지 @feature:admin_makestar.user.detail", () 
     page,
   }) => {
     const metrics = await userPage.getResultMetrics();
-    if (metrics.noResultState) {
-      console.log("  ℹ️ 건너뜀: 목록 데이터 없음");
-      return;
-    }
+    expectHasUserRows(metrics, "회원 상세 일관성 검증");
 
     // B안 일부 도입: 프로필 완성 회원 우선 탐색
     const candidate = await userPage.findRowWithCompleteProfile();
@@ -650,30 +648,71 @@ test.describe.serial("상세 페이지 @feature:admin_makestar.user.detail", () 
       "❌ 목록의 이메일이 비어 있습니다.",
     ).toBeGreaterThan(0);
 
+    const listService = (await userPage.getCellText(listData.rowIndex, 6)).trim();
+
     // 상세 페이지 이동
+    const expectedDetailPath = await userPage.getRowDetailPath(listData.rowIndex);
+    expect(expectedDetailPath, "❌ 목록 행의 상세 링크를 찾을 수 없습니다.").toMatch(
+      /\/user\/\d+/,
+    );
     const detailUrl = await userPage.clickRowAndNavigate(listData.rowIndex);
-    expect(detailUrl).toMatch(/\/user\/\d+/);
+    expect(detailUrl).toContain(expectedDetailPath);
 
     const detailPage = new UserDetailPage(page);
     await detailPage.assertBasicInfoVisible();
 
     // 페이지 텍스트 (getInfoValueByLabel이 DOM 구조에 따라 실패할 수 있어 fallback용)
     const pageText = (await page.locator("body").textContent()) ?? "";
+    const detailAccount = await detailPage.getInfoValueByLabel("가입계정");
+    const detailStatus = await detailPage.getInfoValueByLabel("회원상태");
+    const detailService = await detailPage.getInfoValueByLabel("가입서비스");
 
-    // 이메일 검증 (가입 시 필수이므로 항상 존재해야 함)
-    const detailEmail = await detailPage.getInfoValueByLabel("E-Mail");
+    // 이메일 검증: 상세 UI가 E-Mail 대신 가입계정에만 값을 노출하는 경우까지 허용
+    const rawDetailEmail = await detailPage.getInfoValueByLabel("E-Mail");
+    const detailEmail = rawDetailEmail.includes("@") ? rawDetailEmail : "";
     if (detailEmail.length > 0) {
       expect(
         detailEmail,
         `상세 페이지 E-Mail(${detailEmail})이 목록 이메일(${listData.email})과 불일치`,
       ).toContain(listData.email);
-    } else if (pageText.includes(listData.email)) {
+    } else if (
+      detailAccount.includes(listData.email) ||
+      pageText.includes(listData.email)
+    ) {
       console.log(
-        `  ℹ️ E-Mail 레이블 추출 실패 — 페이지 텍스트에서 이메일(${listData.email}) 확인됨`,
+        `  ℹ️ E-Mail 직접 추출 실패 — 가입계정/페이지 텍스트에서 이메일(${listData.email}) 확인됨`,
       );
     } else {
       console.log(
-        `  ⚠️ 상세 페이지에 이메일(${listData.email}) 미표시 — 커머스 가입 시 미표시 가능`,
+        `  ⚠️ 상세 페이지에 이메일 텍스트(${listData.email})가 직접 노출되지 않습니다. URL 경로 일치로 기본 일관성 확인`,
+      );
+    }
+
+    if (detailStatus.length > 0) {
+      expect(
+        detailStatus,
+        `상세 페이지 회원상태(${detailStatus})가 목록 상태(${listData.status})와 불일치`,
+      ).toContain(listData.status);
+    }
+
+    const normalizedListService = listService.toUpperCase();
+    const normalizedDetailService = detailService.toUpperCase();
+    const hasComparableDetailService =
+      normalizedDetailService.length > 0 &&
+      !/배송정보 수신|마케팅 제공동의/.test(detailService);
+
+    if (
+      listService.length > 0 &&
+      (hasComparableDetailService ||
+        pageText.toUpperCase().includes(normalizedListService))
+    ) {
+      expect(
+        `${normalizedDetailService} ${pageText.toUpperCase()}`,
+        `상세 페이지 가입서비스(${detailService})가 목록 가입서비스(${listService})와 불일치`,
+      ).toContain(normalizedListService);
+    } else if (listService.length > 0) {
+      console.log(
+        `  ⚠️ 상세 페이지에서 가입서비스(${listService})를 안정적으로 추출하지 못했습니다. URL/상태 일관성만 확인`,
       );
     }
 
@@ -691,9 +730,8 @@ test.describe.serial("상세 페이지 @feature:admin_makestar.user.detail", () 
             `  ℹ️ 닉네임 레이블 추출 실패 — 페이지 텍스트에서 닉네임(${listData.nickname}) 확인됨`,
           );
         } else {
-          // 상세 페이지에서 닉네임 필드가 비어있는 경우 (시스템 특성: 목록과 상세 데이터 소스 차이)
           console.log(
-            `  ⚠️ 상세 페이지에 닉네임(${listData.nickname}) 미표시 — 목록/상세 간 데이터 소스 차이 가능`,
+            `  ⚠️ 상세 페이지에서 닉네임(${listData.nickname})을 안정적으로 추출하지 못했습니다. URL/상태 일관성만 확인`,
           );
         }
       }
@@ -706,10 +744,7 @@ test.describe.serial("상세 페이지 @feature:admin_makestar.user.detail", () 
 
   test("USR-DETAIL-03: 상세 페이지에서 목록 복귀 검증", async ({ page }) => {
     const metrics = await userPage.getResultMetrics();
-    if (metrics.noResultState) {
-      console.log("  ℹ️ 건너뜀: 목록 데이터 없음");
-      return;
-    }
+    expectHasUserRows(metrics, "회원 상세에서 목록 복귀");
 
     // 상세 페이지 이동
     const detailUrl = await userPage.clickFirstRowAndNavigate();
@@ -728,12 +763,7 @@ test.describe.serial("상세 페이지 @feature:admin_makestar.user.detail", () 
 
     // 목록 데이터가 다시 로드되었는지 확인
     const returnedMetrics = await userPage.getResultMetrics();
-    if (!returnedMetrics.noResultState) {
-      expect(
-        returnedMetrics.rowCount,
-        "❌ 목록 복귀 후 데이터가 로드되지 않았습니다.",
-      ).toBeGreaterThan(0);
-    }
+    expectHasUserRows(returnedMetrics, "상세 페이지 복귀 후 회원 목록");
   });
 });
 
@@ -741,7 +771,7 @@ test.describe.serial("상세 페이지 @feature:admin_makestar.user.detail", () 
 // B2B 예치금 관리 — QA-98: 예치금 충전 불가
 // Jira: https://makestar-product.atlassian.net/browse/QA-98
 // ============================================================================
-test.describe.serial("[QA-98] B2B 예치금 충전/차감 검증", () => {
+test.describe.serial("[QA-98] B2B 예치금 충전/차감 검증 @suite:ops", () => {
   const DEPOSIT_URL = "https://stage-new-admin.makeuni2026.com/user-group/474";
   const CHARGE_AMOUNT = "1";
   const DEPOSIT_SUFFIX = Date.now().toString().slice(-6);

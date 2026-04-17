@@ -49,9 +49,10 @@ export class ChartInfoListPage extends AdminBasePage {
    * 조회 버튼을 클릭하고 결과 영역이 안정화될 때까지 대기합니다.
    */
   async clickSearchAndWait(): Promise<void> {
-    await this.page.keyboard.press("Escape").catch(() => {});
-    await this.page.keyboard.press("Escape").catch(() => {});
-    await this.submitSearchButton.click({ force: true });
+    await this.clickWithRecovery(this.submitSearchButton, {
+      escapeCount: 2,
+      timeout: this.timeouts.medium,
+    });
     await this.waitForTableOrNoResult();
   }
 
@@ -59,9 +60,6 @@ export class ChartInfoListPage extends AdminBasePage {
    * 검색 조건을 초기화하고 결과 영역이 안정화될 때까지 대기합니다.
    */
   async resetFiltersAndWait(): Promise<void> {
-    await this.page.keyboard.press("Escape").catch(() => {});
-    await this.page.keyboard.press("Escape").catch(() => {});
-
     const canReset = await this.searchResetButton
       .isVisible({ timeout: this.timeouts.short })
       .catch(() => false);
@@ -70,7 +68,10 @@ export class ChartInfoListPage extends AdminBasePage {
         .isEnabled()
         .catch(() => false);
       if (enabled) {
-        await this.searchResetButton.click({ force: true });
+        await this.clickWithRecovery(this.searchResetButton, {
+          escapeCount: 2,
+          timeout: this.timeouts.medium,
+        });
       }
     }
 
@@ -249,8 +250,8 @@ export class ChartInfoListPage extends AdminBasePage {
       return false;
     }
 
-    await this.nextPageButton.click({
-      force: true,
+    await this.clickWithRecovery(this.nextPageButton, {
+      escapeCount: 1,
       timeout: this.timeouts.medium,
     });
     await this.waitForTableOrNoResult(15000);
@@ -274,8 +275,8 @@ export class ChartInfoListPage extends AdminBasePage {
       return false;
     }
 
-    await this.previousPageButton.click({
-      force: true,
+    await this.clickWithRecovery(this.previousPageButton, {
+      escapeCount: 1,
       timeout: this.timeouts.medium,
     });
     await this.waitForTableOrNoResult(15000);

@@ -112,11 +112,13 @@ export class PocaAlbumCreatePage extends AdminBasePage {
       await this.albumTypeSelect.selectOption({ label: type });
     } else {
       // combobox 클릭 → 옵션 선택
-      await this.albumTypeSelect.click();
-      await this.page
+      await this.clickWithRecovery(this.albumTypeSelect, {
+        timeout: this.timeouts.medium,
+      });
+      const typeOption = this.page
         .locator(`[role="option"]:has-text("${type}"), li:has-text("${type}")`)
-        .first()
-        .click();
+        .first();
+      await this.clickAttachedElement(typeOption, { timeout: 5000 });
     }
   }
 
@@ -144,7 +146,7 @@ export class PocaAlbumCreatePage extends AdminBasePage {
       return;
     }
 
-    await datePicker.click();
+    await this.clickWithRecovery(datePicker, { timeout: this.timeouts.medium });
 
     // "오늘" 버튼으로 오늘 날짜 선택
     const todayBtn = this.page.getByText("오늘", { exact: true }).first();
@@ -153,14 +155,14 @@ export class PocaAlbumCreatePage extends AdminBasePage {
       .catch(() => false);
 
     if (hasTodayBtn) {
-      await todayBtn.click();
+      await this.clickWithRecovery(todayBtn, { timeout: this.timeouts.medium });
       console.log("  ✅ 발매일 선택: 오늘");
     } else {
       // 오늘 버튼이 없으면 현재 달의 첫 번째 날짜 클릭
       const dayCell = this.page
         .locator('button:has-text("1"), td:has-text("1")')
         .first();
-      await dayCell.click();
+      await this.clickWithRecovery(dayCell, { timeout: this.timeouts.medium });
       console.log("  ✅ 발매일 선택: 1일");
     }
   }
@@ -191,7 +193,7 @@ export class PocaAlbumCreatePage extends AdminBasePage {
       return;
     }
 
-    await artistDropdown.click();
+    await this.clickWithRecovery(artistDropdown, { timeout: this.timeouts.medium });
 
     // 검색 필드에 아티스트명 입력
     const searchInput = this.page
@@ -214,7 +216,9 @@ export class PocaAlbumCreatePage extends AdminBasePage {
 
     // 텍스트 매칭으로 폴백
     const optionFallback = this.page.getByText(artist, { exact: true }).first();
-    await optionFallback.click();
+    await this.clickWithRecovery(optionFallback, {
+      timeout: this.timeouts.medium,
+    });
     console.log(`  ✅ 아티스트 선택: ${artist}`);
   }
 
@@ -242,7 +246,9 @@ export class PocaAlbumCreatePage extends AdminBasePage {
   /** 등록 클릭 + 목록 이동 대기 */
   async submitAndWaitForList(): Promise<void> {
     await this.createButton.scrollIntoViewIfNeeded();
-    await this.createButton.click({ force: true });
+    await this.clickWithRecovery(this.createButton, {
+      timeout: this.timeouts.medium,
+    });
 
     // 모달 에러 알림 감지 (필수 필드 누락 시 나타남)
     const confirmBtn = this.page
@@ -258,7 +264,9 @@ export class PocaAlbumCreatePage extends AdminBasePage {
         .locator(".fixed, [role='dialog']")
         .first();
       const modalText = (await modalContainer.textContent()) || "";
-      await confirmBtn.click().catch(() => {});
+      await this.clickWithRecovery(confirmBtn, {
+        timeout: this.timeouts.short,
+      }).catch(() => {});
       throw new Error(`등록 실패 — 모달 알림: ${modalText.trim()}`);
     }
 

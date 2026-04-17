@@ -60,6 +60,10 @@ export const USER_SERVICE_FILTERS = [
   "캘린돌",
 ] as const;
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 // ============================================================================
 // UserListPage 클래스
 // ============================================================================
@@ -104,10 +108,12 @@ export class UserListPage extends AdminBasePage {
 
     this.keywordInput = page.getByPlaceholder("검색어를 입력해주세요");
     this.statusFilter = page.locator(".multiselect").first();
-    this.submitSearchButton = page.getByRole("button", {
-      name: "조회하기",
-      exact: true,
-    });
+    this.submitSearchButton = page
+      .getByRole("button", {
+        name: "조회하기",
+        exact: true,
+      })
+      .first();
     this.searchResetButton = page.getByRole("button", {
       name: "검색 초기화",
       exact: true,
@@ -122,20 +128,8 @@ export class UserListPage extends AdminBasePage {
     this.resultSummary = page.getByText(/회원\s*목록|총\s*\d+/i).first();
 
     // 탭 로케이터
-    this.b2cTab = page
-      .getByRole("tab", { name: "B2C회원관리" })
-      .or(
-        page.locator(
-          'a:has-text("B2C회원관리"), button:has-text("B2C회원관리")',
-        ),
-      );
-    this.b2bTab = page
-      .getByRole("tab", { name: "B2B회원관리" })
-      .or(
-        page.locator(
-          'a:has-text("B2B회원관리"), button:has-text("B2B회원관리")',
-        ),
-      );
+    this.b2cTab = page.locator("main").getByText(/B2C\s*회원\s*관리/).first();
+    this.b2bTab = page.locator("main").getByText(/B2B\s*회원\s*관리/).first();
   }
 
   // --------------------------------------------------------------------------
@@ -163,7 +157,10 @@ export class UserListPage extends AdminBasePage {
    */
   async selectTab(tabName: "B2C회원관리" | "B2B회원관리"): Promise<void> {
     const tab = tabName === "B2C회원관리" ? this.b2cTab : this.b2bTab;
-    await tab.first().click();
+    await this.clickWithRecovery(tab.first(), {
+      escapeCount: 1,
+      timeout: this.timeouts.medium,
+    });
     await this.page.waitForLoadState("networkidle").catch(() => {});
     await this.waitForTableOrNoResult();
   }
@@ -304,9 +301,13 @@ export class UserListPage extends AdminBasePage {
     await this.expandSearchMode();
 
     const button = this.page
-      .getByRole("button", { name: serviceName, exact: true })
-      .or(this.page.locator(`button:has-text("${serviceName}")`));
-    await button.first().click();
+      .locator("main")
+      .getByText(new RegExp(`^\\s*${escapeRegExp(serviceName)}\\s*$`))
+      .first();
+    await this.clickWithRecovery(button, {
+      escapeCount: 1,
+      timeout: this.timeouts.medium,
+    });
   }
 
   /**
@@ -315,10 +316,10 @@ export class UserListPage extends AdminBasePage {
   async hasServiceFilterButtons(): Promise<boolean> {
     await this.expandSearchMode();
     const firstService = this.page
-      .getByRole("button", { name: "메이크스타", exact: true })
-      .or(this.page.locator('button:has-text("메이크스타")'));
+      .locator("main")
+      .getByText(/^메이크스타$/)
+      .first();
     return await firstService
-      .first()
       .isVisible({ timeout: 3000 })
       .catch(() => false);
   }
@@ -418,14 +419,10 @@ export class UserListPage extends AdminBasePage {
    * 조회하기 버튼 클릭 후 데이터 로드 대기
    */
   async clickSearchAndWait(): Promise<void> {
-    await this.page.keyboard.press("Escape").catch(() => {});
-
-    // 클릭 전 첫 행 텍스트를 캡처하여 데이터 변경 감지에 활용
-    const prevFirstRow = await this.getFirstRow()
-      .textContent()
-      .catch(() => "");
-
-    await this.submitSearchButton.click({ force: true });
+    await this.clickWithRecovery(this.submitSearchButton, {
+      escapeCount: 1,
+      timeout: this.timeouts.medium,
+    });
 
     // 테이블 데이터가 갱신되거나 no-result가 표시될 때까지 대기
     await this.waitForTableOrNoResult();
@@ -438,8 +435,6 @@ export class UserListPage extends AdminBasePage {
    * 검색 초기화 후 데이터 로드 대기
    */
   async resetFiltersAndWait(): Promise<void> {
-    await this.page.keyboard.press("Escape").catch(() => {});
-
     if (
       await this.searchResetButton
         .isVisible({ timeout: this.timeouts.short })
@@ -449,7 +444,10 @@ export class UserListPage extends AdminBasePage {
         .isEnabled()
         .catch(() => false);
       if (enabled) {
-        await this.searchResetButton.click({ force: true });
+        await this.clickWithRecovery(this.searchResetButton, {
+          escapeCount: 1,
+          timeout: this.timeouts.medium,
+        });
       }
     }
     await this.waitForTableOrNoResult();
@@ -640,14 +638,29 @@ export class UserListPage extends AdminBasePage {
    */
   async clickRowAndNavigate(rowIndex = 0): Promise<string> {
     const row = this.table.locator("tbody tr").nth(rowIndex);
-    // 두 번째 셀 클릭 (첫 번째는 체크박스)
-    const cell = row.locator("td").nth(1);
+    const targetLink = row.locator('a[href*="/user/"]').first();
     await Promise.all([
       this.page.waitForURL(/\/user\/\d+/, { timeout: 10000 }),
-      cell.click(),
+      this.clickWithRecovery(targetLink, {
+        escapeCount: 1,
+        timeout: this.timeouts.medium,
+      }),
     ]);
     await this.waitForLoadState("domcontentloaded");
     return this.page.url();
+  }
+
+  /**
+   * 특정 행이 가리키는 상세 페이지 경로 반환
+   */
+  async getRowDetailPath(rowIndex = 0): Promise<string> {
+    return (
+      (await this.tableRows
+        .nth(rowIndex)
+        .locator('a[href*="/user/"]')
+        .first()
+        .getAttribute("href")) ?? ""
+    ).trim();
   }
 
   /**
