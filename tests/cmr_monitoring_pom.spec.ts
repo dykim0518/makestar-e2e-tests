@@ -57,7 +57,7 @@ const PERF_API_RESPONSE_THRESHOLD_MS =
 // 테스트 스위트
 // ============================================================================
 
-test.describe("기본 페이지 @feature:cmr.home", () => {
+test.describe("기본 페이지 @feature:cmr.home @feature:cmr.event @feature:cmr.product", () => {
   let makestar: MakestarPage;
 
   test.beforeEach(async ({ page }, testInfo) => {
@@ -200,16 +200,20 @@ test.describe("기본 페이지 @feature:cmr.home", () => {
 
     // 결제/로그인 진입은 비동기 라우팅이라 초기 URL을 너무 빨리 읽으면 거짓 실패가 날 수 있음
     await page
-      .waitForFunction(() => {
-        const url = window.location.href;
-        const text = (document.body?.innerText || "").replace(/\s+/g, " ");
-        return (
-          /payments?|checkout|order|login|auth|dialog=open/i.test(url) ||
-          /Proceed to Payment|Delivery Address|Payment Currency|Shipping Infomations|위에 보이는 문자를 입력해 주세요|Google/i.test(
-            text,
-          )
-        );
-      }, undefined, { timeout: 10000 })
+      .waitForFunction(
+        () => {
+          const url = window.location.href;
+          const text = (document.body?.innerText || "").replace(/\s+/g, " ");
+          return (
+            /payments?|checkout|order|login|auth|dialog=open/i.test(url) ||
+            /Proceed to Payment|Delivery Address|Payment Currency|Shipping Infomations|위에 보이는 문자를 입력해 주세요|Google/i.test(
+              text,
+            )
+          );
+        },
+        undefined,
+        { timeout: 10000 },
+      )
       .catch(() => {});
 
     await makestar.waitForNetworkStable();
@@ -222,7 +226,7 @@ test.describe("기본 페이지 @feature:cmr.home", () => {
     );
     const captchaPrompt = await makestar.findVisibleElement(
       [
-        'text=/위에 보이는 문자를 입력해 주세요/i',
+        "text=/위에 보이는 문자를 입력해 주세요/i",
         'button:has-text("입력")',
         'button:has-text("새로고침")',
       ],
@@ -267,7 +271,7 @@ test.describe("기본 페이지 @feature:cmr.home", () => {
 // ==========================================================================
 // GNB 네비게이션
 // ==========================================================================
-test.describe("GNB 네비게이션 @feature:cmr.home", () => {
+test.describe("GNB 네비게이션 @feature:cmr.home @feature:cmr.shop @feature:cmr.funding", () => {
   let makestar: MakestarPage;
 
   test.beforeEach(async ({ page }, testInfo) => {
@@ -492,7 +496,8 @@ test.describe("검색 기능 @feature:cmr.home", () => {
 // 네비게이션 검증 (폴백 없이 버튼 클릭만 테스트)
 // serial로 실행하여 네트워크 부하 감소 및 안정성 향상
 // ==========================================================================
-test.describe.serial("네비게이션 검증 @feature:cmr.home", () => {
+test.describe
+  .serial("네비게이션 검증 @feature:cmr.home @feature:cmr.shop @feature:cmr.event @feature:cmr.funding @feature:cmr.mypage", () => {
   let makestar: MakestarPage;
 
   test.beforeEach(async ({ page }, testInfo) => {
@@ -868,7 +873,7 @@ test.describe("마이페이지/회원 기능 @feature:cmr.mypage", () => {
 // ==========================================================================
 // 상품/장바구니 기능
 // ==========================================================================
-test.describe("상품/장바구니 기능 @feature:cmr.cart", () => {
+test.describe("상품/장바구니 기능 @feature:cmr.cart @feature:cmr.product @feature:cmr.shop", () => {
   let makestar: MakestarPage;
 
   test.beforeEach(async ({ page }, testInfo) => {
@@ -886,15 +891,21 @@ test.describe("상품/장바구니 기능 @feature:cmr.cart", () => {
     await makestar.waitForPageContent();
 
     const productCount = await makestar.shopProductCard.count();
-    expect(productCount, "Shop 페이지에 상품이 표시되어야 합니다").toBeGreaterThan(
-      0,
-    );
+    expect(
+      productCount,
+      "Shop 페이지에 상품이 표시되어야 합니다",
+    ).toBeGreaterThan(0);
 
     let priceChanged = false;
     let optionCandidateFound = false;
-    let verificationDetail = "옵션 변경에 따라 가격이 달라지는 상품을 찾지 못했습니다.";
+    let verificationDetail =
+      "옵션 변경에 따라 가격이 달라지는 상품을 찾지 못했습니다.";
 
-    for (let productIndex = 0; productIndex < Math.min(10, productCount); productIndex++) {
+    for (
+      let productIndex = 0;
+      productIndex < Math.min(10, productCount);
+      productIndex++
+    ) {
       const productCard = makestar.shopProductCard.nth(productIndex);
       await expect(productCard).toBeVisible({ timeout: 5000 });
       await productCard.click();
@@ -915,8 +926,12 @@ test.describe("상품/장바구니 기능 @feature:cmr.cart", () => {
       } else {
         const initialPrice = await makestar.getCurrentPrice();
         const options = await makestar.getOptionList();
-        console.log(`   상품 ${productIndex + 1}: 초기 가격 ${initialPrice || "확인 불가"}`);
-        console.log(`   상품 ${productIndex + 1}: 옵션 개수 ${options.length}개`);
+        console.log(
+          `   상품 ${productIndex + 1}: 초기 가격 ${initialPrice || "확인 불가"}`,
+        );
+        console.log(
+          `   상품 ${productIndex + 1}: 옵션 개수 ${options.length}개`,
+        );
 
         if (initialPrice === null) {
           verificationDetail = `상품 ${productIndex + 1}: 초기 가격을 읽을 수 없습니다.`;
@@ -924,8 +939,13 @@ test.describe("상품/장바구니 기능 @feature:cmr.cart", () => {
           verificationDetail = `상품 ${productIndex + 1}: 가격 변동 검증에 필요한 옵션이 2개 미만입니다.`;
         } else {
           optionCandidateFound = true;
-          for (let optionIndex = 1; optionIndex < options.length; optionIndex++) {
-            const optionSelected = await makestar.selectOptionByIndex(optionIndex);
+          for (
+            let optionIndex = 1;
+            optionIndex < options.length;
+            optionIndex++
+          ) {
+            const optionSelected =
+              await makestar.selectOptionByIndex(optionIndex);
             expect(
               optionSelected,
               `상품 ${productIndex + 1}의 옵션 ${optionIndex + 1} 선택에 실패했습니다.`,
@@ -1042,9 +1062,10 @@ test.describe("상품/장바구니 기능 @feature:cmr.cart", () => {
       await makestar.waitForContentStable();
 
       const itemCount = await makestar.getCartItemCount();
-      expect(itemCount, "장바구니에 상품이 실제로 담겨야 합니다").toBeGreaterThan(
-        0,
-      );
+      expect(
+        itemCount,
+        "장바구니에 상품이 실제로 담겨야 합니다",
+      ).toBeGreaterThan(0);
       console.log(`   ✅ 장바구니 반영 확인 (${itemCount}개)`);
     });
   });
@@ -1300,7 +1321,7 @@ test.describe("상품/장바구니 기능 @feature:cmr.cart", () => {
 // ==========================================================================
 // 아티스트/콘텐츠
 // ==========================================================================
-test.describe("아티스트/콘텐츠 @feature:cmr.artist.list", () => {
+test.describe("아티스트/콘텐츠 @feature:cmr.artist", () => {
   let makestar: MakestarPage;
 
   test.beforeEach(async ({ page }, testInfo) => {
