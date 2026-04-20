@@ -18,9 +18,10 @@ import * as fs from "fs";
 import * as path from "path";
 
 const BASE_URL = "https://stage-new.makeuni2026.com";
+const OUT_SUFFIX = process.env.OUT_SUFFIX ? `-${process.env.OUT_SUFFIX}` : "";
 const OUT_DIR = path.resolve(
   __dirname,
-  "../test-results/inspect-cmr-payment-card-v2",
+  `../test-results/inspect-cmr-payment-card-v2${OUT_SUFFIX}`,
 );
 const SHOT = (name: string) => path.join(OUT_DIR, `${name}.png`);
 const LOG: string[] = [];
@@ -94,7 +95,7 @@ async function dumpFrame(frame: Frame, label: string) {
 async function run() {
   fs.mkdirSync(OUT_DIR, { recursive: true });
   const authFile = process.env.AUTH_FILE || "./auth.json";
-  const productId = process.env.PRODUCT_ID || "15964";
+  const productId = process.env.PRODUCT_ID || "15966";
   log(`🔐 auth=${authFile} product=${productId}`);
 
   const browser = await chromium.launch({ headless: true });
@@ -121,6 +122,9 @@ async function run() {
         body: body.slice(0, 500),
       });
       log(`🔔 make_order: ${resp.status()}`);
+      if (resp.status() >= 400) {
+        log(`   body: ${body.slice(0, 400).replace(/\s+/g, " ")}`);
+      }
     }
   });
 
@@ -142,20 +146,35 @@ async function run() {
     const optionSel = page
       .locator('select, [role="combobox"], [class*="option"] button')
       .first();
-    if ((await optionSel.count()) > 0) {
+    const optCount = await optionSel.count();
+    log(`  option trigger count=${optCount}`);
+    if (optCount > 0) {
       await optionSel.click({ timeout: 2000 }).catch(() => {});
       await page.waitForTimeout(500);
+      const optItems = await page
+        .locator('[role="option"], li[data-value], option')
+        .count();
+      log(`  option items visible=${optItems}`);
       await page
         .locator('[role="option"], li[data-value], option')
         .nth(1)
         .click({ timeout: 2000 })
-        .catch(() => {});
+        .catch((e) =>
+          log(`  option click 실패: ${(e as Error).message.slice(0, 80)}`),
+        );
     }
 
-    await page
-      .locator('button:has-text("Purchase")')
-      .first()
-      .click({ timeout: 10000 });
+    const purchaseLoc = page.locator('button:has-text("Purchase")').first();
+    const purchaseState = await purchaseLoc
+      .evaluate((b) => ({
+        disabled: (b as HTMLButtonElement).disabled,
+        text: (b.textContent || "").trim().slice(0, 60),
+      }))
+      .catch(() => ({ disabled: null, text: "N/A" }));
+    log(
+      `  Purchase 상태: disabled=${purchaseState.disabled} text="${purchaseState.text}"`,
+    );
+    await purchaseLoc.click({ timeout: 10000 });
     await page.waitForURL(/\/payments/, { timeout: 15000 });
     log(`✅ /payments 도달`);
 
@@ -603,6 +622,114 @@ async function run() {
     if (!filled) log(`  ❌ 카드번호 input 없음 — 카드 결제 UI 진입 실패`);
 
     await page.screenshot({ path: SHOT("05-final"), fullPage: true });
+
+    // === STEP G: 카드 나머지 필드 입력 + Submit 탐색 ===
+    if (process.env.PROBE_SUBMIT === "1") {
+      log(`\n=== STEP G: 카드 4분할 재입력 + expiry/email/약관 + Submit ===`);
+      const cardFrame = page
+        .frames()
+        .find((f) => /\/pc\/payment-method\/card\/option/.test(f.url()));
+      if (!cardFrame) {
+        log(`  ❌ card frame 없음`);
+      } else {
+        // 카드번호 4분할 각각 입력 (first() 1필드만 채우는 기존 동작 보강)
+        const digits = TEST_CARD.number.replace(/\D/g, "");
+        for (let i = 0; i < 4; i++) {
+          await cardFrame
+            .locator(`input[name="cardNumber.${i}"]`)
+            .fill(digits.slice(i * 4, (i + 1) * 4), { timeout: 3000 })
+            .catch((e) =>
+              log(
+                `  cardNumber.${i} 실패: ${(e as Error).message.slice(0, 60)}`,
+              ),
+            );
+        }
+        log(`  ✅ 4분할 카드번호 재입력 완료`);
+        await cardFrame
+          .locator('input[name="cardExpiry"]')
+          .fill("12/30", { timeout: 3000 })
+          .catch((e) =>
+            log(`  expiry 실패: ${(e as Error).message.slice(0, 60)}`),
+          );
+        await cardFrame
+          .locator('input[name="email"]')
+          .fill("qa-e2e@makestar.test", { timeout: 3000 })
+          .catch((e) =>
+            log(`  email 실패: ${(e as Error).message.slice(0, 60)}`),
+          );
+        // 약관 체크박스 전체 체크 — Playwright check()로 React state 반영 보장
+        const cbs = cardFrame.locator('input[type="checkbox"]');
+        const cbTotal = await cbs.count();
+        for (let i = 0; i < cbTotal; i++) {
+          const cb = cbs.nth(i);
+          if (!(await cb.isChecked().catch(() => false))) {
+            await cb
+              .check({ force: true, timeout: 2000 })
+              .catch((e) =>
+                log(
+                  `  cb.${i} check 실패: ${(e as Error).message.slice(0, 60)}`,
+                ),
+              );
+          }
+        }
+        log(`  ✅ 약관 체크박스 ${cbTotal}개 check`);
+        log(`  폼 입력 완료, Next-VISA Pay 클릭 준비`);
+
+        const beforeUrl = page.url();
+        const networkLog: string[] = [];
+        context.on("request", (r) => {
+          const u = r.url();
+          if (
+            /tosspayments\.com|makeuni2026\.com/.test(u) &&
+            !/\.js$|\.css$|\.woff|\.png|\.svg/.test(u)
+          ) {
+            networkLog.push(`REQ ${r.method()} ${u.slice(0, 160)}`);
+          }
+        });
+        context.on("response", (r) => {
+          const u = r.url();
+          if (
+            /(confirm|approve|complete|success|done|payment-key|orderId)/i.test(
+              u,
+            )
+          ) {
+            networkLog.push(`RES ${r.status()} ${u.slice(0, 160)}`);
+          }
+        });
+
+        const payBtn = cardFrame.locator('button[aria-label^="Next-"]').first();
+        await payBtn
+          .click({ force: true, timeout: 5000 })
+          .catch((e) =>
+            log(`  Pay 클릭 실패: ${(e as Error).message.slice(0, 80)}`),
+          );
+        log(`  Pay 클릭 후 URL 변화 10초 모니터...`);
+
+        // URL 변화 또는 타임아웃까지 대기
+        await page
+          .waitForURL((u) => u.toString() !== beforeUrl, { timeout: 15000 })
+          .then(() => log(`  ✅ URL 변경됨: ${page.url().slice(0, 200)}`))
+          .catch(() => log(`  ⚠️ URL 변경 없음 (15초)`));
+
+        await page.waitForTimeout(3000);
+        await page.screenshot({
+          path: SHOT("06-after-submit"),
+          fullPage: true,
+        });
+        log(`  최종 URL: ${page.url()}`);
+        log(
+          `  최종 URL 파라미터: ${new URL(page.url()).searchParams.toString()}`,
+        );
+
+        const bodyText = await page.evaluate(() =>
+          (document.body?.innerText || "").replace(/\s+/g, " ").slice(0, 800),
+        );
+        log(`  body text (앞 800자): ${bodyText}`);
+
+        log(`\n  network log (${networkLog.length}):`);
+        networkLog.slice(0, 30).forEach((l) => log(`    ${l}`));
+      }
+    }
 
     log(`\n=== 요약 ===`);
     log(`make_order 응답 ${makeOrderResponses.length}건`);

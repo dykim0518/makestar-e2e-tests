@@ -1,18 +1,24 @@
 /**
  * Makestar CMR 결제 플로우 E2E 테스트
  *
+ * ⚠️ 환경 정책: **stage 환경 전용**. 같은 소스가 prod에도 배포되지만 prod에서는
+ *   실제 결제/데이터 오염 방지를 위해 전체 describe를 자동 스킵한다. 판정 기준은
+ *   `MAKESTAR_BASE_URL`에 `stage`/`staging` 문자열 포함 여부.
+ *
  * Phase 1 (smoke/회귀):
  *  - CMR-PAY-01: Proceed 클릭 시 Toss 진입 smoke + make_order 응답 확인
  *  - CMR-PAY-02: 지역제한 상품 unavailable 경고 + Proceed disabled
  *  - CMR-PAY-03: 동의 체크박스 해제 시 Proceed disabled 회귀
  *
  * Phase 2 (카드 결제 완주):
- *  - CMR-PAY-01-CARD: Visa 카드 입력 완료까지 도달 — submit은 stage 부하 고려로 스킵,
- *    대신 Next-VISA Pay 버튼 enabled 상태로 validation 통과를 검증.
+ *  - CMR-PAY-01-CARD: Visa 카드 정보 입력 완료까지 도달 (submit 직전 검증)
+ *  - CMR-PAY-01-CARD-SUBMIT: Visa 결제 승인(200) + processing URL의 orderId /
+ *    paymentKey / amount 파라미터 검증
  *
  * 미래 확장:
- *  - 카드결제 success/fail callback 완결 검증 (request_id ↔ Admin 주문조회 연동)
+ *  - Admin 주문조회 API로 orderId 실존/상태 검증
  *  - Master/JCB 브랜드 파라미터 확장
+ *  - 결제 실패 케이스(카드 거절) 회귀
  *  - 통화 KRW/USD 전환 (서버 원복 이슈 조사 필요)
  *
  * @see tests/pages/makestar-payment.page.ts
@@ -31,7 +37,17 @@ const BASE_URL =
   process.env.MAKESTAR_BASE_URL || "https://stage-new.makeuni2026.com";
 const TEST_TIMEOUT = 90000;
 
+// 환경 가드: stage 전용. prod에서는 실제 결제가 발생하므로 전체 describe를 스킵.
+// URL에 "stage"/"staging" 문자열이 포함된 경우만 실행으로 간주한다.
+const IS_STAGE_ENV = /stage|staging/i.test(BASE_URL);
+
 test.describe("CMR 결제 회귀", () => {
+  // 같은 소스가 prod에도 배포되는 구조 — prod 실행 방지를 위한 환경 가드.
+  test.skip(
+    !IS_STAGE_ENV,
+    `CMR 결제 테스트는 stage 환경 전용입니다. 현재 MAKESTAR_BASE_URL=${BASE_URL} 은 stage로 판정되지 않아 스킵합니다.`,
+  );
+
   let payment: MakestarPaymentPage;
 
   test.beforeEach(async ({ page }, testInfo) => {
@@ -296,10 +312,12 @@ test.describe("CMR 결제 회귀", () => {
       const orderId = url.searchParams.get("orderId");
       const paymentKey = url.searchParams.get("paymentKey");
       const amount = url.searchParams.get("amount");
+      // Makestar 주문번호 접두사는 CWEB/CRET 등 결제 경로에 따라 다르므로
+      // 대문자 3~4자 + 숫자 구조로 관대하게 검증.
       expect(
         orderId,
         "processing URL에 orderId 파라미터가 있어야 합니다",
-      ).toMatch(/^CWEB\d+/);
+      ).toMatch(/^C[A-Z]{2,4}\d+$/);
       expect(
         paymentKey,
         "processing URL에 paymentKey 파라미터가 있어야 합니다",
