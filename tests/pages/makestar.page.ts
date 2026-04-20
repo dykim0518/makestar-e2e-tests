@@ -340,6 +340,70 @@ export class MakestarPage extends BasePage {
     }
   }
 
+  /** 내 정보 수정 페이지로 이동 */
+  async gotoProfileUpdate(): Promise<void> {
+    await this.goto(`${this.baseUrl}/my-page/update`);
+    await this.waitForLoadState("domcontentloaded");
+    await this.waitForNetworkStable(5000).catch(() => {});
+    await this.handleModal();
+  }
+
+  /** 배송지 등록 페이지로 이동 */
+  async gotoAddressCreate(): Promise<void> {
+    await this.goto(`${this.baseUrl}/my-page/address/post`);
+    await this.waitForLoadState("domcontentloaded");
+    await this.waitForNetworkStable(5000).catch(() => {});
+    await this.handleModal();
+  }
+
+  /** 이벤트 응모 등록 페이지로 이동 */
+  async gotoEventSubmissionCreate(): Promise<void> {
+    await this.goto(`${this.baseUrl}/my-page/event-submissions/post`);
+    await this.waitForLoadState("domcontentloaded");
+    await this.waitForNetworkStable(5000).catch(() => {});
+    await this.handleModal();
+  }
+
+  /** 배송지 목록에서 첫 번째 수정 페이지로 이동 */
+  async gotoFirstAddressUpdate(): Promise<string> {
+    await this.gotoAddress();
+    const editLink = this.page
+      .locator('a[href*="/my-page/address/update/"]')
+      .first();
+    await editLink.waitFor({ state: "attached", timeout: this.timeouts.long });
+    const href = await editLink.getAttribute("href");
+    if (!href) {
+      throw new Error("배송지 수정 링크 href를 찾지 못했습니다");
+    }
+    await this.goto(`${this.baseUrl}${href}`);
+    await this.waitForLoadState("domcontentloaded");
+    await this.waitForNetworkStable(5000).catch(() => {});
+    await this.handleModal();
+    return href;
+  }
+
+  /** 이벤트 응모 내역에서 첫 번째 수정 페이지로 이동 */
+  async gotoFirstEventSubmissionUpdate(): Promise<string> {
+    await this.goto(`${this.baseUrl}/my-page/event-submissions`);
+    await this.waitForLoadState("domcontentloaded");
+    await this.waitForNetworkStable(5000).catch(() => {});
+    await this.handleModal();
+
+    const editLink = this.page
+      .locator('a[href*="/my-page/event-submissions/update/"]')
+      .first();
+    await editLink.waitFor({ state: "attached", timeout: this.timeouts.long });
+    const href = await editLink.getAttribute("href");
+    if (!href) {
+      throw new Error("이벤트 응모 수정 링크 href를 찾지 못했습니다");
+    }
+    await this.goto(`${this.baseUrl}${href}`);
+    await this.waitForLoadState("domcontentloaded");
+    await this.waitForNetworkStable(5000).catch(() => {});
+    await this.handleModal();
+    return href;
+  }
+
   /** 팔로우 관리 페이지로 이동 (리다이렉트 대응 포함) */
   async gotoFollow(): Promise<void> {
     await this.goto(`${this.baseUrl}/my-page/follow`);
@@ -3193,6 +3257,28 @@ export class MakestarPage extends BasePage {
       .catch(() => false);
   }
 
+  /** 프로필 수정 페이지 콘텐츠 존재 확인 */
+  async hasProfileUpdateContent(timeout = 5000): Promise<boolean> {
+    return await this.page
+      .getByText(
+        /Edit User Information|Connected Accounts|Delete Account|Real Name|Nickname/i,
+      )
+      .first()
+      .isVisible({ timeout })
+      .catch(() => false);
+  }
+
+  /** 배송지 등록/수정 폼 콘텐츠 존재 확인 */
+  async hasAddressFormContent(timeout = 5000): Promise<boolean> {
+    return await this.page
+      .getByText(
+        /Register Address|Edit Address|Delivery Address|Recipient|Postal Code|Zip\/Postal Code/i,
+      )
+      .first()
+      .isVisible({ timeout })
+      .catch(() => false);
+  }
+
   /** 비밀번호 입력 필드 존재 확인 및 개수 반환 */
   async getPasswordInputCount(timeout = 5000): Promise<number> {
     const roleInput = this.page
@@ -3237,6 +3323,17 @@ export class MakestarPage extends BasePage {
       .catch(() => false);
   }
 
+  /** 이벤트 응모 등록/수정 폼 콘텐츠 존재 확인 */
+  async hasEventEntryFormContent(timeout = 5000): Promise<boolean> {
+    return await this.page
+      .getByText(
+        /Manage Event Submissions|Applicant Name|Messenger Information|Submission Info|Register Submission Info/i,
+      )
+      .first()
+      .isVisible({ timeout })
+      .catch(() => false);
+  }
+
   /** 팔로우 관리 페이지 콘텐츠 존재 확인 */
   async hasFollowContent(timeout = 5000): Promise<boolean> {
     return await this.page
@@ -3253,6 +3350,23 @@ export class MakestarPage extends BasePage {
       .first()
       .isVisible({ timeout })
       .catch(() => false);
+  }
+
+  /** 기본 Save 버튼 존재 여부 */
+  async hasSaveButton(timeout = 5000): Promise<boolean> {
+    return await this.page
+      .getByRole("button", { name: /save/i })
+      .first()
+      .isVisible({ timeout })
+      .catch(() => false);
+  }
+
+  /** 기본 Save 버튼 disabled 여부 */
+  async isSaveButtonDisabled(timeout = 5000): Promise<boolean | null> {
+    const button = this.page.getByRole("button", { name: /save/i }).first();
+    const visible = await button.isVisible({ timeout }).catch(() => false);
+    if (!visible) return null;
+    return button.isDisabled().catch(() => null);
   }
 
   /** 이메일 로그인 테스트 전에 백업한 쿠키 (테스트 후 복원용) */

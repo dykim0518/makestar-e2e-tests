@@ -307,10 +307,8 @@ export class MakestarPaymentPage extends BasePage {
    * payment-gateway iframe은 프록시드 Next.js 페이지라 내부 버튼 렌더링에 시간이 걸림 →
    * "인증 취소" 버튼 visible 될 때까지 대기 후 클릭.
    */
-  async closeTosspayOverlay(timeout = 5000): Promise<boolean> {
-    // 1) gateway iframe 등장을 짧게 대기 (optional).
-    //    Toss는 Proceed 시점에 iframe을 먼저 만들고 URL을 주입하는 2-step 구조라,
-    //    src가 host 매칭될 때까지만 기다린다. flaky하게 src가 안 주입되면 스킵.
+  async closeTosspayOverlay(timeout = 10000): Promise<boolean> {
+    // gateway iframe이 등장할 때까지 짧게 대기. 안 뜨면 닫을 모달이 없는 것으로 간주.
     const gatewayLoaded = await this._page
       .waitForFunction(
         (host) =>
@@ -322,31 +320,53 @@ export class MakestarPaymentPage extends BasePage {
       )
       .then(() => true)
       .catch(() => false);
-
-    // gateway 자체가 안 떴거나 about:blank로만 머무는 경우 → 닫을 모달이 없으니 통과.
     if (!gatewayLoaded) return true;
-    const pg = this.paymentGatewayFrame();
-    if (!pg) return true;
 
-    const cancelBtn = pg.locator('button[aria-label="인증 취소"]').first();
-    const appeared = await cancelBtn
-      .waitFor({ state: "visible", timeout })
-      .then(() => true)
-      .catch(() => false);
-    // 버튼이 안 보이면 모달 자체가 이미 해제된 상태로 간주.
-    if (!appeared) return true;
+    // TOSSPAY 모달 기본 탭이 "휴대폰번호"(인증 취소 버튼) / "QR코드"(닫기 X 아이콘)로
+    // 랜덤하게 뜨므로 두 변형을 모두 시도하고 pay.toss.im 중첩 iframe까지 탐색한다.
+    const closeSelectors = [
+      'button[aria-label="인증 취소"]',
+      'button[aria-label="닫기"]',
+      'button[aria-label*="close" i]',
+    ];
 
-    await cancelBtn.click({ force: true, timeout: this.timeouts.short });
-    await this._page
-      .waitForFunction(
-        (host) =>
-          !Array.from(document.querySelectorAll("iframe")).some((f) =>
-            f.src.includes(host),
-          ),
-        TOSS_IDENTIFIERS.gatewayHost,
-        { timeout },
-      )
-      .catch(() => {});
+    const deadline = Date.now() + timeout;
+    while (Date.now() < deadline) {
+      // pg iframe src가 순간적으로 host를 미포함한 값으로 바뀌는 false-positive가 있어,
+      // 500ms 후 재확인해 연속 미존재일 때만 제거 판정.
+      if (this.paymentGatewayFrame() === null) {
+        await this._page.waitForTimeout(500);
+        if (this.paymentGatewayFrame() === null) return true;
+      }
+
+      const frames = [
+        this.paymentGatewayFrame(),
+        ...this._page.frames().filter((f) => f.url().includes("pay.toss.im")),
+      ].filter((f): f is Frame => f !== null);
+
+      let clicked = false;
+      for (const f of frames) {
+        for (const sel of closeSelectors) {
+          const btn = f.locator(sel).first();
+          if (
+            (await btn.count().catch(() => 0)) > 0 &&
+            (await btn.isVisible().catch(() => false))
+          ) {
+            await btn
+              .click({ force: true, timeout: this.timeouts.short })
+              .catch(() => {});
+            clicked = true;
+            break;
+          }
+        }
+        if (clicked) break;
+      }
+      if (!clicked) {
+        await this._page.keyboard.press("Escape").catch(() => {});
+      }
+
+      await this._page.waitForTimeout(1000);
+    }
     return this.paymentGatewayFrame() === null;
   }
 
@@ -371,15 +391,31 @@ export class MakestarPaymentPage extends BasePage {
       .locator(`button[aria-label^="${ariaPrefix}"]`)
       .first()
       .waitFor({ state: "visible", timeout: this.timeouts.long });
-    await pw
-      .locator(`button[aria-label^="${ariaPrefix}"]`)
-      .first()
-      .click({ force: true, timeout: this.timeouts.medium });
-    // 선택 상태로 UI가 리렌더링될 때까지 대기 (카드면 아래 카드사 select 등장)
-    await pw
-      .locator(`button[aria-label="${ariaPrefix} 결제 수단 선택됨"]`)
-      .waitFor({ state: "visible", timeout: this.timeouts.medium })
-      .catch(() => {});
+
+    // TOSSPAY 기본 모달이 QR/휴대폰 탭 상태로 남아 widget 위 dimmed overlay를 덮는
+    // 케이스가 있어 Playwright force click도 이벤트가 전달 안 될 수 있음.
+    // widget iframe 내부에서 직접 DOM click()을 호출해 overlay를 우회.
+    await pw.evaluate((prefix) => {
+      const btn = document.querySelector(
+        `button[aria-label^="${prefix}"]`,
+      ) as HTMLButtonElement | null;
+      if (btn) btn.click();
+    }, ariaPrefix);
+
+    if (method === "card") {
+      // 카드사 <select>는 "카드사 선택" combobox가 열려야 DOM에 attach되는 케이스
+      // (Radix-like UI)가 있어 combobox도 함께 JS click으로 토글.
+      await pw.evaluate(() => {
+        const cb = document.querySelector(
+          '[role="combobox"]',
+        ) as HTMLElement | null;
+        if (cb) cb.click();
+      });
+      await pw
+        .locator("select")
+        .first()
+        .waitFor({ state: "attached", timeout: this.timeouts.long });
+    }
   }
 
   /** payment-widget iframe의 native <select>에서 카드사(해외카드) 선택 */
@@ -410,15 +446,28 @@ export class MakestarPaymentPage extends BasePage {
     );
   }
 
-  /** 카드 입력 iframe 등장 대기 (2차 Proceed 이후) */
+  /**
+   * 카드 입력 iframe 등장 대기 (2차 Proceed 이후).
+   * Toss Widget은 iframe element의 src attribute를 유지한 채 JS navigation으로
+   * 내용만 바꾸므로 page context의 `iframe.src` 체크는 miss한다 →
+   * Playwright `frame.url()`로 직접 polling한다.
+   */
   async waitForCardPaymentFrame(timeout = 20000): Promise<void> {
-    await this._page.waitForFunction(
-      () =>
-        Array.from(document.querySelectorAll("iframe")).some((f) =>
-          /\/pc\/payment-method\/card\/option/.test(f.src),
-        ),
-      undefined,
-      { timeout },
+    const deadline = Date.now() + timeout;
+    while (Date.now() < deadline) {
+      const found = this._page
+        .frames()
+        .some((f) => /\/pc\/payment-method\/card\/option/.test(f.url()));
+      if (found) return;
+      await this._page.waitForTimeout(200);
+    }
+    const current = this._page
+      .frames()
+      .filter((f) => /tosspayments\.com|toss\.im/.test(f.url()))
+      .map((f) => f.url().slice(0, 140))
+      .join(" | ");
+    throw new Error(
+      `카드 입력 iframe 미발견 (${timeout}ms). 현재 Toss 프레임: ${current}`,
     );
   }
 
@@ -450,23 +499,25 @@ export class MakestarPaymentPage extends BasePage {
     await f.locator('input[name="email"]').fill(email);
   }
 
-  /** 카드 iframe 내 약관 체크박스 전체 체크 */
+  /**
+   * 카드 iframe 내 약관 체크박스 전체 체크.
+   * DOM 레벨 `input.click()`만으론 Toss 폼의 React state가 갱신되지 않아 submit 시
+   * "약관 미동의" 검증에 걸림 → Playwright `check({ force: true })`로 사용자 클릭 재현.
+   */
   async checkAllCardAgreements(): Promise<{ total: number; toggled: number }> {
     const f = this.cardPaymentFrame();
     if (!f) throw new Error("card iframe 없음");
-    return f.evaluate(() => {
-      const cbs = Array.from(
-        document.querySelectorAll('input[type="checkbox"]'),
-      ) as HTMLInputElement[];
-      let toggled = 0;
-      cbs.forEach((cb) => {
-        if (!cb.checked) {
-          cb.click();
-          toggled += 1;
-        }
-      });
-      return { total: cbs.length, toggled };
-    });
+    const cbs = f.locator('input[type="checkbox"]');
+    const total = await cbs.count();
+    let toggled = 0;
+    for (let i = 0; i < total; i++) {
+      const cb = cbs.nth(i);
+      if (!(await cb.isChecked().catch(() => false))) {
+        await cb.check({ force: true, timeout: this.timeouts.short });
+        toggled += 1;
+      }
+    }
+    return { total, toggled };
   }
 
   /** 최종 결제 버튼 ("Next-VISA Pay" 등 브랜드 종속 aria-label) 클릭 */
