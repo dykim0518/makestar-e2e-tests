@@ -378,8 +378,20 @@ export class MakestarPage extends BasePage {
    * locator 기반으로 오버레이 감지 (page.evaluate 사용하지 않아 네비게이션 중 context 파괴에 안전)
    * 텍스트 버튼 → Escape 키 → JS 강제 제거 순으로 시도
    */
-  private async dismissAllBlockingModals(): Promise<void> {
+  private async dismissAllBlockingModals(
+    options: { waitForDelayedMs?: number } = {},
+  ): Promise<void> {
     const overlayLocator = this._page.locator('div.fixed[class*="z-[40]"]');
+    const { waitForDelayedMs = 0 } = options;
+
+    // 지연 로드되는 프로모션 팝업 대응: 지정 시간만큼 오버레이 출현을 기다림
+    // (예: 홈 첫 진입 시 캐러셀 팝업이 네트워크 안정 이후 뜨는 경우)
+    if (waitForDelayedMs > 0) {
+      await overlayLocator
+        .first()
+        .waitFor({ state: "visible", timeout: waitForDelayedMs })
+        .catch(() => {});
+    }
 
     for (let i = 0; i < 3; i++) {
       // 1) locator 기반 오버레이 존재 확인 (context 파괴에 안전)
@@ -994,7 +1006,9 @@ export class MakestarPage extends BasePage {
     // 팝업 모달 처리 (Close, 닫기 등)
     await this.handleModal();
 
-    if (await this.cancelButton.isVisible({ timeout: 500 }).catch(() => false)) {
+    if (
+      await this.cancelButton.isVisible({ timeout: 500 }).catch(() => false)
+    ) {
       await this.cancelButton.click().catch(() => {});
       await this.waitForContentStable(300).catch(() => {});
     }
@@ -1040,8 +1054,9 @@ export class MakestarPage extends BasePage {
   async openSearchUI(): Promise<void> {
     await this.page.evaluate(() => window.scrollTo(0, 0));
 
-    // 검색 버튼 클릭 전 모달 처리 (모달이 버튼을 가릴 수 있음)
+    // 검색 버튼 클릭 전 모달/오버레이 처리 (검색 버튼을 가릴 수 있음)
     await this.handleModal();
+    await this.dismissAllBlockingModals();
 
     // 페이지 오류 상태 확인 및 복구
     const errorButton = this.page.locator('button:has-text("Back to Home")');
@@ -1049,10 +1064,15 @@ export class MakestarPage extends BasePage {
       console.warn("⚠️ 페이지 오류 발견, 홈으로 복귀 후 재시도");
       await this.gotoHome();
       await this.handleModal();
+      await this.dismissAllBlockingModals();
     }
 
     // 페이지 로딩 대기 (조건부 대기)
     await this.waitForContentStable(500);
+
+    // 네트워크 안정 이후 지연 로드되는 프로모션 팝업이 뜰 수 있으므로
+    // 최대 2초간 오버레이 출현을 기다린 뒤 닫는다
+    await this.dismissAllBlockingModals({ waitForDelayedMs: 2000 });
 
     // 검색 버튼이 보이는지 확인
     const isSearchButtonVisible = await this.searchButton
@@ -1062,13 +1082,19 @@ export class MakestarPage extends BasePage {
       console.warn("⚠️ 검색 버튼이 보이지 않아 페이지 새로고침");
       await this.reload();
       await this.handleModal();
+      await this.dismissAllBlockingModals({ waitForDelayedMs: 2000 });
       await this.waitForContentStable(500);
     }
 
     // 재시도 로직: 최대 3번 시도
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        await this.searchButton.click();
+        await this.dismissAllBlockingModals();
+        // 마지막 시도에서는 오버레이 잔존 가능성 대비하여 force click fallback 적용
+        await this.searchButton.click({
+          timeout: this.timeouts.medium,
+          force: attempt === 3,
+        });
         await expect(this.searchInput).toBeVisible({
           timeout: this.timeouts.medium,
         });
@@ -1078,6 +1104,7 @@ export class MakestarPage extends BasePage {
         if (attempt < 3) {
           console.warn(`⚠️ 검색 UI 열기 시도 ${attempt} 실패, 재시도...`);
           await this.handleModal();
+          await this.dismissAllBlockingModals({ waitForDelayedMs: 1500 });
           await this.waitForContentStable(500);
         } else {
           throw error;
@@ -1123,11 +1150,40 @@ export class MakestarPage extends BasePage {
     );
   }
 
-  /** 진행중인 이벤트 탭 클릭 */
+  /**
+   * 진행중인 이벤트 탭 클릭
+   *
+   * Event 페이지 탭은 `<div [cursor=pointer]>🌟 Ongoing events</div>` 구조.
+   * "Ongoing"은 "Events with ongoing winner announcements" 탭과도 부분매칭되어
+   * getByText 기반 첫 매치가 잘못된 요소를 잡는 문제가 있어, exact tab text로 타겟팅한다.
+   */
   async clickOngoingTab(): Promise<boolean> {
+    const tabCandidates = [
+      // 영어 UI: "🌟 Ongoing events" (이모지 접두어 + exact tab label)
+      this._page.getByText(/^(?:\S\s+)?Ongoing events$/i).first(),
+      // 한국어 UI: "🌟 진행중인 이벤트"
+      this._page.getByText(/^(?:\S\s+)?진행중인 이벤트$/).first(),
+    ];
+
+    for (const tab of tabCandidates) {
+      const visible = await tab
+        .isVisible({ timeout: this.timeouts.medium })
+        .catch(() => false);
+      if (!visible) continue;
+
+      try {
+        await tab.click({ timeout: this.timeouts.medium });
+        console.log(`✅ Ongoing 탭 클릭`);
+        return true;
+      } catch {
+        continue;
+      }
+    }
+
+    // 폴백: 기존 텍스트 패턴 매칭
     return await this.clickFirstVisibleText(
       MAKESTAR_TEXT_PATTERNS.ONGOING_TAB,
-      this.timeouts.medium,
+      this.timeouts.short,
     );
   }
 
@@ -1137,7 +1193,9 @@ export class MakestarPage extends BasePage {
       this.page.locator('main a[href*="/product/"]').first(),
       this.page.locator('a[href*="/product/"]').first(),
       this.page
-        .locator('a[href*="/artist/"][href*="tab=Event"], a[href*="/artist/"][href*="#"]')
+        .locator(
+          'a[href*="/artist/"][href*="tab=Event"], a[href*="/artist/"][href*="#"]',
+        )
         .first(),
     ];
 
@@ -1181,9 +1239,7 @@ export class MakestarPage extends BasePage {
       const card = productCards.nth(i);
       const cardLink = card.locator("xpath=ancestor::a[1]").first();
       const href = (await cardLink.getAttribute("href").catch(() => "")) || "";
-      const parentText = await cardLink
-        .textContent()
-        .catch(() => "");
+      const parentText = await cardLink.textContent().catch(() => "");
 
       if (parentText && /sold out/i.test(parentText)) {
         console.log(`   상품 ${i + 1}: 품절 - 건너뜀`);
@@ -1191,7 +1247,9 @@ export class MakestarPage extends BasePage {
       }
 
       if (!/\/product\//i.test(href)) {
-        console.log(`   상품 ${i + 1}: 상품 상세 링크 아님 (${href || "href 없음"})`);
+        console.log(
+          `   상품 ${i + 1}: 상품 상세 링크 아님 (${href || "href 없음"})`,
+        );
         continue;
       }
 
@@ -1205,7 +1263,9 @@ export class MakestarPage extends BasePage {
         return true;
       }
 
-      console.warn(`   ⚠️ 상품 ${i + 1}: 상세 페이지 진입 실패 (${this.currentUrl})`);
+      console.warn(
+        `   ⚠️ 상품 ${i + 1}: 상세 페이지 진입 실패 (${this.currentUrl})`,
+      );
       await this.goto(`${this.baseUrl}/shop`);
       await this.waitForPageContent();
     }
@@ -1238,13 +1298,17 @@ export class MakestarPage extends BasePage {
 
   private async hasSalesEndedState(): Promise<boolean> {
     return await this.page
-      .getByText(/This product's sales have ended|Sales Ended|판매 종료|판매가 종료/i)
+      .getByText(
+        /This product's sales have ended|Sales Ended|판매 종료|판매가 종료/i,
+      )
       .first()
       .isVisible({ timeout: this.timeouts.short })
       .catch(() => false);
   }
 
-  async openFirstCartEligibleProduct(maxProducts: number = 8): Promise<boolean> {
+  async openFirstCartEligibleProduct(
+    maxProducts: number = 8,
+  ): Promise<boolean> {
     const cardCount = await this.shopProductCard.count();
     const attemptCount = Math.min(cardCount, maxProducts);
 
@@ -1270,7 +1334,9 @@ export class MakestarPage extends BasePage {
         return true;
       }
 
-      console.log(`   상품 ${i + 1}: 활성 장바구니/구매 CTA 없음 - 다음 상품 시도`);
+      console.log(
+        `   상품 ${i + 1}: 활성 장바구니/구매 CTA 없음 - 다음 상품 시도`,
+      );
       await this.returnToProductListing();
     }
 
@@ -1864,7 +1930,10 @@ export class MakestarPage extends BasePage {
           label: `role=button ${pattern}`,
         },
         {
-          locator: this.page.locator("button").filter({ hasText: pattern }).last(),
+          locator: this.page
+            .locator("button")
+            .filter({ hasText: pattern })
+            .last(),
           label: `button ${pattern}`,
         },
         {
@@ -2177,7 +2246,10 @@ export class MakestarPage extends BasePage {
 
   /** 현재 표시된 가격 추출 (숫자만) */
   async getCurrentPrice(): Promise<number | null> {
-    const bodyText = await this.page.locator("body").innerText().catch(() => "");
+    const bodyText = await this.page
+      .locator("body")
+      .innerText()
+      .catch(() => "");
     if (bodyText) {
       const totalPriceMatch = bodyText.match(
         /(?:Total price|총\s*상품금액|총\s*금액)[\s:]*([₩￦][\d,]+|\$[\d,]+(?:\.\d+)?|[\d,]+\s*원)/i,
@@ -2192,7 +2264,9 @@ export class MakestarPage extends BasePage {
 
     const summaryLabels = [
       this.page.getByText(/총\s*상품금액|Total price|총\s*금액/i).first(),
-      this.page.locator('text=/총\\s*상품금액|Total price|총\\s*금액/i').first(),
+      this.page
+        .locator("text=/총\\s*상품금액|Total price|총\\s*금액/i")
+        .first(),
     ];
 
     for (const label of summaryLabels) {
@@ -2351,11 +2425,15 @@ export class MakestarPage extends BasePage {
     await this.waitForContentStable(300).catch(() => {});
 
     const nextPrice = await this.getCurrentPrice();
-    if (nextPrice !== null && (previousPrice === null || nextPrice !== previousPrice)) {
+    if (
+      nextPrice !== null &&
+      (previousPrice === null || nextPrice !== previousPrice)
+    ) {
       return true;
     }
 
-    const selectedClass = (await card.getAttribute("class").catch(() => "")) || "";
+    const selectedClass =
+      (await card.getAttribute("class").catch(() => "")) || "";
     return /selected|active|accent|primary/i.test(selectedClass);
   }
 
@@ -2410,9 +2488,7 @@ export class MakestarPage extends BasePage {
       if (!visible) continue;
 
       const rowText = await this.getSpinbuttonContextText(spinbutton);
-      options.push(
-        rowText?.replace(/\s+/g, " ").trim() || `option-${i + 1}`,
-      );
+      options.push(rowText?.replace(/\s+/g, " ").trim() || `option-${i + 1}`);
     }
 
     if (options.length > 0) {
