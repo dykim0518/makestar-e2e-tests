@@ -1,14 +1,11 @@
 import { defineConfig, devices } from "@playwright/test";
-import * as path from "path";
-const { getBrowserAuthState } = require("./scripts/auth-state");
+import * as fs from "fs";
+
+type StoredCookie = { name: string; value: string; expires?: number };
 
 // 환경별 auth 파일 선택: STG → stg-auth.json, Prod → auth.json
-const browserAuthState = getBrowserAuthState({
-  cwd: process.cwd(),
-  env: process.env,
-  bufferMs: 0,
-});
-const authFile = browserAuthState.authFilePath;
+const isSTG = process.env.MAKESTAR_BASE_URL?.includes("stage");
+const authFile = isSTG ? "./stg-auth.json" : "./auth.json";
 let hasValidAuthFile = false;
 const excludeAuthTests = process.env.EXCLUDE_AUTH_TESTS === "true";
 const manualAuthSpecPatterns = [
@@ -23,24 +20,44 @@ if (excludeAuthTests) {
   nonAdminIgnorePatterns.push(...manualAuthSpecPatterns);
 }
 
-if (browserAuthState.exists) {
-  if (browserAuthState.parseError) {
-    console.log(`⚠️ ${path.basename(authFile)} 파싱 실패`);
-  } else {
-    hasValidAuthFile =
-      !browserAuthState.hasMockData &&
-      browserAuthState.cookies.length > 5 &&
-      browserAuthState.valid;
+if (fs.existsSync(authFile)) {
+  try {
+    const authData = JSON.parse(fs.readFileSync(authFile, "utf-8"));
+    // mock 데이터가 아닌 실제 세션인지 확인
+    const hasMockData = authData.cookies?.some(
+      (c: StoredCookie) =>
+        c.value?.includes("mock_session") || c.value?.includes("mock_token"),
+    );
 
-    if (hasValidAuthFile) {
-      console.log(
-        `✅ ${path.basename(authFile)} 로드됨 (쿠키 ${browserAuthState.cookies.length}개)`,
-      );
-    } else {
-      console.log(
-        `⚠️ ${path.basename(authFile)}의 refresh_token이 없거나 만료됨`,
-      );
+    // refresh_token JWT가 유효한지 확인
+    let hasValidRefreshToken = false;
+    const refreshCookie = authData.cookies?.find(
+      (c: StoredCookie) => c.name === "refresh_token",
+    );
+    if (refreshCookie?.value) {
+      try {
+        const payload = JSON.parse(
+          Buffer.from(refreshCookie.value.split(".")[1], "base64").toString(),
+        );
+        const expiresAt = new Date(payload.exp * 1000);
+        hasValidRefreshToken = expiresAt > new Date();
+        if (hasValidRefreshToken) {
+          console.log(`✅ ${authFile} refresh_token 유효`);
+        }
+      } catch {
+        // JWT 파싱 실패 — 토큰 형식 이상
+      }
     }
+
+    hasValidAuthFile =
+      !hasMockData && authData.cookies?.length > 5 && hasValidRefreshToken;
+    if (hasValidAuthFile) {
+      console.log(`✅ ${authFile} 로드됨 (쿠키 ${authData.cookies.length}개)`);
+    } else if (!hasValidRefreshToken) {
+      console.log(`⚠️ ${authFile}의 refresh_token이 없거나 만료됨`);
+    }
+  } catch (e) {
+    console.log(`⚠️ ${authFile} 파싱 실패`);
   }
 }
 
@@ -48,8 +65,8 @@ if (browserAuthState.exists) {
  * @see https://playwright.dev/docs/test-configuration
  */
 export default defineConfig({
-  // Global Setup은 현재 auth 상태만 검증합니다.
-  // 브라우저 자동 로그인 복구는 하지 않고, 수동 갱신 명령을 안내합니다.
+  // Global Setup 활성화 - 토큰 이슈 시 테스트 실행 전 즉시 갱신 시도
+  // 갱신 실패 시 모든 테스트를 스킵하여 불필요한 반복 방지
   globalSetup: "./global-setup.js",
   testDir: "./tests",
   // 기본 제외 패턴(backup), EXCLUDE_AUTH_TESTS=true면 수동 인증 스펙도 제외
@@ -94,16 +111,18 @@ export default defineConfig({
   /* Configure projects for major browsers */
   projects: [
     // =========================================================================
-    // Admin Setup Project - 인증 검증을 먼저 실행
+    // Admin Setup Project - 인증 테스트를 먼저 실행
+    // 토큰 만료 시 자동으로 브라우저를 열어 로그인 유도
     // =========================================================================
     {
       name: "admin-setup",
       testMatch: ["**/admin_auth_pom.spec.ts"],
-      retries: 0,
+      retries: 0, // Setup은 재시도 없이 한 번만 실행 (자동 로그인 포함)
       use: {
         ...devices["Desktop Chrome"],
         viewport: { width: 1920, height: 1080 },
-        headless: process.env.HEADED !== "true",
+        // Setup은 항상 headed 모드로 실행 (로그인 시 필요)
+        headless: false,
       },
     },
     // Admin 테스트 전용 (PC 환경만) - Setup 완료 후 실행
