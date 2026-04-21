@@ -140,6 +140,11 @@ test.describe("기본 페이지 @feature:cmr.home @feature:cmr.event @feature:cm
     // GNB Event 버튼 클릭 (유저 시나리오)
     await makestar.navigateToEvent();
 
+    // 탭 요소 로드 대기 (콘텐츠 안정화) — PAGE-02와 동일 패턴
+    await makestar
+      .waitForContentStable("body", { stableTime: 500, timeout: 5000 })
+      .catch(() => console.log("⏱️ 콘텐츠 안정화 대기 타임아웃"));
+
     const ongoingClicked = await makestar.clickOngoingTab();
     expect(ongoingClicked).toBeTruthy();
 
