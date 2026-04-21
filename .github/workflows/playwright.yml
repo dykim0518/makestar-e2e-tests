@@ -135,10 +135,14 @@ jobs:
           RETRIES_INPUT="${{ github.event.inputs.retries || '1' }}"
           ENV_INPUT="${{ github.event.inputs.environment || 'prod' }}"
 
-          # STG 환경일 때 BASE URL 설정
+          # 환경별 BASE URL 명시 export — spec의 IS_STAGE_ENV 가드(stage/staging 문자열 포함
+          # 여부로 판정)가 prod 선택 시 오작동하는 것을 방지하기 위해 prod도 명시적으로 설정.
           if [ "${ENV_INPUT}" = "stg" ]; then
             export MAKESTAR_BASE_URL="https://stage-new.makeuni2026.com"
             echo "🔧 STG 환경: MAKESTAR_BASE_URL=${MAKESTAR_BASE_URL}"
+          elif [ "${ENV_INPUT}" = "prod" ]; then
+            export MAKESTAR_BASE_URL="https://www.makestar.com"
+            echo "🔧 PROD 환경: MAKESTAR_BASE_URL=${MAKESTAR_BASE_URL}"
           fi
 
           if ! [[ "${RETRIES_INPUT}" =~ ^[0-5]$ ]]; then
