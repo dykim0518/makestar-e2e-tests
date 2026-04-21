@@ -23,9 +23,14 @@ export const TOSS_TEST_CARDS = {
 /**
  * 결제 완주 가능한 stage 상품 (지역 제한 없음).
  * 첫 번째 항목이 우선 사용되며, 재고 소진 시 다음 후보로 fallback 권장.
- * 최근 확인(scan): 2026-04-20 — 15966 우선 가능, 15964는 make_order 누적 후 간헐적 disabled.
+ *
+ * 최근 확인(2026-04-20):
+ *  - 16006 "결제 테스트 자동화 상품" — QA팀 생성 테스트 전용. 재고/가격/판매기간 안정. [최우선]
+ *    옵션 선택 UX가 있으나 기본 변형이 자동 선택되어 Purchase 즉시 enabled.
+ *  - 15966 — 옵션 없는 단일 상품. 일반 상품이라 운영 변동 가능.
+ *  - 15964 — make_order 누적 후 간헐적 disabled 보고됨, 마지막 fallback.
  */
-export const PAYABLE_PRODUCT_IDS = [15966, 15964] as const;
+export const PAYABLE_PRODUCT_IDS = [16006, 15966, 15964] as const;
 
 /** "지역/국가 제한" 회귀 검증용 상품 */
 export const RESTRICTED_PRODUCT_IDS = [15980, 15979, 15978] as const;
