@@ -159,6 +159,11 @@ test.describe("기본 페이지", () => {
       // GNB Event 버튼 클릭 (유저 시나리오)
       await makestar.navigateToEvent();
 
+      // 탭 요소 로드 대기 (콘텐츠 안정화) — PAGE-02와 동일 패턴
+      await makestar
+        .waitForContentStable("body", { stableTime: 500, timeout: 5000 })
+        .catch(() => console.log("⏱️ 콘텐츠 안정화 대기 타임아웃"));
+
       const ongoingClicked = await makestar.clickOngoingTab();
       expect(ongoingClicked).toBeTruthy();
 
@@ -358,9 +363,7 @@ test.describe("GNB 네비게이션", () => {
 
       await test.step("Funding 페이지 요소 검증", async () => {
         const hasTitle = await makestar.verifyFundingTitle();
-        expect(hasTitle, "펀딩 페이지 타이틀이 표시되어야 합니다").toBe(
-          true,
-        );
+        expect(hasTitle, "펀딩 페이지 타이틀이 표시되어야 합니다").toBe(true);
 
         const hasTabs = await makestar.verifyFundingTabs();
         expect(hasTabs, "프로젝트 필터 탭이 표시되어야 합니다").toBe(true);
@@ -823,7 +826,9 @@ test.describe("마이페이지/회원 기능", () => {
       // 비밀번호 페이지 요소 검증 (POM 메서드 사용)
       const inputCount = await makestar.getPasswordInputCount();
       const isPasswordPage = currentUrl.includes("password") || inputCount > 0;
-      expect(isPasswordPage, "비밀번호 변경 페이지에 도달해야 합니다").toBe(true);
+      expect(isPasswordPage, "비밀번호 변경 페이지에 도달해야 합니다").toBe(
+        true,
+      );
       console.log(
         `✅ 비밀번호 변경 페이지 접근 확인 (입력 필드 ${inputCount}개)`,
       );
@@ -1030,9 +1035,10 @@ test.describe("마이페이지/회원 기능", () => {
       );
 
       const hasSaveButton = await makestar.hasSaveButton();
-      expect(hasSaveButton, "배송지 수정 페이지에 Save 버튼이 있어야 합니다").toBe(
-        true,
-      );
+      expect(
+        hasSaveButton,
+        "배송지 수정 페이지에 Save 버튼이 있어야 합니다",
+      ).toBe(true);
     },
   );
 
@@ -1199,7 +1205,9 @@ test.describe("상품/장바구니 기능", () => {
         }
 
         if (priceChanged) {
-          console.log(`✅ 옵션 변경 후 가격 변동 확인됨 (${verificationDetail})`);
+          console.log(
+            `✅ 옵션 변경 후 가격 변동 확인됨 (${verificationDetail})`,
+          );
           break;
         }
 
@@ -1332,7 +1340,9 @@ test.describe("상품/장바구니 기능", () => {
 
         const existingItemCount = await makestar.getCartItemCount();
         if (existingItemCount > 0) {
-          console.log(`   기존 장바구니 아이템 재사용 (${existingItemCount}개)`);
+          console.log(
+            `   기존 장바구니 아이템 재사용 (${existingItemCount}개)`,
+          );
           return true;
         }
 
@@ -1550,7 +1560,8 @@ test.describe("아티스트/콘텐츠", () => {
 
       // POM 메서드 사용
       const artistElements = await makestar.verifyArtistElements();
-      const elementsFound = Object.values(artistElements).filter(Boolean).length;
+      const elementsFound =
+        Object.values(artistElements).filter(Boolean).length;
 
       console.log(
         `   아티스트 이미지: ${artistElements.image ? "표시됨" : "미표시"}`,
