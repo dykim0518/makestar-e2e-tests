@@ -49,7 +49,9 @@ test.describe.serial("Health Check", () => {
   test.use({ storageState: { cookies: [], origins: [] } });
   let albumbuddy: AlbumBuddyPage;
 
-  test("AB-HC-01: 사이트 접근 가능 여부", async ({ page }) => {
+  test("AB-HC-01: 사이트 접근 가능 여부 @feature:albumbuddy.home", async ({
+    page,
+  }) => {
     albumbuddy = new AlbumBuddyPage(page);
     const response = await page.goto(albumbuddy.shopUrl, {
       waitUntil: "domcontentloaded",
@@ -59,18 +61,21 @@ test.describe.serial("Health Check", () => {
     await expect(page).toHaveTitle(albumbuddy.siteTitle);
   });
 
-  test("AB-HC-02: 주요 페이지 응답 상태 (Shop, About, Pricing)", async ({
+  test(
+    "AB-HC-02: 주요 페이지 응답 상태 (Shop, About, Pricing) @feature:albumbuddy.home @feature:albumbuddy.about @feature:albumbuddy.pricing",
+    async ({ page }) => {
+      albumbuddy = new AlbumBuddyPage(page);
+      const results = await albumbuddy.checkPagesStatus();
+
+      for (const result of results) {
+        expect(result.ok, `${result.url} 응답 실패`).toBe(true);
+      }
+    },
+  );
+
+  test("AB-PERF-01: 홈페이지 로드 성능 @feature:albumbuddy.home", async ({
     page,
   }) => {
-    albumbuddy = new AlbumBuddyPage(page);
-    const results = await albumbuddy.checkPagesStatus();
-
-    for (const result of results) {
-      expect(result.ok, `${result.url} 응답 실패`).toBe(true);
-    }
-  });
-
-  test("AB-PERF-01: 홈페이지 로드 성능", async ({ page }) => {
     albumbuddy = new AlbumBuddyPage(page);
     const result = await albumbuddy.measureHomePagePerformance();
 
@@ -78,7 +83,9 @@ test.describe.serial("Health Check", () => {
     expect(result.passed).toBe(true);
   });
 
-  test("AB-HC-03: 네트워크 에러 모니터링", async ({ page }) => {
+  test("AB-HC-03: 네트워크 에러 모니터링 @feature:albumbuddy.home", async ({
+    page,
+  }) => {
     albumbuddy = new AlbumBuddyPage(page);
 
     const criticalFailures = await albumbuddy.monitorNetworkErrors(async () => {
@@ -102,7 +109,7 @@ test.describe("홈페이지", () => {
   test.use({ storageState: { cookies: [], origins: [] } });
   let albumbuddy: AlbumBuddyPage;
 
-  test.describe("페이지 로드 및 기본 UI", () => {
+  test.describe("페이지 로드 및 기본 UI @feature:albumbuddy.home", () => {
     test("AB-PAGE-01: 홈페이지 접근 및 타이틀 확인", async ({ page }) => {
       albumbuddy = new AlbumBuddyPage(page);
       await albumbuddy.gotoHome();
@@ -132,7 +139,7 @@ test.describe("홈페이지", () => {
     });
   });
 
-  test.describe("콘텐츠 섹션", () => {
+  test.describe("콘텐츠 섹션 @feature:albumbuddy.home.sections", () => {
     test("AB-PAGE-04: 핵심 섹션 확인 (Artists, Recent Albums, Trending, Official Partner)", async ({
       page,
     }) => {
@@ -225,7 +232,9 @@ test.describe("홈페이지", () => {
   });
 
   test.describe("검색 기능", () => {
-    test("AB-SEARCH-01: 검색창 접근", async ({ page }) => {
+    test("AB-SEARCH-01: 검색창 접근 @feature:albumbuddy.search.entry", async ({
+      page,
+    }) => {
       albumbuddy = new AlbumBuddyPage(page);
       await albumbuddy.gotoHome();
 
@@ -246,62 +255,69 @@ test.describe("홈페이지", () => {
       );
     });
 
-    test("AB-SEARCH-02: 첫 상품명 검색 결과 확인", async ({ page }) => {
-      albumbuddy = new AlbumBuddyPage(page);
-      await albumbuddy.gotoHome();
+    test(
+      "AB-SEARCH-02: 첫 상품명 검색 결과 확인 @feature:albumbuddy.search.results",
+      async ({ page }) => {
+        albumbuddy = new AlbumBuddyPage(page);
+        await albumbuddy.gotoHome();
 
-      const searchKeyword = await albumbuddy.getFirstProductKeyword();
-      expect(
-        searchKeyword.length,
-        "검색 가능한 첫 상품명을 찾을 수 있어야 합니다",
-      ).toBeGreaterThan(0);
-
-      const { success, hasResults, resultCount, finalUrl } =
-        await albumbuddy.search(searchKeyword);
-
-      expect(success, "검색 결과 페이지로 이동해야 합니다").toBe(true);
-      expect(
-        /\/search\/result|\/artist\/|\/buddy-shop/i.test(finalUrl),
-        `검색 결과 URL이어야 합니다 (현재 URL: ${finalUrl})`,
-      ).toBe(true);
-
-      if (success) {
-        console.log(
-          `검색 키워드: ${searchKeyword}, 검색 결과: ${hasResults ? "있음" : "없음"} (${resultCount}건)`,
-        );
+        const searchKeyword = await albumbuddy.getFirstProductKeyword();
         expect(
-          hasResults,
-          `첫 상품명(${searchKeyword}) 검색 시 결과가 있어야 합니다`,
+          searchKeyword.length,
+          "검색 가능한 첫 상품명을 찾을 수 있어야 합니다",
+        ).toBeGreaterThan(0);
+
+        const { success, hasResults, resultCount, finalUrl } =
+          await albumbuddy.search(searchKeyword);
+
+        expect(success, "검색 결과 페이지로 이동해야 합니다").toBe(true);
+        expect(
+          /\/search\/result|\/artist\/|\/buddy-shop/i.test(finalUrl),
+          `검색 결과 URL이어야 합니다 (현재 URL: ${finalUrl})`,
         ).toBe(true);
-      }
-    });
 
-    test("AB-SEARCH-03: 존재하지 않는 검색어 처리", async ({ page }) => {
-      albumbuddy = new AlbumBuddyPage(page);
-      await albumbuddy.gotoHome();
+        if (success) {
+          console.log(
+            `검색 키워드: ${searchKeyword}, 검색 결과: ${hasResults ? "있음" : "없음"} (${resultCount}건)`,
+          );
+          expect(
+            hasResults,
+            `첫 상품명(${searchKeyword}) 검색 시 결과가 있어야 합니다`,
+          ).toBe(true);
+        }
+      },
+    );
 
-      const { success, hasResults } = await albumbuddy.search(
-        "xyznonexistent12345",
-      );
+    test(
+      "AB-SEARCH-03: 존재하지 않는 검색어 처리 @feature:albumbuddy.search.results",
+      async ({ page }) => {
+        albumbuddy = new AlbumBuddyPage(page);
+        await albumbuddy.gotoHome();
 
-      // 검색 기능 자체는 동작해야 함
-      expect(success, "검색 기능이 정상적으로 동작해야 합니다").toBe(true);
-
-      if (success) {
-        console.log(`검색 결과 여부: ${hasResults ? "있음" : "없음"}`);
-        // 존재하지 않는 검색어는 결과가 없어야 함
-        expect(hasResults, "존재하지 않는 검색어는 결과가 없어야 합니다").toBe(
-          false,
+        const { success, hasResults } = await albumbuddy.search(
+          "xyznonexistent12345",
         );
-      }
-    });
+
+        // 검색 기능 자체는 동작해야 함
+        expect(success, "검색 기능이 정상적으로 동작해야 합니다").toBe(true);
+
+        if (success) {
+          console.log(`검색 결과 여부: ${hasResults ? "있음" : "없음"}`);
+          // 존재하지 않는 검색어는 결과가 없어야 함
+          expect(
+            hasResults,
+            "존재하지 않는 검색어는 결과가 없어야 합니다",
+          ).toBe(false);
+        }
+      },
+    );
   });
 });
 
 // ============================================================================
 // About 페이지 - 서비스 소개
 // ============================================================================
-test.describe("About 페이지", () => {
+test.describe("About 페이지 @feature:albumbuddy.about", () => {
   test.use({ storageState: { cookies: [], origins: [] } });
   let albumbuddy: AlbumBuddyPage;
 
@@ -344,7 +360,7 @@ test.describe("About 페이지", () => {
 // ============================================================================
 // Pricing 페이지 - 가격 정책
 // ============================================================================
-test.describe("Pricing 페이지", () => {
+test.describe("Pricing 페이지 @feature:albumbuddy.pricing", () => {
   test.use({ storageState: { cookies: [], origins: [] } });
   let albumbuddy: AlbumBuddyPage;
 
@@ -395,7 +411,7 @@ test.describe("상품 상세 및 Request Item", () => {
   test.use({ storageState: { cookies: [], origins: [] } });
   let albumbuddy: AlbumBuddyPage;
 
-  test.describe("상품 상세 페이지", () => {
+  test.describe("상품 상세 페이지 @feature:albumbuddy.product.detail", () => {
     test("AB-NAV-05: 상품 클릭하여 상세 페이지 이동", async ({ page }) => {
       albumbuddy = new AlbumBuddyPage(page);
       await albumbuddy.gotoHome();
@@ -457,12 +473,13 @@ test.describe("상품 상세 및 Request Item", () => {
       albumbuddy = new AlbumBuddyPage(page);
       await albumbuddy.gotoHome();
 
-      const { success } = await albumbuddy.clickFirstProduct();
+      const { success } = await albumbuddy.clickProductWithLoadedImage();
 
       // 상품 클릭이 성공해야 함
-      expect(success, "상품을 클릭하여 상세 페이지로 이동해야 합니다").toBe(
-        true,
-      );
+      expect(
+        success,
+        "상세 이미지가 실제로 로드되는 상품 상세 페이지로 이동해야 합니다",
+      ).toBe(true);
 
       if (success) {
         const imageLoaded = await albumbuddy.verifyProductImageLoaded();
@@ -477,7 +494,7 @@ test.describe("상품 상세 및 Request Item", () => {
     });
   });
 
-  test.describe("Request Item 기능", () => {
+  test.describe("Request Item 기능 @feature:albumbuddy.request-item", () => {
     test("AB-ACTION-02: Request item 버튼 표시", async ({ page }) => {
       albumbuddy = new AlbumBuddyPage(page);
       await albumbuddy.gotoHome();
@@ -535,7 +552,7 @@ test.describe("상품 상세 및 Request Item", () => {
 // ============================================================================
 test.describe("Dashboard", () => {
   // 비로그인 상태 테스트
-  test.describe("비로그인 인증 확인", () => {
+  test.describe("비로그인 인증 확인 @feature:albumbuddy.dashboard.auth", () => {
     test.use({ storageState: { cookies: [], origins: [] } });
     let albumbuddy: AlbumBuddyPage;
 
@@ -604,8 +621,8 @@ test.describe("Dashboard", () => {
   });
 
   // 로그인 상태 테스트
-  test.describe("인증 세션 검증", () => {
-      const authStatus = checkAuthFile(AUTH_FILE, AB_AUTH_REQUIREMENTS);
+  test.describe("인증 세션 검증 @feature:albumbuddy.dashboard.auth", () => {
+    const authStatus = checkAuthFile(AUTH_FILE, AB_AUTH_REQUIREMENTS);
 
     test.use({
       storageState: authStatus.available
@@ -641,7 +658,7 @@ test.describe("Dashboard", () => {
     });
   });
 
-  test.describe("Purchasing", () => {
+  test.describe("Purchasing @feature:albumbuddy.dashboard.purchasing", () => {
     const authStatus = checkAuthFile(AUTH_FILE, AB_AUTH_REQUIREMENTS);
 
     test.use({
@@ -705,7 +722,7 @@ test.describe("Dashboard", () => {
     });
   });
 
-  test.describe("Package", () => {
+  test.describe("Package @feature:albumbuddy.dashboard.package", () => {
     const authStatus = checkAuthFile(AUTH_FILE, AB_AUTH_REQUIREMENTS);
 
     test.use({
@@ -769,36 +786,40 @@ test.describe("통합 시나리오", () => {
   test.use({ storageState: { cookies: [], origins: [] } });
   let albumbuddy: AlbumBuddyPage;
 
-  test("AB-NAV-06: 메뉴 탐색 플로우: Shop → About → Pricing", async ({
-    page,
-  }) => {
-    albumbuddy = new AlbumBuddyPage(page);
+  test(
+    "AB-NAV-06: 메뉴 탐색 플로우: Shop → About → Pricing @feature:albumbuddy.home @feature:albumbuddy.about @feature:albumbuddy.pricing",
+    async ({ page }) => {
+      albumbuddy = new AlbumBuddyPage(page);
 
-    // 1. Shop 진입
-    await albumbuddy.gotoHome();
-    await expect(page).toHaveTitle(albumbuddy.siteTitle);
+      // 1. Shop 진입
+      await albumbuddy.gotoHome();
+      await expect(page).toHaveTitle(albumbuddy.siteTitle);
 
-    // 2. About으로 이동
-    await albumbuddy.clickNavButton("About");
-    await expect(page).toHaveURL(ALBUMBUDDY_PAGES.about.pattern);
+      // 2. About으로 이동
+      await albumbuddy.clickNavButton("About");
+      await expect(page).toHaveURL(ALBUMBUDDY_PAGES.about.pattern);
 
-    // 3. 홈으로 돌아가서 Pricing으로 이동
-    await page.goto(albumbuddy.shopUrl, { waitUntil: "domcontentloaded" });
-    await albumbuddy.waitForPageReady();
-    await albumbuddy.clickNavButton("Pricing");
-    await expect(page).toHaveURL(ALBUMBUDDY_PAGES.pricing.pattern);
-  });
+      // 3. 홈으로 돌아가서 Pricing으로 이동
+      await page.goto(albumbuddy.shopUrl, { waitUntil: "domcontentloaded" });
+      await albumbuddy.waitForPageReady();
+      await albumbuddy.clickNavButton("Pricing");
+      await expect(page).toHaveURL(ALBUMBUDDY_PAGES.pricing.pattern);
+    },
+  );
 
-  test("AB-NAV-07: 브라우저 히스토리: 뒤로/앞으로", async ({ page }) => {
-    albumbuddy = new AlbumBuddyPage(page);
+  test(
+    "AB-NAV-07: 브라우저 히스토리: 뒤로/앞으로 @feature:albumbuddy.home @feature:albumbuddy.about",
+    async ({ page }) => {
+      albumbuddy = new AlbumBuddyPage(page);
 
-    await page.goto(albumbuddy.shopUrl, { waitUntil: "domcontentloaded" });
-    await albumbuddy.gotoAbout();
+      await page.goto(albumbuddy.shopUrl, { waitUntil: "domcontentloaded" });
+      await albumbuddy.gotoAbout();
 
-    await page.goBack();
-    await expect(page).toHaveURL(/shop/i);
+      await page.goBack();
+      await expect(page).toHaveURL(/shop/i);
 
-    await page.goForward();
-    await expect(page).toHaveURL(/about/i);
-  });
+      await page.goForward();
+      await expect(page).toHaveURL(/about/i);
+    },
+  );
 });

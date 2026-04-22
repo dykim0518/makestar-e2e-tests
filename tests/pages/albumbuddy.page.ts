@@ -168,22 +168,50 @@ export class AlbumBuddyPage extends BasePage {
     } catch {
       // networkidle 타임아웃은 무시
     }
-    await this.wait(2000);
+    await this.waitForContentStable("body", {
+      timeout: this.timeouts.short,
+      stableTime: 250,
+    }).catch(() => {});
 
     // 오버레이/모달 제거
     for (let i = 0; i < 3; i++) {
       await this.page.evaluate(() => {
-        document
-          .querySelectorAll(
-            '.modal-overlay, [class*="overlay"], [class*="modal"]',
-          )
-          .forEach((el) => {
-            (el as HTMLElement).style.cssText =
-              "display:none!important;visibility:hidden!important;pointer-events:none!important;";
-          });
+        Array.from(document.querySelectorAll("body *")).forEach((node) => {
+          if (!(node instanceof HTMLElement)) {
+            return;
+          }
+
+          const className =
+            typeof node.className === "string" ? node.className : "";
+          const role = node.getAttribute("role") || "";
+          const ariaModal = node.getAttribute("aria-modal") === "true";
+          const style = window.getComputedStyle(node);
+          const zIndex = Number.parseInt(style.zIndex || "0", 10);
+
+          const isKnownBackdrop =
+            /\bmodal-overlay\b/i.test(className) ||
+            /\bmodal-backdrop\b/i.test(className) ||
+            /\bdrawer-backdrop\b/i.test(className) ||
+            /\bbackdrop\b/i.test(className);
+          const isBlockingDialog =
+            (role === "dialog" || ariaModal) &&
+            style.position === "fixed" &&
+            style.pointerEvents !== "none" &&
+            zIndex >= 20;
+
+          if (!isKnownBackdrop && !isBlockingDialog) {
+            return;
+          }
+
+          node.style.cssText =
+            "display:none!important;visibility:hidden!important;pointer-events:none!important;";
+        });
       });
       await this.page.keyboard.press("Escape");
-      await this.wait(200);
+      await this.waitForContentStable("body", {
+        timeout: this.timeouts.short,
+        stableTime: 120,
+      }).catch(() => {});
     }
   }
 
@@ -1504,6 +1532,99 @@ export class AlbumBuddyPage extends BasePage {
   }
 
   /**
+   * 실제로 로드된 상세 이미지를 가진 상품을 찾아 상세 페이지로 이동
+   * 모니터링 관점에서 "첫 상품"보다 "이미지 검증 가능한 상품"을 우선 선택합니다.
+   */
+  async clickProductWithLoadedImage(
+    maxCandidates: number = 4,
+  ): Promise<{
+    success: boolean;
+    productName: string;
+  }> {
+    await this.gotoHome();
+    await this.waitForPageReady();
+    await this.page.evaluate(() => window.scrollBy(0, 500));
+    await this.waitForContentStable("body", {
+      timeout: this.timeouts.short,
+      stableTime: 300,
+    }).catch(() => {});
+
+    const gridCards = this.page.locator(".album__grid > div > div");
+    const fallbackCards = this.page.locator(
+      'div:has(img[alt="image"]):has(p:has-text("$"))',
+    );
+    const gridCount = await gridCards.count().catch(() => 0);
+    const fallbackCount = await fallbackCards.count().catch(() => 0);
+    const candidateCards = gridCount > 1 ? gridCards : fallbackCards;
+    const attemptCount = Math.min(
+      gridCount > 1 ? gridCount : fallbackCount,
+      maxCandidates,
+    );
+
+    for (let i = 0; i < attemptCount; i += 1) {
+      if (i > 0) {
+        // 상품 상세 -> 뒤로 복귀가 간헐적으로 빈 화면에 머물러
+        // 다음 후보 탐색이 끊기므로, 매번 Shop을 다시 열어 후보를 재탐색합니다.
+        await this.gotoHome();
+        await this.page.evaluate(() => window.scrollBy(0, 500));
+        await this.waitForContentStable("body", {
+          timeout: this.timeouts.short,
+          stableTime: 300,
+        }).catch(() => {});
+      }
+
+      const card = candidateCards.nth(i);
+      const visible = await card
+        .isVisible({ timeout: this.timeouts.medium })
+        .catch(() => false);
+      if (!visible) {
+        continue;
+      }
+
+      const text = ((await card.textContent().catch(() => "")) || "").trim();
+      if (text.includes("Banner") || text.includes("배너")) {
+        continue;
+      }
+      const productName = text.split("$")[0].trim().substring(0, 50);
+
+      await card.scrollIntoViewIfNeeded().catch(() => {});
+      await card.click({ timeout: this.timeouts.medium }).catch(() => {});
+      await this.waitForUrlContains(/\/product\//, this.timeouts.medium).catch(
+        () => {},
+      );
+      await this.waitForPageReady();
+
+      if (!this.currentUrl.includes("/product/")) {
+        continue;
+      }
+
+      const imageLoaded = await this.verifyProductImageLoaded();
+      if (imageLoaded) {
+        // SPA 전환 직후 이전 목록 DOM이 잠깐 남아 false positive가 날 수 있어
+        // 상세 페이지가 안정된 뒤 한 번 더 확인합니다.
+        await this.waitForContentStable("body", {
+          timeout: this.timeouts.short,
+          stableTime: 400,
+        }).catch(() => {});
+        const stableImageLoaded = await this.verifyProductImageLoaded();
+        if (!stableImageLoaded) {
+          console.warn(
+            `상품 ${i + 1}번은 전환 직후 이미지만 보여 false positive로 판정됨 — 다음 상품 시도`,
+          );
+          continue;
+        }
+        return { success: true, productName };
+      }
+
+      console.warn(
+        `상품 ${i + 1}번은 상세 이미지 검증 실패 — 다음 상품 시도`,
+      );
+    }
+
+    return { success: false, productName: "" };
+  }
+
+  /**
    * 상품 상세 페이지 요소 확인
    * AlbumBuddy 상품 페이지 구조: /product/{uuid}?tab=description
    */
@@ -1601,21 +1722,106 @@ export class AlbumBuddyPage extends BasePage {
       return false;
     }
 
-    // AlbumBuddy는 img[alt="image"] 또는 img[alt="componentImage"] 사용
-    const productImages = this.page.locator(
-      'img[alt="image"], img[alt="componentImage"]',
-    );
-    const count = await productImages.count();
+    await this.page
+      .waitForFunction(
+        () => {
+          const text = document.body.innerText || "";
+          const hasPrice = /\$\s*\d+(\.\d+)?/.test(text);
+          const hasDetailMarker =
+            /add to assisted purchase|go to vendor/i.test(text);
+          return hasPrice && hasDetailMarker;
+        },
+        { timeout: this.timeouts.medium },
+      )
+      .catch(() => {});
+    await this.waitForContentStable("body", {
+      timeout: this.timeouts.short,
+      stableTime: 300,
+    }).catch(() => {});
 
-    if (count === 0) return false;
+    const selector = 'img[alt="image"], img[alt="componentImage"]';
+    const hasLoadedSubstantialImage = async (): Promise<boolean> =>
+      this.page
+        .evaluate((imageSelector: string) => {
+          const images = Array.from(
+            document.querySelectorAll(imageSelector),
+          ) as HTMLImageElement[];
 
-    const firstImg = productImages.first();
-    if (await firstImg.isVisible()) {
-      const naturalWidth = await firstImg.evaluate(
-        (img: HTMLImageElement) => img.naturalWidth,
-      );
-      return naturalWidth > 0;
+          return images.some((img) => {
+            const style = window.getComputedStyle(img);
+            const rect = img.getBoundingClientRect();
+            const loaded = img.complete && img.naturalWidth > 0;
+            const visible =
+              style.display !== "none" &&
+              style.visibility !== "hidden" &&
+              rect.width >= 120 &&
+              rect.height >= 120;
+
+            return loaded && visible;
+          });
+        }, selector)
+        .catch(() => false);
+
+    const initialLoaded = await hasLoadedSubstantialImage();
+    if (initialLoaded) {
+      return true;
     }
-    return false;
+
+    await this.page
+      .waitForFunction(
+        (imageSelector: string) => {
+          const images = Array.from(
+            document.querySelectorAll(imageSelector),
+          ) as HTMLImageElement[];
+
+          return images.some((img) => {
+            const style = window.getComputedStyle(img);
+            const rect = img.getBoundingClientRect();
+            const loaded = img.complete && img.naturalWidth > 0;
+            const visible =
+              style.display !== "none" &&
+              style.visibility !== "hidden" &&
+              rect.width >= 120 &&
+              rect.height >= 120;
+
+            return loaded && visible;
+          });
+        },
+        selector,
+        { timeout: this.timeouts.medium },
+      )
+      .catch(async () => {
+        const debugStates = await this.page
+          .evaluate((imageSelector: string) => {
+            return Array.from(
+              document.querySelectorAll(imageSelector),
+            )
+              .slice(0, 8)
+              .map((node, index) => {
+                const img = node as HTMLImageElement;
+                const style = window.getComputedStyle(img);
+                const rect = img.getBoundingClientRect();
+                return {
+                  index,
+                  alt: img.getAttribute("alt"),
+                  complete: img.complete,
+                  naturalWidth: img.naturalWidth,
+                  width: Math.round(rect.width),
+                  height: Math.round(rect.height),
+                  display: style.display,
+                  visibility: style.visibility,
+                  top: Math.round(rect.top),
+                  src: (img.getAttribute("src") || "").slice(0, 120),
+                };
+              });
+          }, selector)
+          .catch(() => []);
+
+        console.warn(
+          `AlbumBuddy 상세 이미지 로드 실패 상태: ${JSON.stringify(debugStates)}`,
+        );
+      });
+
+    return hasLoadedSubstantialImage();
   }
 }
