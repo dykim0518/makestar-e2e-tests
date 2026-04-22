@@ -723,7 +723,8 @@ test.describe.serial("SKU 목록 @feature:admin_makestar.sku.list", () => {
 // ##############################################################################
 // 2. SKU - 신규 생성
 // ##############################################################################
-test.describe.serial("SKU 생성 @feature:admin_makestar.sku.create @suite:ops", () => {
+test.describe
+  .serial("SKU 생성 @feature:admin_makestar.sku.create @suite:ops", () => {
   test("SKU-CREATE-01: SKU 신규 생성 및 검증", async ({ page }) => {
     const skuListPage = new SKUListPage(page);
     const skuCreatePage = new SkuCreatePage(page);
@@ -1021,7 +1022,8 @@ test.describe("상품 목록 @feature:admin_makestar.event.list", () => {
 // ##############################################################################
 // 3. 상품 (PRD) - 신규 등록
 // ##############################################################################
-test.describe.serial("상품 등록 @feature:admin_makestar.event.create @suite:ops", () => {
+test.describe
+  .serial("상품 등록 @feature:admin_makestar.event.create @suite:ops", () => {
   test("PRD-CREATE-01: 상품 신규 등록 및 검증", async ({ page }, testInfo) => {
     // 다단계 테스트 (대분류 확인/생성 → 상품등록 → 폼입력 → 저장) — 타임아웃 확장
     test.setTimeout(300_000);
@@ -1250,7 +1252,7 @@ test.describe.serial("상품 등록 @feature:admin_makestar.event.create @suite:
       // 3-3: 전시 옵션/노출위치 선택 (필수)
       console.log("  3-3: 전시 옵션/노출위치 선택");
       await eventCreatePage.selectDisplayOption("B2C+B2B");
-      await eventCreatePage.selectDisplayLocation();
+      await eventCreatePage.selectDisplayLocation(undefined, true);
 
       // 3-4: 판매기간 설정 (필수)
       console.log("  3-4: 판매기간 설정");
@@ -1313,7 +1315,9 @@ test.describe.serial("상품 등록 @feature:admin_makestar.event.create @suite:
 
           return checkbox.checked;
         });
-        expect(checked, "판매량 기준 체크박스가 선택되지 않았습니다.").toBe(true);
+        expect(checked, "판매량 기준 체크박스가 선택되지 않았습니다.").toBe(
+          true,
+        );
         await expect(targetCheckbox).toBeChecked({ timeout: 5000 });
         console.log("ℹ️ 판매량 기준 체크박스 클릭 완료");
       } else {
@@ -1418,10 +1422,14 @@ test.describe.serial("상품 등록 @feature:admin_makestar.event.create @suite:
           }
         }
         await page.keyboard.press("Escape").catch(() => {});
-        await page.locator(".modal-overlay").first().waitFor({
-          state: "hidden",
-          timeout: 3000,
-        }).catch(() => {});
+        await page
+          .locator(".modal-overlay")
+          .first()
+          .waitFor({
+            state: "hidden",
+            timeout: 3000,
+          })
+          .catch(() => {});
 
         await submitBtn.click({ force: true });
         console.log("  지금 등록하기 버튼 클릭");
@@ -1642,7 +1650,9 @@ test.describe.serial("상품 등록 @feature:admin_makestar.event.create @suite:
           await expect(row).toBeVisible();
         }
 
-        console.log(`\n🎉 PRD-CREATE-01 통과: 상품 등록 완료 (${productName})\n`);
+        console.log(
+          `\n🎉 PRD-CREATE-01 통과: 상품 등록 완료 (${productName})\n`,
+        );
       }
     });
   });
@@ -1751,7 +1761,7 @@ test.describe.serial("상품 등록 @feature:admin_makestar.event.create @suite:
   // 재현경로: 전시 카테고리 상세에서 상품 순서 변경 → 뒤로가기 → 미저장 팝업
   // 기대결과: 'beforeunload' 다이얼로그 노출 + 사용자 선택에 따라 유지/이탈
   // ========================================================================
-test.describe
+  test.describe
     .serial("전시 카테고리 우선순위 변경 — 미저장 팝업 (QA-85)", () => {
     const DC_PARENT =
       "https://stage-new-admin.makeuni2026.com/display-category";
@@ -1879,10 +1889,9 @@ test.describe
         .first();
       await backBtn.click();
       await expect
-        .poll(
-          () => dialogs.some((dialog) => dialog.type === "beforeunload"),
-          { timeout: 10000 },
-        )
+        .poll(() => dialogs.some((dialog) => dialog.type === "beforeunload"), {
+          timeout: 10000,
+        })
         .toBe(true);
 
       expect(
@@ -1924,10 +1933,9 @@ test.describe
         .first();
       await backBtn.click();
       await expect
-        .poll(
-          () => dialogs.some((dialog) => dialog.type === "beforeunload"),
-          { timeout: 10000 },
-        )
+        .poll(() => dialogs.some((dialog) => dialog.type === "beforeunload"), {
+          timeout: 10000,
+        })
         .toBe(true);
 
       expect(
@@ -2046,9 +2054,9 @@ test.describe
       await page.locator("table tbody tr").evaluateAll((rows, idx) => {
         return rows
           .map((row) =>
-            (
-              row.querySelectorAll("td")[idx]?.textContent ?? ""
-            ).replace(/\s+/g, " ").trim(),
+            (row.querySelectorAll("td")[idx]?.textContent ?? "")
+              .replace(/\s+/g, " ")
+              .trim(),
           )
           .filter(Boolean);
       }, skuNameCol);

@@ -25,7 +25,7 @@ import { parseExcelOrZip } from "./helpers/excel-parser";
 import { initPageWithRecovery } from "./helpers/admin";
 
 const BASE =
-  process.env.MAKESTAR_BASE_URL || "https://stage-new-admin.makeuni2026.com";
+  process.env.ADMIN_BASE_URL || "https://stage-new-admin.makeuni2026.com";
 
 type PreAction = "user-b2b-tab" | "event-winner-menu" | "sales-tab";
 

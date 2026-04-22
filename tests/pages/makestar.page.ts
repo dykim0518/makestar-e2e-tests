@@ -60,8 +60,23 @@ export type WebVitalsResult = {
 // ============================================================================
 
 export const MAKESTAR_TEXT_PATTERNS = {
-  ENDED_TAB: ["종료된", "Ended", "Closed", "Past", "종료"] as const,
-  ONGOING_TAB: ["진행중", "Ongoing", "진행", "ongoing"] as const,
+  ENDED_TAB: [
+    "종료된",
+    "Ended",
+    "Sale Ended",
+    "Closed",
+    "Past",
+    "종료",
+  ] as const,
+  ONGOING_TAB: [
+    "진행중",
+    "Ongoing",
+    "Now on sale",
+    "Now On Sale",
+    "on sale",
+    "진행",
+    "ongoing",
+  ] as const,
   OPTION_SELECT: [
     "옵션",
     "Option",
@@ -1246,8 +1261,8 @@ export class MakestarPage extends BasePage {
    */
   async clickOngoingTab(): Promise<boolean> {
     const tabCandidates = [
-      // 영어 UI: "🌟 Ongoing events" (이모지 접두어 + exact tab label)
-      this._page.getByText(/^(?:\S\s+)?Ongoing events$/i).first(),
+      // 영어 UI: "🌟 Ongoing events" | "🌟 Now on sale" (이모지 접두어 + exact tab label)
+      this._page.getByText(/^(?:\S\s+)?(Ongoing events|Now on sale)$/i).first(),
       // 한국어 UI: "🌟 진행중인 이벤트"
       this._page.getByText(/^(?:\S\s+)?진행중인 이벤트$/).first(),
     ];
@@ -1274,8 +1289,37 @@ export class MakestarPage extends BasePage {
     );
   }
 
+  /**
+   * 3rd-party 설문/피드백 모달(예: "How would you rate your experience?") soft-dismiss.
+   * 모달이 화면을 덮어 클릭을 intercept하는 문제를 방지. 없으면 no-op.
+   */
+  async dismissSurveyModal(): Promise<void> {
+    const dismissSelectors = [
+      'button:has-text("건너뛰기")',
+      'button:has-text("Dismiss")',
+      'button:has-text("No thanks")',
+      'button:has-text("Not now")',
+      'button[aria-label*="close" i]',
+      'button[aria-label*="dismiss" i]',
+      '[role="dialog"] button:has-text("닫기")',
+      '[role="dialog"] [aria-label*="close" i]',
+    ];
+
+    for (const selector of dismissSelectors) {
+      const btn = this.page.locator(selector).first();
+      const visible = await btn.isVisible({ timeout: 500 }).catch(() => false);
+      if (visible) {
+        await btn.click({ timeout: 1500 }).catch(() => {});
+        await btn.waitFor({ state: "hidden", timeout: 2000 }).catch(() => {});
+        return;
+      }
+    }
+  }
+
   /** 첫 번째 이벤트 카드 클릭 */
   async clickFirstEventCard(): Promise<void> {
+    await this.dismissSurveyModal();
+
     const linkCandidates = [
       this.page.locator('main a[href*="/product/"]').first(),
       this.page.locator('a[href*="/product/"]').first(),
