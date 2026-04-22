@@ -1103,6 +1103,8 @@ export class MakestarPage extends BasePage {
   async clickLogoToHome(): Promise<void> {
     // 팝업 모달 처리 (Close, 닫기 등)
     await this.handleModal();
+    // 3rd-party 설문 모달이 헤더/로고를 덮을 수 있음 (STG 특히 자주 발생)
+    await this.dismissSurveyModal();
 
     if (
       await this.cancelButton.isVisible({ timeout: 500 }).catch(() => false)
@@ -1131,14 +1133,23 @@ export class MakestarPage extends BasePage {
       console.log("✅ 오버레이 닫기 시도 완료");
     }
 
-    const logoResult = await this.findVisibleElement(
-      this.logoSelectors,
-      this.timeouts.long,
-    );
-    if (!logoResult) {
+    // findVisibleElement의 isVisible은 timeout을 기다리지 않고 즉시 판정하는
+    // Playwright 특성 때문에, 로고 렌더 직전/모달 dismiss 직후 race가 발생.
+    // 로고 후보 로케이터들을 or()로 결합해 waitFor로 실제 대기.
+    const logoLocator = this.page
+      .locator('img[alt="make-star"]')
+      .or(this.page.locator('img[alt*="makestar" i]'))
+      .or(this.page.locator('a[href="/"] img'))
+      .first();
+    try {
+      await logoLocator.waitFor({
+        state: "visible",
+        timeout: this.timeouts.long,
+      });
+    } catch {
       throw new Error("로고를 찾을 수 없습니다");
     }
-    await logoResult.element.click({ timeout: this.timeouts.medium });
+    await logoLocator.click({ timeout: this.timeouts.medium });
     const escapedBaseUrl = this.baseUrl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     await this.expectUrlMatches(new RegExp(`^${escapedBaseUrl}\\/?$`));
     console.log("✅ 로고 클릭으로 Home 복귀 완료");

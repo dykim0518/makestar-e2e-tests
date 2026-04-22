@@ -1793,10 +1793,20 @@ test.describe
     }
 
     test.beforeEach(async ({ page }) => {
-      // 히스토리 컨텍스트 확보 (뒤로가기 대상 페이지 → 상세)
+      // 히스토리 컨텍스트 확보: 두 번 goto()는 Vue router 히스토리에 안 쌓여
+      // 뒤로가기 @click 핸들러가 no-op이 됨. 사용자 여정(목록 → 링크 클릭)으로
+      // SPA 라우팅을 거쳐 상세 진입해야 router.back()이 정상 동작.
       await page.goto(DC_PARENT);
       await waitForPageStable(page);
-      await page.goto(DC_DETAIL);
+
+      const categoryLink = page
+        .locator('a[href="/display-category/34?type=B2C"]')
+        .first();
+      await categoryLink.waitFor({ state: "visible", timeout: 10000 });
+      await categoryLink.click();
+      await page.waitForURL(/\/display-category\/34(?:\?|$|\/)/, {
+        timeout: 10000,
+      });
       await waitForPageStable(page);
     });
 
