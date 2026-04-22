@@ -24,7 +24,7 @@ import { captureApi, extractRows } from "./helpers/admin/api-capture";
 import { fetchJson } from "./helpers/admin/api-fetch";
 
 const BASE =
-  process.env.MAKESTAR_BASE_URL || "https://stage-new-admin.makeuni2026.com";
+  process.env.ADMIN_BASE_URL || "https://stage-new-admin.makeuni2026.com";
 
 const ORDER_SEARCH_API = (userOrderNumber: string) =>
   `${BASE}/api/external/admin/apis/admin/commerce/order/?search=&period_type=all&start_date=&end_date=&user_order_number=${encodeURIComponent(
