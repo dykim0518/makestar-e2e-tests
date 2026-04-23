@@ -94,6 +94,87 @@ export class MakestarPaymentPage extends BasePage {
     });
   }
 
+  /**
+   * 장바구니를 비운다. 각 결제 테스트가 격리되도록 beforeEach에서 호출.
+   *
+   * Purchase 버튼은 장바구니 전체를 order-review로 싣는 플로우이므로, 이전 테스트가
+   * 장바구니를 남긴 채 종료하면 amount가 누적되어 결제 금액 검증이 실패한다.
+   * 병렬 워커가 같은 세션을 공유하는 구조라 테스트 간 고립을 스크립트에서 보장해야 한다.
+   *
+   * `/cart` 페이지에서 체크박스 전체 선택 → Delete → 모달 확인의 흐름. 삭제가 안 되면 throw.
+   */
+  async clearCart(maxAttempts = 3): Promise<void> {
+    await this._page.goto(`${this.baseUrl}/cart`, {
+      waitUntil: "domcontentloaded",
+    });
+    await this._page
+      .waitForLoadState("networkidle", { timeout: this.timeouts.long })
+      .catch(() => {});
+
+    const isEmpty = async (): Promise<boolean> => {
+      return this._page.evaluate(() => {
+        const hasEmptyIndicator = /cart is empty|장바구니.*비어|no items/i.test(
+          document.body.innerText || "",
+        );
+        const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+        return hasEmptyIndicator || checkboxes.length === 0;
+      });
+    };
+
+    if (await isEmpty()) return;
+
+    const checkbox = this._page.locator('input[type="checkbox"]').first();
+    const deleteBtn = this._page.locator('button:has-text("Delete")');
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      if (await isEmpty()) return;
+
+      if ((await checkbox.count()) > 0) {
+        await checkbox
+          .check({ force: true, timeout: this.timeouts.short })
+          .catch(() => {});
+      }
+
+      if (
+        (await deleteBtn.first().count()) > 0 &&
+        (await deleteBtn
+          .first()
+          .isVisible()
+          .catch(() => false))
+      ) {
+        await deleteBtn
+          .first()
+          .click({ timeout: this.timeouts.short })
+          .catch(() => {});
+        await this._page
+          .waitForLoadState("networkidle", { timeout: this.timeouts.medium })
+          .catch(() => {});
+
+        // 모달 내 확인 Delete 버튼 — 삭제 버튼이 2개 이상이면 마지막이 모달
+        if ((await deleteBtn.count()) >= 2) {
+          await deleteBtn
+            .last()
+            .click({ timeout: this.timeouts.short })
+            .catch(() => {});
+          await this._page
+            .waitForLoadState("networkidle", { timeout: this.timeouts.medium })
+            .catch(() => {});
+        }
+      }
+
+      await this._page.reload({ waitUntil: "domcontentloaded" });
+      await this._page
+        .waitForLoadState("networkidle", { timeout: this.timeouts.medium })
+        .catch(() => {});
+    }
+
+    if (!(await isEmpty())) {
+      throw new Error(
+        `clearCart 실패: ${maxAttempts}회 시도 후에도 장바구니가 비워지지 않았습니다. /cart 페이지 수동 확인 필요.`,
+      );
+    }
+  }
+
   private async _selectFirstOptionIfNeeded(): Promise<boolean> {
     const triggers = [
       "select",
@@ -171,6 +252,21 @@ export class MakestarPaymentPage extends BasePage {
       );
       return btn ? (btn.textContent || "").trim() : null;
     });
+  }
+
+  /**
+   * 주문 총액을 KRW 정수로 반환. `getTotalAmountText()` 문자열에서 ₩ 기호 뒤 숫자를 파싱.
+   * USD 통화 상태이거나 파싱 실패 시 null.
+   *
+   * processing URL의 `amount` 파라미터와 비교해 장바구니 누적/상품 가격 변경을 감지하는 용도.
+   */
+  async getTotalAmountKrw(): Promise<number | null> {
+    const text = await this.getTotalAmountText();
+    if (!text) return null;
+    const m = text.match(/[₩￦]\s*([\d,]+)/);
+    if (!m) return null;
+    const n = parseInt(m[1].replace(/,/g, ""), 10);
+    return Number.isFinite(n) ? n : null;
   }
 
   // --------------------------------------------------------------------------
