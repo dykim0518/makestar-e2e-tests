@@ -276,7 +276,7 @@ export class CategoryCreatePage extends AdminBasePage {
 
   /**
    * 아티스트 선택 (multiselect combobox)
-   * @param artistName 아티스트명 (예: "테스트123")
+   * @param artistName 아티스트명 (예: "SBS 드라마 <오늘부터 인간입니다만>")
    */
   async selectArtist(artistName: string): Promise<void> {
     // 오버레이가 사라질 때까지 대기
@@ -328,51 +328,42 @@ export class CategoryCreatePage extends AdminBasePage {
       })
       .catch(() => {});
 
-    // 옵션 선택 시도 (최대 2회: 검색 결과 → 전체 목록 폴백)
     const excludePattern = /새로운 아티스트 등록|검색결과가 없습니다/;
-    let selected = false;
+    const validOptions = this.page
+      .locator(".multiselect__option:visible")
+      .filter({ hasNotText: excludePattern });
 
-    for (let attempt = 0; attempt < 2 && !selected; attempt++) {
-      // 2차 시도: 검색어 클리어 후 전체 목록에서 선택
-      if (attempt === 1 && isInputVisible) {
-        console.log(
-          `⚠️ 아티스트 "${artistName}" 검색 결과 없음 - 전체 목록에서 선택 시도`,
-        );
-        await searchInput.clear();
-        await this.wait(1500);
-      }
+    const targetOption = validOptions.filter({ hasText: artistName }).first();
+    const isTargetVisible = await targetOption
+      .isVisible({ timeout: 2000 })
+      .catch(() => false);
 
-      const validOptions = this.page
-        .locator(".multiselect__option:visible")
-        .filter({ hasNotText: excludePattern });
-
-      const targetOption =
-        attempt === 0
-          ? validOptions.filter({ hasText: artistName }).first()
-          : validOptions.first();
-
-      if (await targetOption.isVisible({ timeout: 2000 }).catch(() => false)) {
-        const optionText = await targetOption.textContent();
-        if (
-          optionText &&
-          !optionText.includes("undefined") &&
-          optionText.trim().length > 0 &&
-          !optionText.includes("()")
-        ) {
-          await targetOption.click();
-          console.log(
-            `ℹ️ 아티스트 선택${attempt > 0 ? "(폴백)" : ""}: ${optionText?.trim()}`,
-          );
-          selected = true;
-        }
-      }
-    }
-
-    if (!selected) {
+    if (!isTargetVisible) {
+      const optionPreview = await validOptions.evaluateAll((elements) =>
+        elements
+          .map((element) => (element.textContent ?? "").trim())
+          .filter(Boolean)
+          .slice(0, 5),
+      );
       throw new Error(
-        `아티스트 선택 실패: "${artistName}" 옵션을 찾을 수 없습니다`,
+        `아티스트 선택 실패: "${artistName}" 옵션을 찾을 수 없습니다. visible options=${JSON.stringify(optionPreview)}`,
       );
     }
+
+    const optionText = await targetOption.textContent();
+    if (
+      !optionText ||
+      optionText.includes("undefined") ||
+      optionText.trim().length === 0 ||
+      optionText.includes("()")
+    ) {
+      throw new Error(
+        `아티스트 선택 실패: "${artistName}" 옵션 텍스트가 유효하지 않습니다. raw=${JSON.stringify(optionText)}`,
+      );
+    }
+
+    await targetOption.click();
+    console.log(`ℹ️ 아티스트 선택: ${optionText.trim()}`);
 
     await this.wait(300);
   }

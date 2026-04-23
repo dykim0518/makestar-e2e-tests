@@ -446,7 +446,11 @@ export class SkuCreatePage extends AdminBasePage {
     searchTerm: string,
     fieldName: string,
     excludePatterns: RegExp,
+    options: {
+      allowFirstOptionFallback?: boolean;
+    } = {},
   ): Promise<void> {
+    const allowFirstOptionFallback = options.allowFirstOptionFallback ?? true;
     await this.waitForOverlayToDisappear();
 
     // combobox 클릭하여 드롭다운 열기
@@ -488,8 +492,10 @@ export class SkuCreatePage extends AdminBasePage {
 
     let selectedOption = false;
 
-    // 옵션 선택 시도 (최대 2회: 검색 결과 → 전체 목록 폴백)
-    for (let attempt = 0; attempt < 2 && !selectedOption; attempt++) {
+    const maxAttempts = allowFirstOptionFallback ? 2 : 1;
+
+    // 옵션 선택 시도 (필요 시만 첫 번째 옵션 폴백 허용)
+    for (let attempt = 0; attempt < maxAttempts && !selectedOption; attempt++) {
       // "검색결과가 없습니다" 감지 시 검색어 클리어 후 재시도
       if (attempt === 1 && isInputVisible) {
         console.log(
@@ -508,7 +514,8 @@ export class SkuCreatePage extends AdminBasePage {
       if (hasListbox) {
         // 새 UI: listbox 내 option 사용
         const options = this.page.getByRole("option");
-        const targetText = attempt === 0 ? searchTerm : "";
+        const targetText =
+          attempt === 0 || !allowFirstOptionFallback ? searchTerm : "";
         const matchingOption = targetText
           ? options
               .filter({ hasText: targetText })
@@ -525,7 +532,7 @@ export class SkuCreatePage extends AdminBasePage {
             `ℹ️ ${fieldName} 선택${attempt > 0 ? "(폴백)" : ""}: ${optionText?.trim()}`,
           );
           selectedOption = true;
-        } else if (attempt === 0) {
+        } else if (attempt === 0 && allowFirstOptionFallback) {
           // 첫 번째 시도에서 매칭 실패 → 첫 번째 유효 옵션 시도
           const firstOption = options
             .filter({ hasNotText: excludePatterns })
@@ -553,7 +560,8 @@ export class SkuCreatePage extends AdminBasePage {
           .locator(".multiselect__option:visible")
           .filter({ hasNotText: excludePatterns });
 
-        const targetText = attempt === 0 ? searchTerm : "";
+        const targetText =
+          attempt === 0 || !allowFirstOptionFallback ? searchTerm : "";
         const matchingOption = targetText
           ? validOptions.filter({ hasText: targetText }).first()
           : validOptions.first();
@@ -581,8 +589,17 @@ export class SkuCreatePage extends AdminBasePage {
     await this.closeModalIfVisible();
 
     if (!selectedOption) {
+      const optionPreview = await this.page
+        .locator('.multiselect__option:visible, [role="option"]:visible')
+        .evaluateAll((elements) =>
+          elements
+            .map((element) => (element.textContent ?? "").trim())
+            .filter(Boolean)
+            .slice(0, 5),
+        )
+        .catch(() => []);
       throw new Error(
-        `${fieldName} 선택 실패: "${searchTerm}" 옵션을 찾을 수 없습니다`,
+        `${fieldName} 선택 실패: "${searchTerm}" 옵션을 찾을 수 없습니다. visible options=${JSON.stringify(optionPreview)}`,
       );
     }
   }
@@ -620,6 +637,7 @@ export class SkuCreatePage extends AdminBasePage {
       artistName,
       "아티스트",
       /새로운 아티스트 등록|검색결과가 없습니다/,
+      { allowFirstOptionFallback: false },
     );
   }
 
