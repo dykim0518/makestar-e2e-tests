@@ -53,6 +53,11 @@ test.describe("CMR 결제 회귀", () => {
   test.beforeEach(async ({ page }, testInfo) => {
     testInfo.setTimeout(TEST_TIMEOUT);
     payment = new MakestarPaymentPage(page, BASE_URL);
+
+    // 테스트 간 장바구니 고립: Purchase 버튼이 카트 전체를 order-review에 싣기 때문에
+    // 이전 테스트가 카트를 남겨두면 amount 누적으로 결제 금액 검증이 실패한다.
+    // 병렬 워커가 같은 세션(stg-auth.json)을 공유하는 구조라 스크립트에서 격리 보장.
+    await payment.clearCart();
   });
 
   test(
@@ -263,6 +268,18 @@ test.describe("CMR 결제 회귀", () => {
 
       await payment.checkAllAgreements();
 
+      // 주문 총액을 Proceed 클릭 전에 캡처 — processing URL의 amount와 비교용.
+      // 하드코딩(6000) 대신 주문서 실제 금액을 기준으로 해 상품 가격/수량 변동에 robust.
+      const expectedAmount = await payment.getTotalAmountKrw();
+      expect(
+        expectedAmount,
+        `주문 총액을 KRW로 파싱해야 합니다. Proceed 버튼 텍스트: ${await payment.getTotalAmountText()}`,
+      ).not.toBeNull();
+      expect(
+        expectedAmount!,
+        "주문 총액은 0원보다 커야 합니다",
+      ).toBeGreaterThan(0);
+
       const entry = await payment.startTossEntry();
       expect(entry.makeOrder.status).toBeGreaterThanOrEqual(200);
       expect(entry.makeOrder.status).toBeLessThan(400);
@@ -324,8 +341,8 @@ test.describe("CMR 결제 회귀", () => {
       ).toBeTruthy();
       expect(
         Number(amount),
-        "amount 파라미터는 주문 총액(KRW 6,000)과 일치해야 합니다",
-      ).toBe(6000);
+        `amount 파라미터는 주문 총액(${expectedAmount})과 일치해야 합니다`,
+      ).toBe(expectedAmount);
     },
   );
 });

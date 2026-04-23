@@ -2137,16 +2137,23 @@ export class MakestarPage extends BasePage {
     return null;
   }
 
-  /** 장바구니 비우기 */
-  async clearCart(): Promise<void> {
-    for (let attempt = 0; attempt < 3; attempt++) {
+  /**
+   * 장바구니 비우기 — 3회 시도 후에도 남아있으면 throw.
+   * 호출자는 사전에 `gotoCart()`로 `/cart` 페이지에 있어야 한다.
+   */
+  async clearCart(maxAttempts = 3): Promise<void> {
+    let lastItemCount = -1;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const itemCount = await this.getCartItemCount();
       if (itemCount === 0) {
-        console.log("   장바구니 비어있음");
+        if (attempt > 0) console.log("   ✅ 장바구니 초기화 완료");
         return;
       }
+      lastItemCount = itemCount;
 
-      console.log(`   기존 상품 ${itemCount}개 (삭제 시도 ${attempt + 1}/3)`);
+      console.log(
+        `   기존 상품 ${itemCount}개 (삭제 시도 ${attempt + 1}/${maxAttempts})`,
+      );
 
       // 체크박스 클릭
       if ((await this.cartCheckbox.count()) > 0) {
@@ -2178,7 +2185,10 @@ export class MakestarPage extends BasePage {
         }
       }
     }
-    console.log("   ✅ 장바구니 초기화 완료");
+
+    throw new Error(
+      `clearCart 실패: ${maxAttempts}회 시도 후에도 장바구니에 상품 ${lastItemCount}개가 남아있습니다. 수동으로 정리하거나 클리어 API 구현이 필요합니다.`,
+    );
   }
 
   // --------------------------------------------------------------------------
