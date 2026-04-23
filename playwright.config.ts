@@ -1,7 +1,12 @@
 import { defineConfig, devices } from "@playwright/test";
 import * as fs from "fs";
 
-type StoredCookie = { name: string; value: string; expires?: number };
+type StoredCookie = {
+  name: string;
+  value: string;
+  expires?: number;
+  domain?: string;
+};
 
 // 환경별 auth 파일 선택: STG → stg-auth.json, Prod → auth.json
 const isSTG = process.env.MAKESTAR_BASE_URL?.includes("stage");
@@ -30,9 +35,13 @@ if (fs.existsSync(authFile)) {
     );
 
     // refresh_token JWT가 유효한지 확인
+    // 환경별 도메인 필터: STG는 .makeuni2026.com, Prod는 .makestar.com 쿠키만 검사.
+    // 파일에 두 환경 쿠키가 혼재되어 있을 때 엉뚱한 도메인의 만료 토큰을 잡아 false negative가 나는 걸 방지.
     let hasValidRefreshToken = false;
+    const targetDomain = isSTG ? ".makeuni2026.com" : ".makestar.com";
     const refreshCookie = authData.cookies?.find(
-      (c: StoredCookie) => c.name === "refresh_token",
+      (c: StoredCookie) =>
+        c.name === "refresh_token" && c.domain === targetDomain,
     );
     if (refreshCookie?.value) {
       try {
