@@ -894,6 +894,9 @@ test.describe("상품/장바구니 기능 @feature:cmr.cart @feature:cmr.product
     // GNB Shop 버튼 클릭 (유저 시나리오)
     await makestar.navigateToShop();
     await makestar.waitForPageContent();
+    // `waitForPageContent`는 배너·썸네일 이미지 중 하나라도 보이면 조기 통과하므로
+    // 상품 그리드 렌더를 별도로 보장한다.
+    await makestar.waitForShopProductsLoaded();
 
     const productCount = await makestar.shopProductCard.count();
     expect(
@@ -1101,6 +1104,9 @@ test.describe("상품/장바구니 기능 @feature:cmr.cart @feature:cmr.product
       await makestar.clickLogoToHome();
       await makestar.navigateToShop();
       await makestar.waitForPageContent();
+      // 배너·이벤트 썸네일이 먼저 뜨면 `waitForPageContent`가 조기 통과하므로
+      // Shop 상품 그리드 렌더를 명시적으로 보장.
+      await makestar.waitForShopProductsLoaded();
 
       // Shop 상품 중 구매 가능한 상품을 찾아 장바구니에 담기 (최대 8개 시도)
       const productCount = await makestar.shopProductCard.count();
