@@ -1710,15 +1710,20 @@ test.describe.serial("상품 등록 @feature:admin_makestar.event.create", () =>
     test.beforeEach(async ({ page }) => {
       await page.goto(DC_URL);
       await waitForPageStable(page);
-      await page.waitForLoadState("networkidle");
+      // SPA에서 `networkidle`은 30초를 초과해도 도달 못 하는 경우가 있어(STG 지연 시)
+      // 짧은 타임아웃으로만 시도하고 실패는 허용. 이후 실제 UI 준비 조건으로 고정.
+      await page
+        .waitForLoadState("networkidle", { timeout: 5000 })
+        .catch(() => {});
+      await page
+        .getByRole("button", { name: "B2C" })
+        .waitFor({ state: "visible", timeout: ELEMENT_TIMEOUT });
     });
 
     test("QA84-PAGE-01: 전시 카테고리 목록 페이지 기본 요소 노출 검증", async ({
       page,
     }) => {
-      await expect(page.getByRole("button", { name: "B2C" })).toBeVisible({
-        timeout: ELEMENT_TIMEOUT,
-      });
+      await expect(page.getByRole("button", { name: "B2C" })).toBeVisible();
       await expect(page.getByRole("button", { name: "B2B" })).toBeVisible();
       await expect(
         page.getByText("카테고리 생성", { exact: true }),
