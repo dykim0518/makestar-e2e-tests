@@ -1361,9 +1361,24 @@ export class MakestarPage extends BasePage {
       .catch(() => false);
   }
 
+  /**
+   * Shop 페이지 상품 카드가 렌더될 때까지 대기.
+   *
+   * `waitForPageContent()`는 `contentImages`(배너·이벤트 썸네일 포함) 중 아무 하나라도
+   * 보이면 통과하기 때문에, 상품 그리드가 레이지 로딩되는 케이스에서는 `album_image`가
+   * 아직 없는 상태로 `shopProductCard.count() === 0`이 나와 담기 루프가 그냥 스킵됐다.
+   * Shop 의존 테스트는 이 메서드를 호출해 상품 카드 존재를 명시적으로 보장한다.
+   */
+  async waitForShopProductsLoaded(): Promise<void> {
+    await this.shopProductCard
+      .first()
+      .waitFor({ state: "visible", timeout: this.timeouts.long });
+  }
+
   async openFirstCartEligibleProduct(
     maxProducts: number = 8,
   ): Promise<boolean> {
+    await this.waitForShopProductsLoaded();
     const cardCount = await this.shopProductCard.count();
     const attemptCount = Math.min(cardCount, maxProducts);
 
