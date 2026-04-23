@@ -9,6 +9,7 @@ import { test, expect, Page } from "@playwright/test";
 import * as fs from "fs";
 import * as path from "path";
 import { setupAuthCookies, resetAuthCache } from "./auth-helper";
+import { resolveRepoFile } from "./repo-file";
 
 type StoredCookie = { name: string; value: string; expires?: number };
 
@@ -82,14 +83,8 @@ export function clearAuthFailed(): void {
 // 토큰 유효성 검사 함수
 // ============================================================================
 export function isTokenValidSync(): boolean {
-  const authFile = path.join(__dirname, "..", "..", "..", "auth.json");
-  const tokensFile = path.join(
-    __dirname,
-    "..",
-    "..",
-    "..",
-    "admin-tokens.json",
-  );
+  const authFile = resolveRepoFile("auth.json");
+  const tokensFile = resolveRepoFile("admin-tokens.json");
   const bufferTime = 60 * 1000; // 1분 여유
   const now = Date.now();
 
@@ -134,14 +129,8 @@ export function isTokenValidSync(): boolean {
  * 토큰 남은 시간 반환 (시간, 분)
  */
 export function getTokenRemaining(): { hours: number; minutes: number } {
-  const authFile = path.join(__dirname, "..", "..", "..", "auth.json");
-  const tokensFile = path.join(
-    __dirname,
-    "..",
-    "..",
-    "..",
-    "admin-tokens.json",
-  );
+  const authFile = resolveRepoFile("auth.json");
+  const tokensFile = resolveRepoFile("admin-tokens.json");
   const now = Date.now();
   let expiresAt = 0;
 

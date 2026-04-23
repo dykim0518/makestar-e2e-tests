@@ -13,12 +13,38 @@
 const { chromium } = require("@playwright/test");
 const fs = require("fs");
 const path = require("path");
+const { execSync } = require("child_process");
+
+function resolveRepoFile(fileName) {
+  const currentRepoRoot = __dirname;
+  const localPath = path.join(currentRepoRoot, fileName);
+  if (fs.existsSync(localPath)) {
+    return localPath;
+  }
+
+  try {
+    const gitCommonDir = execSync("git rev-parse --git-common-dir", {
+      cwd: currentRepoRoot,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    const primaryRepoRoot = path.resolve(gitCommonDir, "..");
+    const primaryPath = path.join(primaryRepoRoot, fileName);
+    if (fs.existsSync(primaryPath)) {
+      return primaryPath;
+    }
+  } catch {
+    // localPath fallback 유지
+  }
+
+  return localPath;
+}
 
 // 환경별 파일 경로: STG → stg-auth.json, Prod → auth.json
 const isSTG = process.env.MAKESTAR_BASE_URL?.includes("stage");
 const SESSION_FILE = path.join(__dirname, "playwright-session.json");
-const ADMIN_TOKENS_FILE = path.join(__dirname, "admin-tokens.json");
-const AUTH_FILE = path.join(__dirname, isSTG ? "stg-auth.json" : "auth.json");
+const ADMIN_TOKENS_FILE = resolveRepoFile("admin-tokens.json");
+const AUTH_FILE = resolveRepoFile(isSTG ? "stg-auth.json" : "auth.json");
 const BASE_URL = "https://stage-new-admin.makeuni2026.com";
 
 /**

@@ -7,6 +7,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import type { Page } from "@playwright/test";
+import { resolveRepoFile } from "./repo-file";
 
 // ============================================================================
 // 상수
@@ -16,7 +17,7 @@ export const BASE_URL = "https://stage-new-admin.makeuni2026.com";
 export const AUTH_DOMAIN = "stage-auth.makeuni2026.com";
 export const ROOT_DOMAIN = ".makeuni2026.com";
 
-const AUTH_FILE = path.join(__dirname, "..", "..", "..", "auth.json");
+const AUTH_FILE = resolveRepoFile("auth.json");
 const TOKEN_BUFFER_MS = 1 * 60 * 1000; // 1분
 
 // ============================================================================
@@ -292,13 +293,7 @@ export function resetAuthCache(): void {
 // API 인터셉터 (Bearer Token 자동 주입)
 // ============================================================================
 
-const ADMIN_TOKENS_FILE = path.join(
-  __dirname,
-  "..",
-  "..",
-  "..",
-  "admin-tokens.json",
-);
+const ADMIN_TOKENS_FILE = resolveRepoFile("admin-tokens.json");
 
 type AdminTokens = {
   accessToken: string;

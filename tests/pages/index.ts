@@ -174,3 +174,10 @@ export type {
   NoticeCheckboxLabel,
   NoticeCheckboxState,
 } from "./admin-event-update.page";
+
+// AlbumBuddy Admin 핵심 목록 페이지
+export {
+  AlbumbuddyCorePage,
+  ALBUMBUDDY_CORE_PAGE_CONFIG,
+} from "./admin-albumbuddy-core.page";
+export type { AlbumbuddyCoreKey } from "./admin-albumbuddy-core.page";

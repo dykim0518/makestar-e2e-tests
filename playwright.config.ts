@@ -1,5 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 import * as fs from "fs";
+import * as path from "path";
+import { execSync } from "child_process";
 
 type StoredCookie = {
   name: string;
@@ -8,9 +10,34 @@ type StoredCookie = {
   domain?: string;
 };
 
+function resolveRepoFile(fileName: string): string {
+  const currentRepoRoot = process.cwd();
+  const localPath = path.join(currentRepoRoot, fileName);
+  if (fs.existsSync(localPath)) {
+    return localPath;
+  }
+
+  try {
+    const gitCommonDir = execSync("git rev-parse --git-common-dir", {
+      cwd: currentRepoRoot,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    const primaryRepoRoot = path.resolve(gitCommonDir, "..");
+    const primaryPath = path.join(primaryRepoRoot, fileName);
+    if (fs.existsSync(primaryPath)) {
+      return primaryPath;
+    }
+  } catch {
+    // localPath fallback 유지
+  }
+
+  return localPath;
+}
+
 // 환경별 auth 파일 선택: STG → stg-auth.json, Prod → auth.json
 const isSTG = process.env.MAKESTAR_BASE_URL?.includes("stage");
-const authFile = isSTG ? "./stg-auth.json" : "./auth.json";
+const authFile = resolveRepoFile(isSTG ? "stg-auth.json" : "auth.json");
 let hasValidAuthFile = false;
 const excludeAuthTests = process.env.EXCLUDE_AUTH_TESTS === "true";
 const manualAuthSpecPatterns = [
@@ -140,6 +167,7 @@ export default defineConfig({
       testMatch: [
         "**/admin_product_pom.spec.ts",
         "**/admin_order_pom.spec.ts",
+        "**/admin_albumbuddy_*_pom.spec.ts",
         "**/admin_poca_*_pom.spec.ts",
         "**/admin_pocaalbum_functional.spec.ts",
         "**/admin_user_pom.spec.ts",
