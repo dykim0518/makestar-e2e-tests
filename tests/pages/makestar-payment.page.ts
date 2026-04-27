@@ -84,6 +84,7 @@ export class MakestarPaymentPage extends BasePage {
     await purchase.click();
     await this._page.waitForURL(/\/payments/, {
       timeout: this.timeouts.navigation,
+      waitUntil: "commit",
     });
   }
 
@@ -514,19 +515,62 @@ export class MakestarPaymentPage extends BasePage {
     }
   }
 
-  /** payment-widget iframe의 native <select>에서 카드사(해외카드) 선택 */
+  /** payment-widget iframe에서 카드사(해외카드) 선택 */
   async selectCardIssuer(
     label: "VISA" | "MASTER" | "UNIONPAY" | "JCB",
   ): Promise<void> {
     const pw = this.paymentWidgetFrame();
     if (!pw) throw new Error("payment-widget iframe 없음");
-    const selectLoc = pw.locator("select").first();
-    // 카드 수단 선택 후 <select>가 DOM에 붙기까지 대기
-    await selectLoc.waitFor({
-      state: "attached",
+
+    // 2026-04 기준 Toss widget은 hidden 빈 <select> + Radix combobox/listbox 조합으로 렌더링된다.
+    // native option이 있는 구버전 UI는 selectOption으로 처리하고, 현 UI는 role 기반으로 선택한다.
+    const nativeSelect = pw.locator("select").first();
+    if ((await nativeSelect.count().catch(() => 0)) > 0) {
+      const optionCount = await nativeSelect
+        .locator("option")
+        .count()
+        .catch(() => 0);
+      if (optionCount > 0) {
+        await nativeSelect.selectOption(
+          { label },
+          { timeout: this.timeouts.medium },
+        );
+        return;
+      }
+    }
+
+    const issuerCombobox = pw
+      .getByRole("combobox", { name: /카드사 선택/ })
+      .first();
+    await issuerCombobox.waitFor({
+      state: "visible",
+      timeout: this.timeouts.long,
+    });
+
+    if ((await issuerCombobox.getAttribute("aria-expanded")) !== "true") {
+      await issuerCombobox.click({
+        force: true,
+        timeout: this.timeouts.short,
+      });
+    }
+
+    const issuerOption = pw
+      .getByRole("option", { name: label, exact: true })
+      .first();
+    await issuerOption.waitFor({
+      state: "visible",
       timeout: this.timeouts.medium,
     });
-    await selectLoc.selectOption({ label }, { timeout: this.timeouts.medium });
+    await issuerOption.click({ force: true, timeout: this.timeouts.medium });
+
+    await pw.waitForFunction(
+      (selectedLabel) =>
+        Array.from(document.querySelectorAll('[role="combobox"]')).some((el) =>
+          (el.textContent || "").includes(selectedLabel),
+        ),
+      label,
+      { timeout: this.timeouts.medium },
+    );
   }
 
   // --------------------------------------------------------------------------

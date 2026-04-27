@@ -41,7 +41,7 @@ const TEST_TIMEOUT = 90000;
 // URL에 "stage"/"staging" 문자열이 포함된 경우만 실행으로 간주한다.
 const IS_STAGE_ENV = /stage|staging/i.test(BASE_URL);
 
-test.describe("CMR 결제 회귀", () => {
+test.describe.serial("CMR 결제 회귀", () => {
   // 같은 소스가 prod에도 배포되는 구조 — prod 실행 방지를 위한 환경 가드.
   test.skip(
     !IS_STAGE_ENV,
