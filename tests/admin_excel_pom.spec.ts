@@ -20,7 +20,7 @@ import { parseExcelOrZip } from "./helpers/excel-parser";
 const BASE =
   process.env.ADMIN_BASE_URL || "https://stage-new-admin.makeuni2026.com";
 
-type PreAction = "user-b2b-tab" | "event-winner-menu" | "sales-tab";
+type PreAction = "user-b2b-tab" | "event-winner-menu";
 
 type Target = {
   id: string;
@@ -128,10 +128,11 @@ const TARGETS: Target[] = [
     id: "EVT-SALES-01",
     name: "이벤트 당첨 관리 > 판매량 정보 다운로드 @feature:admin_makestar.eventwinningmanage.detail",
     url: `${BASE}/event-winning-manage/15761?name=NMIXX%201st%20Full%20Album%20[Blue%20Valentine]%20SPECIAL%20LUCKY%20DRAW%20EVENT&code=P_9723_NMIXX_78&status=SALES_END`,
-    buttonText: "판매량 정보 다운로드",
-    exact: false,
-    preAction: "sales-tab",
-    expect: { hasReasonModal: false, isZip: false },
+    // 실제 페이지 헤더의 다운로드 트리거 버튼 텍스트는 "판매량 정보"
+    // (판매량 탭 [role="tab"] 아님 — 단순 button 요소). 탭 진입은 불필요.
+    buttonText: "판매량 정보",
+    exact: true,
+    expect: { hasReasonModal: true, isZip: false },
   },
 ];
 
@@ -173,16 +174,6 @@ async function runPreAction(page: Page, action: PreAction) {
     await trigger.waitFor({ state: "visible", timeout: 10000 });
     await trigger.click();
     await page.waitForTimeout(1500);
-  } else if (action === "sales-tab") {
-    const tab = page
-      .locator(
-        '[role="tab"]:has-text("판매량"), button:has-text("판매량"), div:text-is("판매량")',
-      )
-      .first();
-    if ((await tab.count()) > 0) {
-      await tab.click();
-      await page.waitForTimeout(3000);
-    }
   }
 }
 
