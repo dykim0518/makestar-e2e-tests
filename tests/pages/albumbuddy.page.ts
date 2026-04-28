@@ -27,6 +27,12 @@ export type PerformanceResult = {
   passed: boolean;
 };
 
+/** AlbumBuddy 페이지 준비 대기 옵션 */
+export type AlbumBuddyReadyOptions = {
+  waitForNetworkIdle?: boolean;
+  networkIdleTimeout?: number;
+};
+
 // ============================================================================
 // AlbumBuddy 상수
 // ============================================================================
@@ -162,11 +168,20 @@ export class AlbumBuddyPage extends BasePage {
   /**
    * 페이지 로딩 완료 및 오버레이 제거
    */
-  async waitForPageReady(): Promise<void> {
-    try {
-      await this.page.waitForLoadState("networkidle", { timeout: 30000 });
-    } catch {
-      // networkidle 타임아웃은 무시
+  async waitForPageReady(options: AlbumBuddyReadyOptions = {}): Promise<void> {
+    const {
+      waitForNetworkIdle = true,
+      networkIdleTimeout = 30000,
+    } = options;
+
+    if (waitForNetworkIdle) {
+      try {
+        await this.page.waitForLoadState("networkidle", {
+          timeout: networkIdleTimeout,
+        });
+      } catch {
+        // AlbumBuddy는 분석/채팅 요청으로 networkidle이 오지 않을 수 있음
+      }
     }
     await this.waitForContentStable("body", {
       timeout: this.timeouts.short,
@@ -256,12 +271,12 @@ export class AlbumBuddyPage extends BasePage {
   /**
    * 홈페이지로 이동
    */
-  async gotoHome(): Promise<void> {
+  async gotoHome(options: AlbumBuddyReadyOptions = {}): Promise<void> {
     await this.page.goto(this.shopUrl, {
       waitUntil: "domcontentloaded",
       timeout: 30000,
     });
-    await this.waitForPageReady();
+    await this.waitForPageReady(options);
   }
 
   /**
@@ -1541,13 +1556,13 @@ export class AlbumBuddyPage extends BasePage {
     success: boolean;
     productName: string;
   }> {
-    await this.gotoHome();
-    await this.waitForPageReady();
+    await this.gotoHome({ waitForNetworkIdle: false });
     await this.page.evaluate(() => window.scrollBy(0, 500));
     await this.waitForContentStable("body", {
       timeout: this.timeouts.short,
       stableTime: 300,
     }).catch(() => {});
+    await this.waitForProductCandidatesReady();
 
     const gridCards = this.page.locator(".album__grid > div > div");
     const fallbackCards = this.page.locator(
@@ -1565,12 +1580,13 @@ export class AlbumBuddyPage extends BasePage {
       if (i > 0) {
         // 상품 상세 -> 뒤로 복귀가 간헐적으로 빈 화면에 머물러
         // 다음 후보 탐색이 끊기므로, 매번 Shop을 다시 열어 후보를 재탐색합니다.
-        await this.gotoHome();
+        await this.gotoHome({ waitForNetworkIdle: false });
         await this.page.evaluate(() => window.scrollBy(0, 500));
         await this.waitForContentStable("body", {
           timeout: this.timeouts.short,
           stableTime: 300,
         }).catch(() => {});
+        await this.waitForProductCandidatesReady();
       }
 
       const card = candidateCards.nth(i);
@@ -1592,7 +1608,7 @@ export class AlbumBuddyPage extends BasePage {
       await this.waitForUrlContains(/\/product\//, this.timeouts.medium).catch(
         () => {},
       );
-      await this.waitForPageReady();
+      await this.waitForProductDetailReady();
 
       if (!this.currentUrl.includes("/product/")) {
         continue;
@@ -1622,6 +1638,51 @@ export class AlbumBuddyPage extends BasePage {
     }
 
     return { success: false, productName: "" };
+  }
+
+  private async waitForProductCandidatesReady(): Promise<void> {
+    await this.page
+      .waitForFunction(
+        () => {
+          const gridCardCount = document.querySelectorAll(
+            ".album__grid > div > div",
+          ).length;
+          const hasPricedImage = Array.from(
+            document.querySelectorAll('img[alt="image"]'),
+          ).some((image) => image.closest("div")?.textContent?.includes("$"));
+
+          return gridCardCount > 0 || hasPricedImage;
+        },
+        undefined,
+        { timeout: this.timeouts.long },
+      )
+      .catch(() => {});
+  }
+
+  private async waitForProductDetailReady(): Promise<void> {
+    await this.page
+      .waitForFunction(
+        () => {
+          const text = document.body.innerText || "";
+          const hasPrice = /\$\s*\d+(\.\d+)?/.test(text);
+          const hasDetailMarker =
+            /add to assisted purchase|go to vendor/i.test(text);
+          const hasProductImage =
+            document.querySelectorAll(
+              'img[alt="image"], img[alt="componentImage"]',
+            ).length > 0;
+
+          return hasPrice && hasDetailMarker && hasProductImage;
+        },
+        undefined,
+        { timeout: this.timeouts.long },
+      )
+      .catch(() => {});
+
+    await this.waitForContentStable("body", {
+      timeout: this.timeouts.short,
+      stableTime: 300,
+    }).catch(() => {});
   }
 
   /**
