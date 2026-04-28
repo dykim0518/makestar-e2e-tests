@@ -64,6 +64,8 @@ export type {
   OrderStatusKey,
   OrderStatusSnapshot,
   OrderResultMetrics,
+  PaymentMethodKey,
+  OrderDetailPaymentInfo,
 } from "./admin-order-list.page";
 
 // Admin 발주/입고 페이지

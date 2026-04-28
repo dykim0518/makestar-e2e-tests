@@ -27,6 +27,13 @@ export type OrderResultMetrics = {
   noResultState: boolean;
 };
 
+export type PaymentMethodKey = "예치금" | "직접송금" | "신용카드" | "무통장";
+
+export type OrderDetailPaymentInfo = {
+  method: string;
+  info: string;
+};
+
 /**
  * TODO(env): 상태 필터 순서가 변경되면 fallback 인덱스를 조정하세요.
  * 기준: 주문상태(0), 결제상태(1), 배송상태(2), 재고할당(4)
@@ -1589,5 +1596,279 @@ export class OrderListPage extends AdminBasePage {
       }
     }
     return null;
+  }
+
+  // --------------------------------------------------------------------------
+  // QA-102 회귀: B2B 예치금 결제수단 검증 헬퍼
+  // --------------------------------------------------------------------------
+
+  /**
+   * B2B 주문 목록의 결제수단 드롭다운 필터를 펼친 뒤, 지정한 결제수단
+   * 옵션을 선택하고 [조회하기]를 눌러 결과를 갱신합니다.
+   *
+   * 사용자 확정 UI 플로우:
+   *   1) "결제수단" 드롭다운 트리거 클릭 → 옵션 패널 펼침
+   *   2) 패널 내부 "예치금" 텍스트의 부모 컨테이너에 있는
+   *      `input[type=checkbox]`를 직접 클릭 (텍스트 클릭으로는 토글되지 않음)
+   *   3) [조회하기] 버튼 클릭
+   *   4) 결과 안정화 대기
+   *
+   * STG에서 라벨 nextElementSibling 클릭/MouseEvent dispatch 방식은
+   * 모두 미오픈으로 폐기되었으며, "텍스트 leaf → 부모 컨테이너의 체크박스
+   * direct click" 패턴은 QA102-FLT-02 / QA100-DATA-01 에서 검증됨.
+   *
+   * spec에서 1회 호출을 전제로 작성되었으며, 멱등성을 위한 토글 감지는
+   * 수행하지 않습니다.
+   *
+   * @param method - 적용할 결제수단 옵션 (예: "예치금")
+   */
+  async applyPaymentMethodFilter(method: PaymentMethodKey): Promise<void> {
+    // 드롭다운 트리거 노출 대기
+    const trigger = this.page.getByText("결제수단", { exact: false }).first();
+    await expect(
+      trigger,
+      "결제수단 드롭다운 트리거가 노출되어야 합니다",
+    ).toBeVisible({ timeout: this.timeouts.long });
+
+    // 1) 드롭다운 펼치기: 라벨 클릭으로 옵션 패널이 펼쳐지길 기다린다.
+    //    옵션 패널은 동일 라벨("예치금" 등 옵션 텍스트)이 leaf로 노출되는 시점.
+    await trigger.click({ force: true });
+
+    const optionLeaf = this.page.getByText(method, { exact: true }).first();
+    await expect(
+      optionLeaf,
+      `결제수단 드롭다운에서 '${method}' 옵션이 노출되어야 합니다`,
+    ).toBeVisible({ timeout: this.timeouts.long });
+
+    // 2) 옵션 텍스트 leaf의 가장 가까운 체크박스 컨테이너를 찾아 input 직접 클릭.
+    //    텍스트 클릭만으로는 체크박스가 토글되지 않는 STG 동작 회피.
+    const checked = await this.page.evaluate((label) => {
+      const candidates = Array.from(
+        document.querySelectorAll<HTMLElement>("*"),
+      ).filter(
+        (n) =>
+          n.children.length === 0 &&
+          (n.textContent || "").trim() === label &&
+          n.offsetParent !== null,
+      );
+      for (const node of candidates) {
+        let parent: Element | null = node.parentElement;
+        for (let depth = 0; depth < 4 && parent; depth += 1) {
+          const cb = parent.querySelector(
+            'input[type="checkbox"]',
+          ) as HTMLInputElement | null;
+          if (cb) {
+            cb.click();
+            return cb.checked;
+          }
+          parent = parent.parentElement;
+        }
+      }
+      return null;
+    }, method);
+
+    if (checked !== true) {
+      throw new Error(
+        `결제수단 '${method}' 체크박스를 선택하지 못했습니다. ` +
+          `evaluate 결과=${checked}`,
+      );
+    }
+
+    // 드롭다운 닫기 (다른 요소를 가리지 않도록)
+    await this.page.keyboard.press("Escape").catch(() => {});
+
+    // 3) [조회하기] 버튼 클릭 → 결과 갱신
+    await this.submitSearchButton.click({ force: true });
+
+    // 4) 결과 안정화 대기
+    await this.waitForTableOrNoResult();
+    await this.waitForNetworkStable(this.timeouts.long).catch(() => {});
+  }
+
+  /**
+   * 목록에서 결제수단 컬럼이 지정된 값과 일치하는 첫 번째 행을 클릭하여
+   * 주문상세 팝업을 엽니다.
+   *
+   * `nth(1)` 같은 위치 의존 인덱스를 사용하지 않고, 결제수단 셀 텍스트
+   * 매칭을 통해 직접 찾아 클릭합니다.
+   *
+   * @param method - 클릭할 행의 결제수단 값 (예: "예치금")
+   */
+  async openOrderDetailByPaymentMethod(
+    method: PaymentMethodKey,
+  ): Promise<void> {
+    await expect(
+      this.resultSummary,
+      "주문 목록이 렌더링되어야 합니다",
+    ).toBeVisible({ timeout: this.timeouts.long });
+
+    // 결과 행이 렌더링될 때까지 대기 (최소 1개의 row checkbox)
+    await this.page
+      .waitForFunction(
+        () => {
+          const checkboxes = document.querySelectorAll(
+            'input[type="checkbox"]',
+          );
+          // 헤더 체크박스 1개 + 본문 체크박스 N개 = 2개 이상이면 행 데이터 로딩됨
+          return checkboxes.length >= 2;
+        },
+        undefined,
+        { timeout: this.timeouts.long },
+      )
+      .catch(() => {});
+
+    // 결제수단 라벨 텍스트와 일치하는 leaf 노드를 찾고, 가장 가까운 cursor:pointer
+    // 조상(=클릭 가능한 행)을 클릭한다. 헤더/필터 영역 잡힘 방지를 위해 자체 행
+    // 체크박스 정확히 1개 보유를 함께 요구한다.
+    const clicked = await this.page.evaluate(
+      ({ label }) => {
+        const candidates = Array.from(
+          document.querySelectorAll<HTMLElement>("*"),
+        ).filter(
+          (n) =>
+            n.children.length === 0 &&
+            (n.textContent || "").trim() === label &&
+            n.offsetParent !== null,
+        );
+
+        for (const cellNode of candidates) {
+          let row: HTMLElement | null = cellNode.parentElement;
+          for (let depth = 0; depth < 12 && row; depth += 1) {
+            const style = window.getComputedStyle(row);
+            const hasPointerCursor = style.cursor === "pointer";
+            const checkboxes = row.querySelectorAll('input[type="checkbox"]');
+            // 본문 행 패턴: cursor:pointer + 자체 체크박스 정확히 1개
+            if (hasPointerCursor && checkboxes.length === 1) {
+              row.scrollIntoView({ block: "center" });
+              row.click();
+              return true;
+            }
+            row = row.parentElement;
+          }
+        }
+        return false;
+      },
+      { label: method },
+    );
+
+    if (!clicked) {
+      const diag = await this.page.evaluate(
+        ({ label }) => {
+          const matches = Array.from(
+            document.querySelectorAll<HTMLElement>("*"),
+          ).filter(
+            (n) =>
+              n.children.length === 0 && (n.textContent || "").trim() === label,
+          );
+          return {
+            totalLeafMatches: matches.length,
+            visibleMatches: matches.filter((n) => n.offsetParent !== null)
+              .length,
+          };
+        },
+        { label: method },
+      );
+
+      throw new Error(
+        `목록에서 결제수단 '${method}' 행을 찾지 못했습니다. ` +
+          `leaf 매칭 수=${diag.totalLeafMatches}, visible=${diag.visibleMatches}.`,
+      );
+    }
+
+    // 주문상세 팝업 노출 대기
+    await expect(
+      this.page.getByText("주문상세정보", { exact: false }).first(),
+      "주문상세정보 팝업이 노출되어야 합니다",
+    ).toBeVisible({ timeout: this.timeouts.long });
+  }
+
+  /**
+   * 주문상세 팝업 내 '결제수단' 및 '결제수단 정보' 필드 값을 추출합니다.
+   *
+   * `dt`/`dd` 또는 label/value 형제 구조를 우선 시도하고, 보조로
+   * 공통 정의 패턴(라벨 텍스트 + 동일 컨테이너 텍스트)을 이용합니다.
+   * 필터 영역의 '선택' placeholder 값은 결과에서 제외합니다.
+   */
+  async getOrderDetailPaymentInfo(): Promise<OrderDetailPaymentInfo> {
+    const dialogScope = await this.findFirstVisible([
+      this.page.getByRole("dialog").first(),
+      this.page
+        .locator(
+          '[role="dialog"], .ant-modal, [class*="Modal"], [class*="modal"]',
+        )
+        .first(),
+    ]);
+
+    const scope: Page | Locator = dialogScope ?? this.page;
+
+    const tryReadByLabel = async (label: string): Promise<string> => {
+      const labelLocator =
+        scope === this.page
+          ? this.page.getByText(label, { exact: true })
+          : (scope as Locator).getByText(label, { exact: true });
+
+      const count = await labelLocator.count().catch(() => 0);
+      for (let i = 0; i < count; i += 1) {
+        const node = labelLocator.nth(i);
+        if (
+          !(await node
+            .isVisible({ timeout: this.timeouts.short })
+            .catch(() => false))
+        ) {
+          continue;
+        }
+        const value = await node
+          .evaluate((el, lbl) => {
+            const normalize = (text: string) =>
+              text.replace(/\s+/g, " ").trim();
+
+            // dt > dd 형제 패턴
+            if (el.tagName.toLowerCase() === "dt") {
+              const dd = el.nextElementSibling;
+              if (dd && dd.tagName.toLowerCase() === "dd") {
+                return normalize(dd.textContent || "");
+              }
+            }
+
+            // 동일 row 안에서 라벨 다음 형제
+            const sibling = el.nextElementSibling;
+            if (sibling) {
+              const text = normalize(sibling.textContent || "");
+              if (text && text !== lbl) {
+                return text;
+              }
+            }
+
+            // 부모(row) 텍스트에서 라벨 제거
+            const parent = el.parentElement;
+            if (parent) {
+              const parentText = normalize(parent.textContent || "");
+              const without = parentText
+                .replace(new RegExp(`^${lbl}\\s*`), "")
+                .replace(new RegExp(`\\s*${lbl}\\s*`), " ")
+                .trim();
+              if (without && without !== lbl) {
+                return without;
+              }
+            }
+
+            return "";
+          }, label)
+          .catch(() => "");
+
+        const cleaned = this.normalize(value);
+        // '선택' placeholder만 제외하고, '-' 등 placeholder가 아닌 실제 값은 그대로 반환.
+        // 빈 값/라벨 자기 자신은 다음 후보 시도.
+        if (cleaned.length > 0 && cleaned !== "선택" && cleaned !== label) {
+          return cleaned;
+        }
+      }
+      return "";
+    };
+
+    const method = await tryReadByLabel("결제수단");
+    const info = await tryReadByLabel("결제수단 정보");
+
+    return { method, info };
   }
 }
