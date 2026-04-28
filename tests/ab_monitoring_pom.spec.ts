@@ -471,7 +471,6 @@ test.describe("상품 상세 및 Request Item", () => {
 
     test("AB-DATA-01: 상품 이미지 로드 확인", async ({ page }) => {
       albumbuddy = new AlbumBuddyPage(page);
-      await albumbuddy.gotoHome();
 
       const { success } = await albumbuddy.clickProductWithLoadedImage();
 
