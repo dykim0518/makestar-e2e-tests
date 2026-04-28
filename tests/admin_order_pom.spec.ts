@@ -475,13 +475,18 @@ test.describe
   .serial("B2B 예치금 주문 회귀 (QA-102, QA-100) @feature:admin_makestar.order.list", () => {
   const TARGET_URL =
     "https://stage-new-admin.makeuni2026.com/order/list?openedTab=b2b";
+  let qa102OrderPage: OrderListPage;
 
   test.beforeEach(async ({ page }) => {
-    await page.goto(TARGET_URL);
-    await page
-      .waitForLoadState("networkidle", { timeout: 20000 })
-      .catch(() => {});
-    await page.waitForTimeout(1500);
+    qa102OrderPage = await initPageWithRecovery(
+      OrderListPage,
+      page,
+      "주문관리(B2B)",
+    );
+    if (!page.url().includes("openedTab=b2b")) {
+      await page.goto(TARGET_URL);
+      await qa102OrderPage.waitForTableOrNoResult(20000).catch(() => {});
+    }
   });
 
   test("QA102-PAGE-01: B2B 주문 목록 + 결제수단 필터 노출", async ({
@@ -589,67 +594,27 @@ test.describe
     ).toBe(0);
   });
 
-  test("QA102-DATA-01: 주문상세 팝업의 결제수단 + 결제수단 정보 필드 검증", async ({
-    page,
-  }) => {
-    // 목록에서 결제수단 '예치금' 값 클릭 → 주문상세 팝업
-    await expect(
-      page.getByText(/상품 주문내역/).first(),
-      "주문 목록이 렌더링되어야 합니다",
-    ).toBeVisible({ timeout: 15000 });
-    await page.waitForTimeout(2000);
+  test("QA102-DATA-01: 주문상세 팝업의 결제수단 + 결제수단 정보 필드 검증", async () => {
+    // 1) 결제수단 = '예치금' 필터를 적용하여 결과 목록을 예치금 주문만으로 좁힌다.
+    //    데이터 변동(첫 페이지 예치금 노출 보장 X) 시에도 안정적으로 동작.
+    await qa102OrderPage.applyPaymentMethodFilter("예치금");
 
-    const depositValueNodes = page
-      .locator("span, p, div")
-      .filter({ hasText: /^예치금$/ });
-    await depositValueNodes
-      .first()
-      .waitFor({ state: "visible", timeout: 15000 });
+    // 2) 필터 결과 목록에서 결제수단=예치금 행을 매칭하여 주문상세 팝업을 연다.
+    await qa102OrderPage.openOrderDetailByPaymentMethod("예치금");
 
-    const innerDeposit = depositValueNodes.nth(1);
-    await innerDeposit.scrollIntoViewIfNeeded();
-    await innerDeposit.click({ force: true });
-    await page.waitForTimeout(2000);
+    const paymentInfo = await qa102OrderPage.getOrderDetailPaymentInfo();
 
-    await expect(
-      page.getByText("주문상세정보", { exact: false }).first(),
-      "주문상세정보 팝업이 노출되어야 합니다",
-    ).toBeVisible({ timeout: ELEMENT_TIMEOUT });
-
-    const paymentInfo = await page.evaluate(() => {
-      const findRows = (label: string) => {
-        const labels = Array.from(document.querySelectorAll("*")).filter(
-          (n) => n.children.length === 0 && n.textContent?.trim() === label,
-        );
-        return labels.map((l) => {
-          const row = l.parentElement;
-          const text = row?.textContent?.trim() ?? "";
-          return text.replace(new RegExp(`^${label}\\s*`), "").trim();
-        });
-      };
-      return {
-        결제수단: findRows("결제수단"),
-        결제수단정보: findRows("결제수단 정보"),
-      };
-    });
-
-    // 필터 영역 '선택' 제외하고 팝업 내 실제 값 사용
-    const popupPayMethod = paymentInfo.결제수단.find((v) => v !== "선택");
+    // QA-102 회귀 방지 의도:
+    // 주문상세 팝업의 결제정보 영역에 결제수단 식별 정보가 노출되어야 한다.
+    // 사용자 확정 STG 데이터 패턴: 모든 예치금 주문에서
+    //   - 결제수단      = "-"   (정상)
+    //   - 결제수단 정보 = "예치금" (정상)
+    // → 강한 검증으로 변경: '결제수단 정보' 필드는 반드시 "예치금"을 포함해야 한다.
     expect(
-      popupPayMethod,
-      "주문상세 팝업에 '결제수단' 값이 존재해야 합니다 (QA-102 회귀 방지)",
-    ).toBeDefined();
-    expect(
-      popupPayMethod && popupPayMethod.length > 0 && popupPayMethod !== "-",
-      `결제수단 값이 비어있지 않아야 합니다. 실제: "${popupPayMethod}"`,
+      paymentInfo.info.includes("예치금"),
+      `결제수단 정보 필드는 '예치금'을 포함해야 합니다 (QA-102 회귀 방지). ` +
+        `실제: 결제수단="${paymentInfo.method}", 결제수단 정보="${paymentInfo.info}"`,
     ).toBe(true);
-
-    if (paymentInfo.결제수단정보[0]) {
-      expect(
-        paymentInfo.결제수단정보[0].includes("예치금"),
-        `결제수단 정보가 '예치금'이어야 합니다. 실제: "${paymentInfo.결제수단정보[0]}"`,
-      ).toBe(true);
-    }
   });
 
   test("QA100-DATA-01: 예치금 필터 후 결제상태 '결제완료' 노출 + 정합성 검증", async ({
