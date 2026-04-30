@@ -322,12 +322,18 @@ test.describe("Admin 엑셀 필터 조합 @feature:admin_makestar.order.list", (
       null;
     expect(statusCol, `엑셀에서 주문상태 컬럼 없음`).not.toBeNull();
 
-    const values = sheet.rows.map((r) => String(r[statusCol!] ?? "").trim());
+    // 1주문 N SKU 구조: 같은 주문에 SKU가 여러 개 할당된 경우, 엑셀은 주문 헤더 행 1개 +
+    // SKU 추가 행 N-1개로 펼쳐서 출력하며 추가 행은 주문상태 컬럼이 빈 값이다(병합 셀의 데이터 표현).
+    // 검증 의도는 주문상태 분포 자체이므로 빈 값은 같은 주문의 연속 행으로 간주하고 제외한다.
+    const values = sheet.rows
+      .map((r) => String(r[statusCol!] ?? "").trim())
+      .filter((v) => v);
+    const skuContinuationRows = sheet.rowCount - values.length;
     const unique = Array.from(new Set(values));
     const matched = values.filter((v) => v === preferred).length;
 
     console.log(
-      `[ORD-FILTER-01] rows=${sheet.rowCount} / "${preferred}" 매칭=${matched} / unique=${unique.length} (${unique.slice(0, 5).join(", ")})`,
+      `[ORD-FILTER-01] rows=${sheet.rowCount} (주문헤더 ${values.length}행 + SKU연속 ${skuContinuationRows}행) / "${preferred}" 매칭=${matched} / unique=${unique.length} (${unique.slice(0, 5).join(", ")})`,
     );
 
     // ⚠️ 주문상태 필터는 "단계적 포함" 동작 (결제완료 선택 시 이후 단계도 포함).
@@ -382,11 +388,17 @@ test.describe("Admin 엑셀 필터 조합 @feature:admin_makestar.order.list", (
     const parsed = parseExcelOrZip(dl.filePath);
     const sheet = parsed.files[0].sheets[0];
 
-    const values = sheet.rows.map((r) => String(r[orderCol] ?? "").trim());
+    // 1주문 N SKU 구조: 같은 주문에 SKU가 여러 개 할당된 경우, 엑셀은 주문 헤더 행 1개 +
+    // SKU 추가 행 N-1개로 펼쳐서 출력하며 추가 행은 주문번호 컬럼이 빈 값이다(병합 셀의 데이터 표현).
+    // 검증 의도는 "검색 결과에 다른 주문번호가 섞이지 않음"이므로 빈 값은 같은 주문의 연속 행으로 간주하고 제외한다.
+    const values = sheet.rows
+      .map((r) => String(r[orderCol] ?? "").trim())
+      .filter((v) => v);
+    const skuContinuationRows = sheet.rowCount - values.length;
     const unique = Array.from(new Set(values));
 
     console.log(
-      `[ORD-FILTER-02] rows=${sheet.rowCount} unique=${unique.length} (${unique.slice(0, 3).join(", ")})`,
+      `[ORD-FILTER-02] rows=${sheet.rowCount} (주문헤더 ${values.length}행 + SKU연속 ${skuContinuationRows}행) unique=${unique.length} (${unique.slice(0, 3).join(", ")})`,
     );
 
     expect(
