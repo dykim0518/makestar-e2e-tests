@@ -630,6 +630,7 @@ test.describe
     await makestar
       .waitForContentStable("body", { timeout: 3000 })
       .catch(() => {});
+    await makestar.prepareForGlobalNavigation();
 
     // GNB Shop 버튼 클릭 (POM 로케이터 사용)
     await expect(makestar.shopButton).toBeVisible({ timeout: 5000 });
@@ -654,6 +655,7 @@ test.describe
     await makestar
       .waitForContentStable("body", { timeout: 3000 })
       .catch(() => {});
+    await makestar.prepareForGlobalNavigation();
 
     // GNB Event 버튼 클릭 (POM 로케이터 사용)
     await expect(makestar.eventButton).toBeVisible({ timeout: 5000 });
@@ -681,6 +683,7 @@ test.describe
     await makestar
       .waitForContentStable("body", { timeout: 3000 })
       .catch(() => {});
+    await makestar.prepareForGlobalNavigation();
 
     // GNB Funding 버튼 클릭 (POM 로케이터 사용)
     await expect(makestar.fundingButton).toBeVisible({ timeout: 5000 });
