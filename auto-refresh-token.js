@@ -30,6 +30,9 @@ const BASE_URL = "https://stage-new-admin.makeuni2026.com";
 function isTokenValid() {
   const bufferTime = 1 * 60 * 1000; // 1분 여유
   const now = Date.now();
+  // STG/Prod 쿠키가 한 파일에 혼재할 수 있어 환경별 도메인으로 필터한다.
+  // (playwright.config.ts의 같은 검증 로직과 정렬 — 그쪽엔 commit 1301150에서 추가됨.)
+  const targetDomain = isSTG ? ".makeuni2026.com" : ".makestar.com";
 
   // 1. admin-tokens.json 확인
   try {
@@ -48,7 +51,9 @@ function isTokenValid() {
   try {
     if (fs.existsSync(AUTH_FILE)) {
       const auth = JSON.parse(fs.readFileSync(AUTH_FILE, "utf-8"));
-      const rtCookie = auth.cookies?.find((c) => c.name === "refresh_token");
+      const rtCookie = auth.cookies?.find(
+        (c) => c.name === "refresh_token" && c.domain === targetDomain,
+      );
       if (rtCookie?.value) {
         const payload = JSON.parse(
           Buffer.from(rtCookie.value.split(".")[1], "base64").toString(),
@@ -72,6 +77,7 @@ function isTokenValid() {
 function getTokenRemaining() {
   const now = Date.now();
   let expiresAt = 0;
+  const targetDomain = isSTG ? ".makeuni2026.com" : ".makestar.com";
 
   // 1. admin-tokens.json 확인
   try {
@@ -85,7 +91,9 @@ function getTokenRemaining() {
   try {
     if (fs.existsSync(AUTH_FILE)) {
       const auth = JSON.parse(fs.readFileSync(AUTH_FILE, "utf-8"));
-      const rtCookie = auth.cookies?.find((c) => c.name === "refresh_token");
+      const rtCookie = auth.cookies?.find(
+        (c) => c.name === "refresh_token" && c.domain === targetDomain,
+      );
       if (rtCookie?.value) {
         const payload = JSON.parse(
           Buffer.from(rtCookie.value.split(".")[1], "base64").toString(),
