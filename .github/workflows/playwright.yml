@@ -123,6 +123,7 @@ jobs:
         run: node scripts/validate-auth.js
         env:
           AUTH_WARN_HOURS: "2"
+          ENVIRONMENT_INPUT: ${{ github.event.inputs.environment || 'prod' }}
 
       # 테스트 실행
       - name: Run Playwright tests

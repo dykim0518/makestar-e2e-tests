@@ -42,6 +42,7 @@ const LOGIN_PATTERNS = isSTG
 const SUCCESS_HOSTNAME = isSTG
   ? "stage-new.makeuni2026.com"
   : "www.makestar.com";
+const TARGET_REFRESH_DOMAIN = isSTG ? ".makeuni2026.com" : ".makestar.com";
 
 function isSuccessUrl(url) {
   try {
@@ -60,9 +61,51 @@ function log(msg) {
   console.log(`[${ts}] ${msg}`);
 }
 
+function redactUrlForLog(rawUrl) {
+  try {
+    const parsed = new URL(rawUrl);
+    const sensitiveParams = [
+      "access_token",
+      "refresh_token",
+      "id_token",
+      "token",
+      "code",
+      "state",
+      "email",
+      "social_id",
+    ];
+    for (const key of sensitiveParams) {
+      if (parsed.searchParams.has(key)) {
+        parsed.searchParams.set(key, "***");
+      }
+    }
+    return parsed.toString();
+  } catch {
+    return rawUrl
+      .replace(
+        /([?&][^=]*(?:token|code|state|email|social_id)[^=]*=)[^&]*/gi,
+        "$1***",
+      )
+      .replace(/([?&]id_token=)[^&]*/gi, "$1***");
+  }
+}
+
+function domainMatches(cookieDomain, targetDomain) {
+  if (!cookieDomain) return false;
+  const normalizedCookieDomain = cookieDomain.startsWith(".")
+    ? cookieDomain
+    : `.${cookieDomain}`;
+  const normalizedTargetDomain = targetDomain.startsWith(".")
+    ? targetDomain
+    : `.${targetDomain}`;
+  return normalizedCookieDomain === normalizedTargetDomain;
+}
+
 function getRefreshTokenExp(cookies) {
   const rt = cookies.find(
-    (c) => c.name === "refresh_token" && c.domain?.includes("makestar"),
+    (c) =>
+      c.name === "refresh_token" &&
+      domainMatches(c.domain, TARGET_REFRESH_DOMAIN),
   );
   if (!rt?.value) return null;
   try {
@@ -78,20 +121,27 @@ function getRefreshTokenExp(cookies) {
 function needsRefresh(cookies) {
   if (FORCE) return true;
   const exp = getRefreshTokenExp(cookies);
-  if (!exp) return true;
+  if (!exp) {
+    log(`${TARGET_REFRESH_DOMAIN} refresh_token 없음 — 갱신 필요`);
+    return true;
+  }
   const remaining = exp - Date.now();
   if (remaining <= 0) {
-    log(`refresh_token 만료됨`);
+    log(`${TARGET_REFRESH_DOMAIN} refresh_token 만료됨`);
     return true;
   }
   if (remaining < REFRESH_THRESHOLD_MS) {
     const mins = Math.floor(remaining / 60000);
-    log(`refresh_token 잔여 ${mins}분 — 갱신 필요`);
+    log(`${TARGET_REFRESH_DOMAIN} refresh_token 잔여 ${mins}분 — 갱신 필요`);
     return true;
   }
   const hours = (remaining / 3600000).toFixed(1);
-  log(`refresh_token 잔여 ${hours}시간 — 갱신 불필요`);
+  log(`${TARGET_REFRESH_DOMAIN} refresh_token 잔여 ${hours}시간 — 갱신 불필요`);
   return false;
+}
+
+function isAuthPageUrl(url) {
+  return LOGIN_PATTERNS[0].test(url);
 }
 
 /**
@@ -175,7 +225,7 @@ async function refreshAuth() {
     await page.waitForTimeout(3000);
 
     let currentUrl = page.url();
-    log(`현재 URL: ${currentUrl}`);
+    log(`현재 URL: ${redactUrlForLog(currentUrl)}`);
 
     // 6. 이미 로그인된 상태 (my-page로 바로 리다이렉트)
     if (isSuccessUrl(currentUrl)) {
@@ -187,7 +237,7 @@ async function refreshAuth() {
     }
 
     // 7. Google 로그인 버튼 클릭 시도
-    if (currentUrl.includes("auth.makestar.com")) {
+    if (isAuthPageUrl(currentUrl)) {
       log("로그인 페이지 감지 — Google 로그인 시도...");
 
       try {
@@ -217,7 +267,7 @@ async function refreshAuth() {
         );
 
         currentUrl = page.url();
-        log(`Google 버튼 클릭 후: ${currentUrl}`);
+        log(`Google 버튼 클릭 후: ${redactUrlForLog(currentUrl)}`);
       } catch (e) {
         log(`Google 버튼 클릭 실패: ${e.message}`);
 
@@ -251,7 +301,7 @@ async function refreshAuth() {
           timeout: 30000,
         });
         currentUrl = page.url();
-        log(`계정 선택 후: ${currentUrl}`);
+        log(`계정 선택 후: ${redactUrlForLog(currentUrl)}`);
       } catch (e) {
         log(`계정 선택 실패: ${e.message}`);
         currentUrl = page.url();
@@ -271,7 +321,7 @@ async function refreshAuth() {
     log("추가 대기 중 (10초)...");
     await page.waitForTimeout(10000);
     currentUrl = page.url();
-    log(`최종 URL: ${currentUrl}`);
+    log(`최종 URL: ${redactUrlForLog(currentUrl)}`);
 
     if (isSuccessUrl(currentUrl)) {
       log("지연 리다이렉트로 로그인 성공");
@@ -281,7 +331,7 @@ async function refreshAuth() {
       return true;
     }
 
-    log(`갱신 실패 — 최종 URL: ${currentUrl}`);
+    log(`갱신 실패 — 최종 URL: ${redactUrlForLog(currentUrl)}`);
     await browser.close();
     return false;
   } catch (e) {
