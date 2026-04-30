@@ -783,6 +783,48 @@ export class SkuCreatePage extends AdminBasePage {
   }
 
   /**
+   * SKU 생성 후 상세 페이지로 이동될 때까지 대기하고 SKU 코드를 반환합니다.
+   */
+  async submitAndWaitForDetail(): Promise<string> {
+    const isDisabled = await this.createButton.isDisabled();
+    if (isDisabled) {
+      throw new Error("SKU 생성하기 버튼이 비활성화 상태입니다.");
+    }
+
+    await this.createButton.click();
+    await this.page.waitForURL(/\/sku\/SKU\d+/, {
+      timeout: this.timeouts.navigation,
+    });
+    await this.page.waitForLoadState("domcontentloaded");
+
+    const skuCode = this.getSkuCodeFromCurrentUrl();
+    if (!skuCode) {
+      throw new Error(`SKU 상세 URL에서 SKU 코드를 추출할 수 없습니다: ${this.page.url()}`);
+    }
+
+    return skuCode;
+  }
+
+  /**
+   * 현재 상세 URL에서 SKU 코드를 추출합니다.
+   */
+  getSkuCodeFromCurrentUrl(): string | null {
+    return this.page.url().match(/\/sku\/(SKU\d+)/)?.[1] ?? null;
+  }
+
+  /**
+   * SKU 상세 페이지 진입 결과를 검증합니다.
+   */
+  async assertDetailPageLoaded(skuCode: string): Promise<void> {
+    await expect(this.page).toHaveURL(new RegExp(`/sku/${skuCode}$`), {
+      timeout: this.timeouts.navigation,
+    });
+    await expect(
+      this.page.locator("h1, h2").filter({ hasText: /SKU/ }).first(),
+    ).toBeVisible({ timeout: this.timeouts.navigation });
+  }
+
+  /**
    * SKU 생성 및 목록 페이지로 이동
    */
   async submitAndWaitForList(): Promise<void> {

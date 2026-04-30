@@ -52,16 +52,17 @@ import { test, expect, type Locator } from "@playwright/test";
 import {
   CategoryListPage,
   CategoryCreatePage,
+  CategoryDetailPage,
   SKUListPage,
   SkuCreatePage,
   EventListPage,
   EventCreatePage,
+  DisplayCategoryPage,
   PhotocardSkuWorkPage,
   assertNoServerError,
 } from "./pages";
 import {
   waitForPageStable,
-  waitForModalOpen,
   waitForTableUpdate,
   formatDate,
   getMaxAutomationTestNumber,
@@ -738,6 +739,7 @@ test.describe.serial("SKU 생성 @feature:admin_makestar.sku.create", () => {
 
     const newN = existingMaxN + 1;
     const skuName = `[자동화테스트] 샘플 SKU ${newN}`;
+    let createdSkuCode = "";
     console.log(`ℹ️ 기존 최대 번호: ${existingMaxN}, 새 SKU: ${skuName}`);
 
     // Step 2: SKU 생성 페이지로 이동
@@ -788,46 +790,17 @@ test.describe.serial("SKU 생성 @feature:admin_makestar.sku.create", () => {
 
     // Step 4: SKU 생성 버튼 클릭
     await test.step("Step 4: SKU 생성", async () => {
-      // 버튼 활성화 확인
-      const isDisabled = await skuCreatePage.createButton.isDisabled();
-      console.log(`  버튼 상태: ${isDisabled ? "❌ 비활성화" : "✅ 활성화"}`);
-      expect(isDisabled).toBe(false);
-
-      // 생성 버튼 클릭
-      await skuCreatePage.createButton.click();
-      console.log("  SKU 생성 버튼 클릭");
-
-      // 상세 페이지로 리다이렉트 대기 (정확한 URL: /sku/SKU{코드})
-      await page.waitForURL(/\/sku\/SKU\d+/, { timeout: 15000 });
+      createdSkuCode = await skuCreatePage.submitAndWaitForDetail();
       await waitForPageStable(page);
-
-      const newUrl = page.url();
-      const skuCodeMatch = newUrl.match(/\/sku\/(SKU\d+)/);
-      if (skuCodeMatch) {
-        console.log(`  생성된 SKU 코드: ${skuCodeMatch[1]}`);
-      }
+      console.log(`  생성된 SKU 코드: ${createdSkuCode}`);
       console.log("  SKU 상세 페이지로 이동 완료");
     });
 
     // Step 5: 상세 페이지에서 생성 결과 검증
     await test.step("Step 5: 상세 페이지에서 생성 결과 검증", async () => {
-      // 상세 페이지에서 SKU 코드 추출
-      const currentUrl = page.url();
-      const skuCodeMatch = currentUrl.match(/\/sku\/(SKU\d+)/);
-      const createdSkuCode = skuCodeMatch ? skuCodeMatch[1] : null;
-
       expect(createdSkuCode, "❌ SKU 코드를 추출할 수 없습니다.").toBeTruthy();
-      const safeSkuCode = createdSkuCode!;
-      console.log(`  생성된 SKU 코드: ${createdSkuCode}`);
-
-      await expect(page).toHaveURL(new RegExp(`/sku/${safeSkuCode}$`), {
-        timeout: ELEMENT_TIMEOUT,
-      });
-      await expect(
-        page.locator("h1, h2").filter({ hasText: /SKU/ }).first(),
-      ).toBeVisible({ timeout: ELEMENT_TIMEOUT });
-
-      sharedSkuCode = safeSkuCode;
+      await skuCreatePage.assertDetailPageLoaded(createdSkuCode);
+      sharedSkuCode = createdSkuCode;
       console.log(`✅ SKU 생성 및 상세 페이지 검증 완료: ${skuName}`);
     });
   });
@@ -1054,6 +1027,7 @@ test.describe.serial("상품 등록 @feature:admin_makestar.event.create", () =>
     await test.step("Step 1.5: 테스트용 대분류 및 품목 보장", async () => {
       const categoryListPage = new CategoryListPage(page);
       const categoryCreatePage = new CategoryCreatePage(page);
+      const categoryDetailPage = new CategoryDetailPage(page);
 
       // 대분류 목록에서 검색 (대괄호 제외한 키워드로 검색 — 검색 API 호환성)
       const searchKeyword = "자동화테스트 전용 대분류";
@@ -1061,13 +1035,7 @@ test.describe.serial("상품 등록 @feature:admin_makestar.event.create", () =>
       await waitForPageStable(page);
       await categoryListPage.searchByKeyword(searchKeyword);
 
-      // 테이블에서 해당 행 존재 확인
-      let matchingRow = page
-        .locator("table tbody tr")
-        .filter({ hasText: fixedTestCategory });
-      let rowCount = await matchingRow.count();
-
-      if (rowCount > 0) {
+      if ((await categoryListPage.getRowCountByText(fixedTestCategory)) > 0) {
         console.log(`✅ 테스트용 대분류 존재 확인: "${fixedTestCategory}"`);
       } else {
         // 없으면 생성
@@ -1094,107 +1062,34 @@ test.describe.serial("상품 등록 @feature:admin_makestar.event.create", () =>
         await categoryListPage.navigate();
         await waitForPageStable(page);
         await categoryListPage.searchByKeyword(searchKeyword);
-        matchingRow = page
-          .locator("table tbody tr")
-          .filter({ hasText: fixedTestCategory });
-        rowCount = await matchingRow.count();
-        expect(
-          rowCount,
-          `대분류 "${fixedTestCategory}" 생성 후 목록에서 찾을 수 없음`,
-        ).toBeGreaterThan(0);
+        await categoryListPage.expectRowVisible(fixedTestCategory);
         console.log(
           `✅ 테스트용 대분류 자동 생성 완료: "${fixedTestCategory}"`,
         );
       }
 
       // --- 품목 보장 ---
-      // 대분류 상세 페이지로 이동 (행의 이름 셀 클릭)
-      await matchingRow.first().locator("td").nth(3).click();
-      await page
-        .locator('h1:has-text("대분류 수정")')
-        .waitFor({ timeout: 15000 });
+      await categoryListPage.openDetailByText(fixedTestCategory);
       await waitForPageStable(page);
       console.log(`ℹ️ 대분류 상세 페이지 이동 완료`);
-
-      // 품목 섹션 로드 대기: "품목 생성" 버튼이 보이면 섹션 렌더링 완료
-      await page
-        .getByRole("button", { name: "품목 생성" })
-        .waitFor({ state: "visible", timeout: 10000 });
-
-      // 품목 존재 확인: "하위품목(" 텍스트가 5초 내에 나타나면 이미 품목 존재
-      const hasExistingItems = await page
-        .locator('p:has-text("하위품목(")')
-        .first()
-        .waitFor({ state: "visible", timeout: 5000 })
-        .then(() => true)
-        .catch(() => false);
-
-      if (hasExistingItems) {
-        const labelText = await page
-          .locator('p:has-text("하위품목(")')
-          .first()
-          .textContent();
-        console.log(`✅ 품목 존재 확인: ${labelText} — 추가 생성 불필요`);
-        return;
-      }
-
-      // 품목 없음 → "품목 생성" 버튼 클릭하여 모달 열기
-      console.warn("⚠️ 품목 없음 → 품목 생성 시작");
-      await page.getByRole("button", { name: "품목 생성" }).click();
+      await categoryDetailPage.ensureItemExists({
+        nameKr: "[자동화테스트] 전용 품목",
+        nameEn: "[Automation] Dedicated Item",
+        skuSelectCount: 2,
+      });
       await waitForPageStable(page);
-
-      // 모달: 품목명 입력 (필수: 한국어, 영어)
-      await page
-        .locator('input[placeholder="한국어명를 입력해주세요"]')
-        .fill("[자동화테스트] 전용 품목");
-      await page
-        .locator('input[placeholder="영어명을 입력해주세요"]')
-        .fill("[Automation] Dedicated Item");
-
-      // 모달: SKU 테이블 로드 대기 후 상단 2개 체크박스 선택
-      const modalTable = page.locator('table:has(th:has-text("SKU 코드"))');
-      const skuCheckboxes = modalTable.locator(
-        'tbody tr input[type="checkbox"]',
-      );
-
-      // SKU 행이 로드될 때까지 대기
-      await skuCheckboxes.first().waitFor({ state: "visible", timeout: 10000 });
-      const availableSKUs = await skuCheckboxes.count();
-      console.log(`ℹ️ 선택 가능한 SKU: ${availableSKUs}개`);
-
-      const selectCount = Math.min(2, availableSKUs);
-      for (let i = 0; i < selectCount; i++) {
-        await skuCheckboxes.nth(i).check();
-      }
-
-      // "선택한 하위 품목 연결" 클릭
-      await page.getByRole("button", { name: "선택한 하위 품목 연결" }).click();
-      await waitForPageStable(page);
-
-      // "품목 생성하기" 클릭 (하위 품목 연결 후 활성화됨)
-      await page
-        .getByRole("button", { name: "품목 생성하기" })
-        .click({ timeout: 10000 });
-      await waitForPageStable(page);
-
-      console.log("✅ 품목 생성 완료");
     });
 
     // -------------------------------------------------------------------------
     // Step 2: 상품 등록 페이지로 이동 (새로운 등록 모드)
     // -------------------------------------------------------------------------
     await test.step("Step 2: 상품 등록 페이지 이동 (새 등록)", async () => {
-      // 복사 등록 모드를 피하기 위해 직접 URL로 이동 (해시 없이)
-      await page.goto("https://stage-new-admin.makeuni2026.com/event/create", {
-        waitUntil: "domcontentloaded",
-      });
+      await eventCreatePage.navigate();
       await waitForPageStable(page);
 
       await assertNoServerError(page, "상품 등록 페이지");
 
-      // 페이지 로드 확인
-      const pageTitle = page.locator('h1:has-text("상품 등록")');
-      await expect(pageTitle).toBeVisible({ timeout: 10000 });
+      await eventCreatePage.expectCreatePageLoaded();
       console.log("✅ 상품 등록 페이지 로드 완료");
     });
 
@@ -1203,7 +1098,7 @@ test.describe.serial("상품 등록 @feature:admin_makestar.event.create", () =>
     // -------------------------------------------------------------------------
     await test.step("Step 3: 필수 상품 정보 입력", async () => {
       // 페이지 상단으로 스크롤
-      await page.evaluate(() => window.scrollTo(0, 0));
+      await eventCreatePage.scrollToTop();
 
       // 3-0: 대분류 정보 선택 (필수 - 품목 추가의 전제조건)
       // Step 2.5에서 테스트용 대분류 존재가 보장됨
@@ -1225,16 +1120,8 @@ test.describe.serial("상품 등록 @feature:admin_makestar.event.create", () =>
       console.log("  3-1: 상품명 입력");
       const productNameKr = productName;
       const productNameEn = `[Automation Test] Sample Product ${timestamp}`;
-
-      // 한국어 상품명
-      const nameKrInput = page.getByPlaceholder("한글 값을 입력해주세요");
-      await nameKrInput.scrollIntoViewIfNeeded();
-      await nameKrInput.fill(productNameKr);
+      await eventCreatePage.fillProductNames(productNameKr, productNameEn);
       console.log(`ℹ️ 한국어 상품명: ${productNameKr}`);
-
-      // 영어 상품명
-      const nameEnInput = page.getByPlaceholder("영문 값을 입력해주세요");
-      await nameEnInput.fill(productNameEn);
       console.log(`ℹ️ 영어 상품명: ${productNameEn}`);
 
       // 3-2: 이미지 업로드 (필수)
@@ -1243,65 +1130,7 @@ test.describe.serial("상품 등록 @feature:admin_makestar.event.create", () =>
 
       // 3-3: 노출 카테고리 선택 (필수)
       console.log("  3-3: 노출 카테고리 선택");
-      for (const catName of ["상품 카테고리", "B2B 카테고리"]) {
-        // 카테고리 탭 버튼 클릭 → 해당 카테고리 드롭다운 활성화
-        const catTab = page.getByText(catName, { exact: true });
-        if (!(await catTab.isVisible({ timeout: 3000 }).catch(() => false))) {
-          console.log(`  ℹ️ ${catName} 탭 미발견 — 스킵`);
-          continue;
-        }
-
-        await catTab.scrollIntoViewIfNeeded();
-        await catTab.click({ force: true });
-        await page.waitForLoadState("domcontentloaded").catch(() => {});
-
-        // "카테고리를 선택해주세요" placeholder 클릭으로 드롭다운 열기
-        const placeholder = page.getByText("카테고리를 선택해주세요").first();
-        if (await placeholder.isVisible({ timeout: 2000 }).catch(() => false)) {
-          await placeholder.click({ force: true });
-          await expect(placeholder)
-            .toBeVisible({ timeout: 3000 })
-            .catch(() => {});
-
-          // 드롭다운이 열리면 "앨범" 옵션 클릭
-          // 체크박스 + 텍스트 형태의 옵션 리스트에서 찾기
-          const albumSelected = await page.evaluate(() => {
-            // 현재 보이는 드롭다운/팝업에서 "앨범" 텍스트를 가진 클릭 가능한 요소 찾기
-            const candidates = [...document.querySelectorAll("*")].filter(
-              (e) => {
-                const text = e.textContent?.trim();
-                const isLeaf = e.children.length === 0;
-                const isVisible = (e as HTMLElement).offsetParent !== null;
-                return text === "앨범" && isLeaf && isVisible;
-              },
-            );
-            // 가장 최근에 나타난(DOM 순서상 뒤쪽) 요소가 드롭다운 옵션일 확률이 높음
-            const target = candidates[candidates.length - 1];
-            if (target) {
-              // 부모 중 클릭 가능한 가장 가까운 요소 클릭
-              const clickable =
-                target.closest(
-                  "li, label, div[class*='option'], div[class*='item']",
-                ) || target;
-              (clickable as HTMLElement).click();
-              return true;
-            }
-            return false;
-          });
-
-          if (albumSelected) {
-            console.log(`  ✅ ${catName} "앨범" 선택 완료`);
-          } else {
-            console.warn(`  ⚠️ ${catName}: "앨범" 옵션 미발견`);
-          }
-
-          // 드롭다운 닫기
-          await page.keyboard.press("Escape");
-          await page.waitForLoadState("domcontentloaded").catch(() => {});
-        } else {
-          console.log(`  ℹ️ ${catName}: 이미 선택됨 — 스킵`);
-        }
-      }
+      await eventCreatePage.selectDefaultAlbumDisplayCategories();
 
       // 3-4: 판매기간 설정 (필수)
       console.log("  3-4: 판매기간 설정");
@@ -1326,32 +1155,7 @@ test.describe.serial("상품 등록 @feature:admin_makestar.event.create", () =>
 
       // 3-6: 판매량 기준 설정 (필수)
       console.log("  3-6: 판매량 기준 설정");
-      const salesHeader = page.getByText("판매량기준", { exact: true });
-      const headerBox = await salesHeader.boundingBox();
-      const allSmCheckboxes = page.locator("input.control-size-sm");
-      const smCount = await allSmCheckboxes.count();
-
-      if (smCount > 0 && headerBox) {
-        let closestIdx = 0;
-        let closestDist = Infinity;
-        for (let i = 0; i < smCount; i++) {
-          const box = await allSmCheckboxes.nth(i).boundingBox();
-          if (box && box.y > headerBox.y) {
-            const dist = Math.abs(box.x - headerBox.x);
-            if (dist < closestDist) {
-              closestDist = dist;
-              closestIdx = i;
-            }
-          }
-        }
-
-        const targetCheckbox = allSmCheckboxes.nth(closestIdx);
-        await targetCheckbox.scrollIntoViewIfNeeded();
-        await targetCheckbox.click();
-        console.log("ℹ️ 판매량 기준 체크박스 클릭 완료");
-      } else {
-        console.warn("⚠️ 판매량 기준 체크박스를 찾을 수 없음");
-      }
+      await eventCreatePage.checkSalesStandardCheckboxNearHeader();
 
       // 3-6: 옵션명 입력 (필수) - 한국어/영어
       console.log("  3-6: 옵션명 입력 (한국어)");
@@ -1371,67 +1175,15 @@ test.describe.serial("상품 등록 @feature:admin_makestar.event.create", () =>
 
       // 3-9-1: 상품설명 입력 (영어) — 필수 필드
       console.log("  3-9-1: 상품설명 입력 (영어)");
-      {
-        // "상품설명" 섹션 내 "영어" 탭 버튼 클릭
-        const descSection = page.locator("text=상품설명").first();
-        await descSection.scrollIntoViewIfNeeded();
-
-        const enTab = page
-          .locator("button")
-          .filter({ hasText: /^영어$/ })
-          .first();
-        if (await enTab.isVisible({ timeout: 3000 }).catch(() => false)) {
-          await enTab.click({ force: true });
-          await page.waitForLoadState("domcontentloaded").catch(() => {});
-        }
-
-        // 에디터 입력
-        const editor = page
-          .locator(
-            '.tiptap[contenteditable="true"], .ProseMirror[contenteditable="true"]',
-          )
-          .first();
-        if (await editor.isVisible({ timeout: 3000 }).catch(() => false)) {
-          await editor.evaluate((el: HTMLElement) => {
-            el.scrollIntoView({ behavior: "instant", block: "center" });
-          });
-          await editor
-            .waitFor({ state: "visible", timeout: 3000 })
-            .catch(() => {});
-          await editor.evaluate((el: HTMLElement) => {
-            el.focus();
-            el.click();
-          });
-          await page.keyboard.type(`Automation test product. (${timestamp})`);
-          console.log("  ✅ 상품설명(영어) 입력 완료");
-        } else {
-          console.warn("  ⚠️ 영어 상품설명 에디터 미발견");
-        }
-      }
+      await eventCreatePage.fillDescriptionEn(
+        `Automation test product. (${timestamp})`,
+      );
 
       // 3-10: 다량구매특전 비활성화 (필수 아님 — label[for="toggle"] 클릭으로 OFF)
       // DOM: <input id="toggle" type="checkbox" hidden> + <label for="toggle">
       console.log("  3-10: 다량구매특전 비활성화");
-      const benefitToggled = await page.evaluate(() => {
-        const checkbox = document.querySelector(
-          'input#toggle[type="checkbox"]',
-        ) as HTMLInputElement | null;
-        if (!checkbox) return "not-found";
-        if (checkbox.checked) {
-          const label = document.querySelector(
-            'label[for="toggle"]',
-          ) as HTMLElement | null;
-          if (label) {
-            label.scrollIntoView({ behavior: "instant", block: "center" });
-            label.click();
-            return "toggled-off";
-          }
-          return "label-not-found";
-        }
-        return "already-off";
-      });
+      const benefitToggled = await eventCreatePage.disableBulkPurchaseBenefit();
       if (benefitToggled === "toggled-off") {
-        await page.waitForLoadState("domcontentloaded").catch(() => {});
         console.log("  ✅ 다량구매특전 토글 OFF");
       } else if (benefitToggled === "already-off") {
         console.log("  ℹ️ 다량구매특전 이미 OFF 상태");
@@ -1444,198 +1196,9 @@ test.describe.serial("상품 등록 @feature:admin_makestar.event.create", () =>
     // Step 4: 상품 등록 제출
     // -------------------------------------------------------------------------
     await test.step("Step 4: 상품 등록 제출", async () => {
-      // 품목 추가 실패 시 Fail 처리
       expect(shouldSkipTest, `상품 등록 불가: ${skipReason}`).toBe(false);
-
-      const submitBtn = page.getByRole("button", { name: "지금 등록하기" });
-
-      // 버튼 활성화 확인
-      await submitBtn.scrollIntoViewIfNeeded();
-      const isDisabled = await submitBtn.isDisabled();
-      console.log(`  버튼 상태: ${isDisabled ? "❌ 비활성화" : "✅ 활성화"}`);
-
-      if (!isDisabled) {
-        // API 응답 캡처를 위한 네트워크 리스너
-        const apiResponses: { url: string; status: number; body: string }[] =
-          [];
-        page.on("response", async (response) => {
-          const url = response.url();
-          if (url.includes("/api/") || url.includes("/event")) {
-            try {
-              const status = response.status();
-              const body = await response.text().catch(() => "(읽기 실패)");
-              apiResponses.push({ url, status, body: body.substring(0, 500) });
-            } catch {
-              /* ignore */
-            }
-          }
-        });
-
-        await submitBtn.click();
-        console.log("  지금 등록하기 버튼 클릭");
-
-        // 에러 메시지나 확인 팝업 표시 대기 (networkidle)
-        await page
-          .waitForLoadState("networkidle", { timeout: 5000 })
-          .catch(() => {});
-
-        // 프론트엔드 유효성 검증 실패 감지 (인라인 에러 / 필수 필드 하이라이트)
-        const validationErrors = page.locator(
-          '[class*="error"]:visible, [class*="invalid"]:visible, [class*="required"]:visible:not(label)',
-        );
-        const validationErrorCount = await validationErrors
-          .count()
-          .catch(() => 0);
-        if (validationErrorCount > 0 && apiResponses.length === 0) {
-          // API 호출 없이 유효성 검증 실패 - 필수 필드 누락
-          const errorTexts: string[] = [];
-          for (let i = 0; i < Math.min(validationErrorCount, 5); i++) {
-            const text = await validationErrors
-              .nth(i)
-              .textContent()
-              .catch(() => "");
-            if (text?.trim()) errorTexts.push(text.trim().substring(0, 100));
-          }
-          console.log(
-            `  ⚠️ 프론트엔드 유효성 검증 실패 (${validationErrorCount}개): ${errorTexts.join(", ")}`,
-          );
-        }
-
-        // 에러/경고 메시지 확인
-        const errorToast = page
-          .locator(
-            '[class*="toast"], [class*="alert"], [class*="notification"]',
-          )
-          .first();
-        if (await errorToast.isVisible({ timeout: 1000 }).catch(() => false)) {
-          const errorText = await errorToast.textContent();
-          console.warn(`  ⚠️ 알림 메시지: ${errorText}`);
-
-          // 에러가 있으면 필수 필드 확인
-          if (
-            errorText?.includes("필수") ||
-            errorText?.includes("KIT") ||
-            errorText?.includes("SKU")
-          ) {
-            throw new Error(`등록 실패: ${errorText}`);
-          }
-        }
-
-        // 확인 팝업이 있는지 확인 (등록 확인 팝업)
-        let confirmClicked = false;
-        const modal = page
-          .locator(
-            '[class*="modal"], [class*="popup"], [class*="dialog"], [role="dialog"]',
-          )
-          .first();
-        if (await modal.isVisible({ timeout: 3000 }).catch(() => false)) {
-          // 모달 전체 텍스트 캡처 (에러 메시지인지 등록 확인인지 구분)
-          const modalText = await modal
-            .textContent()
-            .catch(() => "(읽기 실패)");
-          console.log(`  📋 모달 내용: ${modalText?.trim().substring(0, 200)}`);
-
-          const modalConfirmBtn = modal.locator("button", { hasText: "확인" });
-          if (
-            await modalConfirmBtn
-              .isVisible({ timeout: 1000 })
-              .catch(() => false)
-          ) {
-            console.log("  ✅ 모달 내 확인 버튼 발견 - 클릭");
-            await modalConfirmBtn.click();
-            confirmClicked = true;
-            await modal
-              .waitFor({ state: "hidden", timeout: 5000 })
-              .catch(() => {});
-          }
-        }
-
-        // 모달 내부에서 못찾았으면, 전체 페이지에서 확인 버튼 찾기
-        if (!confirmClicked) {
-          const confirmButton = page.getByRole("button", {
-            name: "확인",
-            exact: true,
-          });
-          if (
-            await confirmButton.isVisible({ timeout: 2000 }).catch(() => false)
-          ) {
-            console.log("  ✅ 등록 확인 팝업 발견 - 확인 버튼 클릭");
-            await confirmButton.click();
-            confirmClicked = true;
-            await page
-              .locator('[role="dialog"], .modal')
-              .waitFor({ state: "hidden", timeout: 5000 })
-              .catch(() => {});
-          }
-        }
-
-        if (!confirmClicked) {
-          console.log("  ℹ️ 확인 팝업 없음 - 리다이렉트 대기");
-        }
-
-        // 등록 성공 후 URL 확인 (목록 페이지 또는 편집 페이지로 이동)
-        try {
-          // 목록 페이지 또는 수정 페이지 중 하나로 이동
-          await page.waitForURL(/\/event\/(list|update)/, { timeout: 30000 });
-          await page.waitForLoadState("domcontentloaded");
-
-          const currentUrl = page.url();
-          if (currentUrl.includes("/event/update/")) {
-            // 편집 페이지로 이동 - 상품 ID 추출
-            const productId = currentUrl.match(/\/event\/update\/(\d+)/)?.[1];
-            createdProductId = productId || "";
-            console.log(
-              `  ✅ 상품 등록 성공! 편집 페이지로 이동 (상품 ID: ${productId})`,
-            );
-          } else {
-            console.log("  ✅ 상품 목록 페이지로 이동 완료");
-          }
-        } catch (e) {
-          // 리다이렉트 실패 - 현재 페이지 상태 확인
-          const currentUrl = page.url();
-          console.warn(`  ⚠️ 리다이렉트 실패. 현재 URL: ${currentUrl}`);
-
-          // API 응답 로그 출력
-          console.log(`  📡 캡처된 API 응답: ${apiResponses.length}개`);
-          for (const resp of apiResponses) {
-            console.log(`    [${resp.status}] ${resp.url}`);
-            if (
-              resp.status >= 400 ||
-              resp.body.includes("error") ||
-              resp.body.includes("필수")
-            ) {
-              console.log(`    응답: ${resp.body}`);
-            }
-          }
-
-          // 에러 메시지가 있는지 확인
-          const pageText = (await page.locator("body").textContent()) || "";
-          if (pageText.includes("필수")) {
-            console.error("  ❌ 필수 필드 오류가 있는 것 같습니다");
-          }
-
-          // API 호출이 없었으면 프론트엔드 유효성 검증 실패
-          if (apiResponses.length === 0) {
-            // 현재 스크롤 위치의 필수 표시(*) 확인
-            const requiredMarkers = await page
-              .locator('[class*="required"]:visible, [class*="error"]:visible')
-              .count()
-              .catch(() => 0);
-            console.log(`  📋 화면의 필수/에러 표시: ${requiredMarkers}개`);
-            throw new Error(
-              `폼 제출 실패: 프론트엔드 유효성 검증 미통과 (API 호출 0건). 필수 필드를 확인하세요.`,
-            );
-          }
-
-          throw e;
-        }
-      } else {
-        console.warn(
-          "  ⚠️ 버튼이 비활성화 상태입니다. 필수 필드를 확인하세요.",
-        );
-        // 테스트 실패 처리
-        throw new Error("등록 버튼이 비활성화 상태입니다");
-      }
+      createdProductId =
+        await eventCreatePage.submitAndResolveCreatedProductId();
     });
 
     // -------------------------------------------------------------------------
@@ -1663,10 +1226,9 @@ test.describe.serial("상품 등록 @feature:admin_makestar.event.create", () =>
         await eventListPage.searchById(createdProductId);
 
         // 테이블에 결과가 있는지 확인 (행 수 > 0)
-        const rowCount = await page.locator("table tbody tr").count();
+        const rowCount = await eventListPage.getRowCount();
         if (rowCount > 0) {
-          const firstRowText =
-            (await page.locator("table tbody tr").first().textContent()) || "";
+          const firstRowText = await eventListPage.getFirstResultText();
           console.log(`✅ 검색 결과: ${firstRowText.substring(0, 100)}...`);
         }
 
@@ -1700,7 +1262,6 @@ test.describe.serial("상품 등록 @feature:admin_makestar.event.create", () =>
   // ========================================================================
   test.describe
     .serial("전시 카테고리 생성 @feature:admin_makestar.displaycategory", () => {
-    const DC_URL = "https://stage-new-admin.makeuni2026.com/display-category";
     const DC_SUFFIX = Date.now().toString().slice(-6);
     const DC_CATEGORY = {
       ko: `[자동화테스트] QA84 카테고리 ${DC_SUFFIX}`,
@@ -1708,92 +1269,26 @@ test.describe.serial("상품 등록 @feature:admin_makestar.event.create", () =>
       zh: `[AutoTest] QA84 ${DC_SUFFIX}`,
       ja: `[AutoTest] QA84 ${DC_SUFFIX}`,
     };
+    let displayCategoryPage: DisplayCategoryPage;
 
     test.beforeEach(async ({ page }) => {
-      await page.goto(DC_URL);
+      displayCategoryPage = new DisplayCategoryPage(page);
+      await displayCategoryPage.navigate();
       await waitForPageStable(page);
-      // SPA에서 `networkidle`은 30초를 초과해도 도달 못 하는 경우가 있어(STG 지연 시)
-      // 짧은 타임아웃으로만 시도하고 실패는 허용. 이후 실제 UI 준비 조건으로 고정.
-      await page
-        .waitForLoadState("networkidle", { timeout: 5000 })
-        .catch(() => {});
-      await page
-        .getByRole("button", { name: "B2C" })
-        .waitFor({ state: "visible", timeout: ELEMENT_TIMEOUT });
+      await displayCategoryPage.waitForListReady();
     });
 
-    test("QA84-PAGE-01: 전시 카테고리 목록 페이지 기본 요소 노출 검증", async ({
-      page,
-    }) => {
-      await expect(page.getByRole("button", { name: "B2C" })).toBeVisible();
-      await expect(page.getByRole("button", { name: "B2B" })).toBeVisible();
-      await expect(
-        page.getByText("카테고리 생성", { exact: true }),
-      ).toBeVisible();
-
-      const categoryLinks = page.locator('a[href*="/display-category/"]');
-      await expect(categoryLinks.first()).toBeVisible({
-        timeout: ELEMENT_TIMEOUT,
-      });
-      await expect(
-        page.getByRole("button", { name: "변경내용 저장하기" }),
-      ).toBeVisible();
+    test("QA84-PAGE-01: 전시 카테고리 목록 페이지 기본 요소 노출 검증", async () => {
+      await displayCategoryPage.assertListElementsVisible();
     });
 
-    test("QA84-CREATE-01: 카테고리 생성 모달 폼 요소 확인", async ({
-      page,
-    }) => {
-      await page
-        .locator('[class*="button-accent"]:has-text("카테고리 생성")')
-        .click();
-      await waitForModalOpen(page);
-
-      await expect(page.getByPlaceholder("한글 값을 입력해주세요")).toBeVisible(
-        { timeout: ELEMENT_TIMEOUT },
-      );
-      await expect(
-        page.getByPlaceholder("영문 값을 입력해주세요"),
-      ).toBeVisible();
-      await expect(
-        page.getByPlaceholder("중문 값을 입력해주세요"),
-      ).toBeVisible();
-      await expect(
-        page.getByPlaceholder("일본어 값을 입력해주세요"),
-      ).toBeVisible();
-      await expect(page.getByRole("button", { name: "취소" })).toBeVisible();
-      await expect(
-        page.getByRole("button", { name: "전시 카테고리 생성하기" }),
-      ).toBeVisible();
+    test("QA84-CREATE-01: 카테고리 생성 모달 폼 요소 확인", async () => {
+      await displayCategoryPage.openCreateModal();
+      await displayCategoryPage.assertCreateModalFieldsVisible();
     });
 
-    test("QA84-CREATE-02: 카테고리 생성 후 목록 반영 확인", async ({
-      page,
-    }) => {
-      await page
-        .locator('[class*="button-accent"]:has-text("카테고리 생성")')
-        .click();
-      await waitForModalOpen(page);
-
-      await page
-        .getByPlaceholder("한글 값을 입력해주세요")
-        .fill(DC_CATEGORY.ko);
-      await page
-        .getByPlaceholder("영문 값을 입력해주세요")
-        .fill(DC_CATEGORY.en);
-      await page
-        .getByPlaceholder("중문 값을 입력해주세요")
-        .fill(DC_CATEGORY.zh);
-      await page
-        .getByPlaceholder("일본어 값을 입력해주세요")
-        .fill(DC_CATEGORY.ja);
-
-      await page
-        .getByRole("button", { name: "전시 카테고리 생성하기" })
-        .click();
-
-      await expect(page.getByText(DC_CATEGORY.ko)).toBeVisible({
-        timeout: ELEMENT_TIMEOUT,
-      });
+    test("QA84-CREATE-02: 카테고리 생성 후 목록 반영 확인", async () => {
+      await displayCategoryPage.createCategory(DC_CATEGORY);
     });
   });
 
@@ -1805,145 +1300,36 @@ test.describe.serial("상품 등록 @feature:admin_makestar.event.create", () =>
   // ========================================================================
   test.describe
     .serial("전시 카테고리 우선순위 변경 — 미저장 팝업 (QA-85)", () => {
-    const DC_PARENT =
-      "https://stage-new-admin.makeuni2026.com/display-category";
-    const DC_DETAIL = `${DC_PARENT}/34?type=B2C`;
-
-    // 미저장 가드 모달은 native beforeunload가 아니라 Vue 커스텀 모달이다.
-    // 구조: .modal-content > .modal-header "저장되지 않은 변경사항"
-    //        + 본문 "변경사항을 저장하지 않고 나가시겠습니까?"
-    //        + 버튼 "취소" / "나가기"
-    const UNSAVED_MODAL_TITLE = "저장되지 않은 변경사항";
-    const unsavedModal = (page: import("@playwright/test").Page) =>
-      page.locator(".modal-content").filter({ hasText: UNSAVED_MODAL_TITLE });
-
-    async function dragFirstItemBelowSecond(
-      page: import("@playwright/test").Page,
-      items: import("@playwright/test").Locator,
-    ) {
-      const sBox = await items
-        .nth(0)
-        .locator(".handle.cursor-grab")
-        .boundingBox();
-      const tBox = await items
-        .nth(1)
-        .locator(".handle.cursor-grab")
-        .boundingBox();
-      if (!sBox || !tBox) throw new Error("핸들 위치 가져오기 실패");
-      const sx = sBox.x + sBox.width / 2;
-      const sy = sBox.y + sBox.height / 2;
-      const tx = tBox.x + tBox.width / 2;
-      const ty = tBox.y + tBox.height + 10;
-
-      await page.mouse.move(sx, sy);
-      await page.mouse.down();
-      await page.mouse.move(tx, ty, { steps: 25 });
-      await page.mouse.up();
-    }
+    const displayCategoryId = "34";
+    let displayCategoryPage: DisplayCategoryPage;
 
     test.beforeEach(async ({ page }) => {
       // 히스토리 컨텍스트 확보: 두 번 goto()는 Vue router 히스토리에 안 쌓여
       // 뒤로가기 @click 핸들러가 no-op이 됨. 사용자 여정(목록 → 링크 클릭)으로
       // SPA 라우팅을 거쳐 상세 진입해야 router.back()이 정상 동작.
-      await page.goto(DC_PARENT);
+      displayCategoryPage = new DisplayCategoryPage(page);
+      await displayCategoryPage.navigate();
       await waitForPageStable(page);
-
-      const categoryLink = page
-        .locator('a[href="/display-category/34?type=B2C"]')
-        .first();
-      await categoryLink.waitFor({ state: "visible", timeout: 10000 });
-      await categoryLink.click();
-      await page.waitForURL(/\/display-category\/34(?:\?|$|\/)/, {
-        timeout: 10000,
-      });
+      await displayCategoryPage.openB2CDetail(displayCategoryId);
       await waitForPageStable(page);
     });
 
-    test("QA85-PAGE-01: 전시 카테고리 상세 페이지 기본 요소 노출", async ({
-      page,
-    }) => {
-      await expect(
-        page.getByRole("button", { name: /변경내용 저장/ }),
-        "'변경내용 저장하기' 버튼이 노출되어야 합니다",
-      ).toBeVisible({ timeout: ELEMENT_TIMEOUT });
-
-      await expect(
-        page.getByRole("button", { name: /상품 추가/ }),
-        "'상품 추가하기' 버튼이 노출되어야 합니다",
-      ).toBeVisible({ timeout: ELEMENT_TIMEOUT });
-
-      await page
-        .locator(".draggable-item")
-        .first()
-        .waitFor({ state: "visible", timeout: 15000 });
-      const itemCount = await page.locator(".draggable-item").count();
-      expect(
-        itemCount,
-        "드래그 가능한 상품 아이템이 2개 이상 있어야 순서 변경 테스트 가능",
-      ).toBeGreaterThanOrEqual(2);
+    test("QA85-PAGE-01: 전시 카테고리 상세 페이지 기본 요소 노출", async () => {
+      await displayCategoryPage.assertDetailElementsVisible();
     });
 
-    test("QA85-ACTION-01: 변경 없이 뒤로가기 시 모달 미노출 (기준선)", async ({
-      page,
-    }) => {
-      const backBtn = page
-        .locator('svg:has(use[href="#icon-arrow-left-line"])')
-        .first();
-      await backBtn.click();
-      await expect(page).toHaveURL(/\/display-category(?:\?|$|\/)(?!34)/, {
-        timeout: 10000,
-      });
-
-      await expect(
-        unsavedModal(page),
-        "변경 없이 뒤로가기 시 미저장 가드 모달이 떠서는 안 됩니다",
-      ).toBeHidden({ timeout: 2000 });
+    test("QA85-ACTION-01: 변경 없이 뒤로가기 시 모달 미노출 (기준선)", async () => {
+      await displayCategoryPage.clickBackToList();
+      await displayCategoryPage.expectParentListUrl(displayCategoryId);
+      await displayCategoryPage.assertUnsavedModalHidden();
     });
 
     test("QA85-DATA-01: 순서 변경 후 뒤로가기 시 미저장 모달 노출 + '취소' 클릭 시 페이지 유지", async ({
       page,
     }) => {
-      const saveBtn = page.getByRole("button", { name: /변경내용 저장/ });
-      await expect(saveBtn).toBeVisible({ timeout: ELEMENT_TIMEOUT });
-      expect(
-        await saveBtn.isDisabled(),
-        "드래그 전 저장 버튼은 비활성 상태여야 합니다",
-      ).toBe(true);
-
-      const items = page.locator(".draggable-item");
-      await expect(items.first()).toBeVisible({ timeout: ELEMENT_TIMEOUT });
-      const firstText = await items.first().textContent();
-
-      await dragFirstItemBelowSecond(page, items);
-
-      await expect
-        .poll(async () => await items.first().textContent(), {
-          timeout: 10000,
-          message: "드래그로 순서가 변경되어야 합니다",
-        })
-        .not.toBe(firstText);
-      await expect
-        .poll(async () => await saveBtn.isDisabled(), {
-          timeout: 10000,
-          message: "드래그 후 저장 버튼이 활성화되어야 합니다 (dirty state)",
-        })
-        .toBe(false);
-
-      const backBtn = page
-        .locator('svg:has(use[href="#icon-arrow-left-line"])')
-        .first();
-      await backBtn.click();
-
-      const modal = unsavedModal(page);
-      await expect(
-        modal,
-        "순서 변경 후 뒤로가기 시 미저장 가드 모달이 노출되어야 합니다 (QA-85 회귀 방지)",
-      ).toBeVisible({ timeout: 10000 });
-
-      await modal.getByRole("button", { name: "취소" }).click();
-      await expect(modal, "'취소' 클릭 후 모달이 닫혀야 합니다").toBeHidden({
-        timeout: 5000,
-      });
+      await displayCategoryPage.assertSaveButtonDisabled();
+      await displayCategoryPage.openUnsavedModalFromDirtyDetail();
+      await displayCategoryPage.cancelUnsavedNavigation();
       expect(
         page.url(),
         "'취소' 후에는 현재 상세 페이지에 유지되어야 합니다",
@@ -1953,36 +1339,8 @@ test.describe.serial("상품 등록 @feature:admin_makestar.event.create", () =>
     test("QA85-DATA-02: 미저장 모달 '나가기' 클릭 시 실제 부모 페이지로 이탈", async ({
       page,
     }) => {
-      const saveBtn = page.getByRole("button", { name: /변경내용 저장/ });
-      await expect(saveBtn).toBeVisible({ timeout: ELEMENT_TIMEOUT });
-
-      const items = page.locator(".draggable-item");
-      await expect(items.first()).toBeVisible({ timeout: ELEMENT_TIMEOUT });
-      const firstText = await items.first().textContent();
-
-      await dragFirstItemBelowSecond(page, items);
-      await expect
-        .poll(async () => await items.first().textContent(), {
-          timeout: 10000,
-          message: "드래그로 순서가 변경되어야 합니다",
-        })
-        .not.toBe(firstText);
-
-      const backBtn = page
-        .locator('svg:has(use[href="#icon-arrow-left-line"])')
-        .first();
-      await backBtn.click();
-
-      const modal = unsavedModal(page);
-      await expect(
-        modal,
-        "순서 변경 후 뒤로가기 시 미저장 가드 모달이 노출되어야 합니다",
-      ).toBeVisible({ timeout: 10000 });
-
-      await modal.getByRole("button", { name: "나가기" }).click();
-      await page.waitForURL(/\/display-category(?:\?|$|\/)(?!34)/, {
-        timeout: 10000,
-      });
+      await displayCategoryPage.openUnsavedModalFromDirtyDetail();
+      await displayCategoryPage.confirmUnsavedNavigation(displayCategoryId);
       expect(
         page.url(),
         `'나가기' 클릭 후 부모 페이지(/display-category)로 이동해야 합니다. 현재: ${page.url()}`,

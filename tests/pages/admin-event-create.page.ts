@@ -13,7 +13,7 @@
  * - 상품설명 (tiptap 에디터)
  */
 
-import { Page, Locator, expect } from "@playwright/test";
+import { Page, Locator, expect, type Response } from "@playwright/test";
 import { AdminBasePage, ADMIN_TIMEOUTS } from "./admin-base.page";
 import * as path from "path";
 
@@ -49,6 +49,18 @@ export type EventCreateOptions = {
   descriptionKr?: string;
   /** 상품설명 (영어) */
   descriptionEn?: string;
+};
+
+type BulkPurchaseBenefitToggleResult =
+  | "not-found"
+  | "already-off"
+  | "toggled-off"
+  | "label-not-found";
+
+type ProductSubmitResponseLog = {
+  url: string;
+  status: number;
+  body: string;
 };
 
 // ============================================================================
@@ -206,6 +218,114 @@ export class EventCreatePage extends AdminBasePage {
         // 오버레이가 없거나 이미 사라졌으면 무시
       }
     }
+  }
+
+  /**
+   * 상품 등록 페이지 주요 입력 요소 노출 검증
+   */
+  async expectCreatePageLoaded(): Promise<void> {
+    await expect(
+      this.page.locator('h1:has-text("상품 등록")'),
+    ).toBeVisible({ timeout: this.timeouts.long });
+    await expect(this.submitButton).toBeVisible({
+      timeout: this.timeouts.long,
+    });
+  }
+
+  async scrollToTop(): Promise<void> {
+    await this.page.evaluate(() => window.scrollTo(0, 0));
+  }
+
+  /**
+   * 한국어/영어 상품명을 입력합니다.
+   */
+  async fillProductNames(nameKr: string, nameEn: string): Promise<void> {
+    await this.nameKrInput.scrollIntoViewIfNeeded();
+    await this.nameKrInput.fill(nameKr);
+    await this.nameEnInput.fill(nameEn);
+  }
+
+  /**
+   * 노출 카테고리 탭에서 지정 옵션을 선택합니다.
+   */
+  async selectDisplayCategoryOptions(
+    categoryTabs: readonly string[],
+    optionName: string,
+  ): Promise<void> {
+    for (const categoryTabName of categoryTabs) {
+      const categoryTab = this.page.getByText(categoryTabName, { exact: true });
+      if (
+        !(await categoryTab
+          .isVisible({ timeout: this.timeouts.short })
+          .catch(() => false))
+      ) {
+        console.log(`  ℹ️ ${categoryTabName} 탭 미발견 — 스킵`);
+        continue;
+      }
+
+      await categoryTab.scrollIntoViewIfNeeded();
+      await categoryTab.click({ force: true });
+      await this.page.waitForLoadState("domcontentloaded").catch(() => {});
+
+      const placeholder = this.page
+        .getByText("카테고리를 선택해주세요")
+        .first();
+      if (
+        !(await placeholder
+          .isVisible({ timeout: this.timeouts.short })
+          .catch(() => false))
+      ) {
+        console.log(`  ℹ️ ${categoryTabName}: 이미 선택됨 — 스킵`);
+        continue;
+      }
+
+      await placeholder.click({ force: true });
+      await expect(placeholder)
+        .toBeVisible({ timeout: this.timeouts.medium })
+        .catch(() => {});
+
+      const selected = await this.page.evaluate((targetOptionName) => {
+        const candidates = [...document.querySelectorAll("*")].filter(
+          (element) => {
+            const htmlElement = element as HTMLElement;
+            const text = element.textContent?.trim();
+            const isLeaf = element.children.length === 0;
+            const isVisible = htmlElement.offsetParent !== null;
+            return text === targetOptionName && isLeaf && isVisible;
+          },
+        );
+        const target = candidates[candidates.length - 1];
+        if (!target) {
+          return false;
+        }
+
+        const clickable =
+          target.closest(
+            "li, label, div[class*='option'], div[class*='item']",
+          ) || target;
+        (clickable as HTMLElement).click();
+        return true;
+      }, optionName);
+
+      if (selected) {
+        console.log(`  ✅ ${categoryTabName} "${optionName}" 선택 완료`);
+      } else {
+        console.warn(`  ⚠️ ${categoryTabName}: "${optionName}" 옵션 미발견`);
+      }
+
+      await this.page.keyboard.press("Escape");
+      await this.page.waitForLoadState("domcontentloaded").catch(() => {});
+    }
+  }
+
+  /**
+   * 상품 생성에 필요한 기본 노출 카테고리(상품/B2B)를 앨범으로 선택합니다.
+   */
+  async selectDefaultAlbumDisplayCategories(): Promise<void> {
+    await this.selectDisplayCategoryOptions(
+      ["상품 카테고리", "B2B 카테고리"],
+      "앨범",
+    );
   }
 
   // --------------------------------------------------------------------------
@@ -1110,6 +1230,73 @@ export class EventCreatePage extends AdminBasePage {
     await this.wait(300);
   }
 
+  /**
+   * 판매량기준 헤더 아래에서 가장 가까운 체크박스를 선택합니다.
+   */
+  async checkSalesStandardCheckboxNearHeader(): Promise<void> {
+    const salesHeader = this.page.getByText("판매량기준", { exact: true });
+    const headerBox = await salesHeader.boundingBox();
+    const checkboxes = this.page.locator("input.control-size-sm");
+    const checkboxCount = await checkboxes.count();
+
+    if (checkboxCount === 0 || !headerBox) {
+      console.warn("⚠️ 판매량 기준 체크박스를 찾을 수 없음");
+      return;
+    }
+
+    let closestIndex = 0;
+    let closestDistance = Infinity;
+    for (let index = 0; index < checkboxCount; index += 1) {
+      const box = await checkboxes.nth(index).boundingBox();
+      if (box && box.y > headerBox.y) {
+        const distance = Math.abs(box.x - headerBox.x);
+        if (distance < closestDistance) {
+          closestDistance = distance;
+          closestIndex = index;
+        }
+      }
+    }
+
+    const targetCheckbox = checkboxes.nth(closestIndex);
+    await targetCheckbox.scrollIntoViewIfNeeded();
+    await targetCheckbox.click();
+    console.log("ℹ️ 판매량 기준 체크박스 클릭 완료");
+  }
+
+  /**
+   * 다량구매특전 토글이 켜져 있으면 OFF로 전환합니다.
+   */
+  async disableBulkPurchaseBenefit(): Promise<BulkPurchaseBenefitToggleResult> {
+    const toggleResult = await this.page.evaluate(() => {
+      const checkbox = document.querySelector(
+        'input#toggle[type="checkbox"]',
+      ) as HTMLInputElement | null;
+      if (!checkbox) {
+        return "not-found" as const;
+      }
+      if (!checkbox.checked) {
+        return "already-off" as const;
+      }
+
+      const label = document.querySelector(
+        'label[for="toggle"]',
+      ) as HTMLElement | null;
+      if (!label) {
+        return "label-not-found" as const;
+      }
+
+      label.scrollIntoView({ behavior: "instant", block: "center" });
+      label.click();
+      return "toggled-off" as const;
+    });
+
+    if (toggleResult === "toggled-off") {
+      await this.page.waitForLoadState("domcontentloaded").catch(() => {});
+    }
+
+    return toggleResult;
+  }
+
   // --------------------------------------------------------------------------
   // 상품설명 입력
   // --------------------------------------------------------------------------
@@ -1236,6 +1423,198 @@ export class EventCreatePage extends AdminBasePage {
   // --------------------------------------------------------------------------
   // 폼 제출
   // --------------------------------------------------------------------------
+
+  /**
+   * 상품 등록을 제출하고, 편집 페이지로 이동하면 생성된 상품 ID를 반환합니다.
+   * 목록으로 이동한 경우에는 빈 문자열을 반환합니다.
+   */
+  async submitAndResolveCreatedProductId(): Promise<string> {
+    await this.submitButton.scrollIntoViewIfNeeded();
+    const isDisabled = await this.submitButton.isDisabled();
+    console.log(`  버튼 상태: ${isDisabled ? "❌ 비활성화" : "✅ 활성화"}`);
+
+    if (isDisabled) {
+      throw new Error("등록 버튼이 비활성화 상태입니다");
+    }
+
+    const apiResponses: ProductSubmitResponseLog[] = [];
+    const responseHandler = async (response: Response) => {
+      const url = response.url();
+      if (!url.includes("/api/") && !url.includes("/event")) {
+        return;
+      }
+
+      const status = response.status();
+      const body = await response.text().catch(() => "(읽기 실패)");
+      apiResponses.push({ url, status, body: body.substring(0, 500) });
+    };
+
+    this.page.on("response", responseHandler);
+
+    try {
+      await this.submitButton.click();
+      console.log("  지금 등록하기 버튼 클릭");
+
+      await this.page
+        .waitForLoadState("networkidle", { timeout: this.timeouts.medium })
+        .catch(() => {});
+
+      const validationErrors = this.page.locator(
+        '[class*="error"]:visible, [class*="invalid"]:visible, [class*="required"]:visible:not(label)',
+      );
+      const validationErrorCount = await validationErrors
+        .count()
+        .catch(() => 0);
+      if (validationErrorCount > 0 && apiResponses.length === 0) {
+        const errorTexts: string[] = [];
+        for (
+          let index = 0;
+          index < Math.min(validationErrorCount, 5);
+          index += 1
+        ) {
+          const text = await validationErrors
+            .nth(index)
+            .textContent()
+            .catch(() => "");
+          if (text?.trim()) {
+            errorTexts.push(text.trim().substring(0, 100));
+          }
+        }
+        console.log(
+          `  ⚠️ 프론트엔드 유효성 검증 실패 (${validationErrorCount}개): ${errorTexts.join(", ")}`,
+        );
+      }
+
+      const errorToast = this.page
+        .locator('[class*="toast"], [class*="alert"], [class*="notification"]')
+        .first();
+      if (
+        await errorToast
+          .isVisible({ timeout: this.timeouts.micro * 2 })
+          .catch(() => false)
+      ) {
+        const errorText = await errorToast.textContent();
+        console.warn(`  ⚠️ 알림 메시지: ${errorText}`);
+
+        if (
+          errorText?.includes("필수") ||
+          errorText?.includes("KIT") ||
+          errorText?.includes("SKU")
+        ) {
+          throw new Error(`등록 실패: ${errorText}`);
+        }
+      }
+
+      let confirmClicked = false;
+      const modal = this.page
+        .locator(
+          '[class*="modal"], [class*="popup"], [class*="dialog"], [role="dialog"]',
+        )
+        .first();
+      if (
+        await modal
+          .isVisible({ timeout: this.timeouts.medium })
+          .catch(() => false)
+      ) {
+        const modalText = await modal.textContent().catch(() => "(읽기 실패)");
+        console.log(`  📋 모달 내용: ${modalText?.trim().substring(0, 200)}`);
+
+        const modalConfirmButton = modal.locator("button", {
+          hasText: "확인",
+        });
+        if (
+          await modalConfirmButton
+            .isVisible({ timeout: this.timeouts.short })
+            .catch(() => false)
+        ) {
+          console.log("  ✅ 모달 내 확인 버튼 발견 - 클릭");
+          await modalConfirmButton.click();
+          confirmClicked = true;
+          await modal
+            .waitFor({ state: "hidden", timeout: this.timeouts.medium })
+            .catch(() => {});
+        }
+      }
+
+      if (!confirmClicked) {
+        const confirmButton = this.page.getByRole("button", {
+          name: "확인",
+          exact: true,
+        });
+        if (
+          await confirmButton
+            .isVisible({ timeout: this.timeouts.short })
+            .catch(() => false)
+        ) {
+          console.log("  ✅ 등록 확인 팝업 발견 - 확인 버튼 클릭");
+          await confirmButton.click();
+          confirmClicked = true;
+          await this.page
+            .locator('[role="dialog"], .modal')
+            .waitFor({ state: "hidden", timeout: this.timeouts.medium })
+            .catch(() => {});
+        }
+      }
+
+      if (!confirmClicked) {
+        console.log("  ℹ️ 확인 팝업 없음 - 리다이렉트 대기");
+      }
+
+      try {
+        await this.page.waitForURL(/\/event\/(list|update)/, {
+          timeout: this.timeouts.navigation,
+        });
+        await this.page.waitForLoadState("domcontentloaded");
+
+        const currentUrl = this.page.url();
+        if (currentUrl.includes("/event/update/")) {
+          const productId = currentUrl.match(/\/event\/update\/(\d+)/)?.[1];
+          console.log(
+            `  ✅ 상품 등록 성공! 편집 페이지로 이동 (상품 ID: ${productId})`,
+          );
+          return productId ?? "";
+        }
+
+        console.log("  ✅ 상품 목록 페이지로 이동 완료");
+        return "";
+      } catch (error) {
+        const currentUrl = this.page.url();
+        console.warn(`  ⚠️ 리다이렉트 실패. 현재 URL: ${currentUrl}`);
+
+        console.log(`  📡 캡처된 API 응답: ${apiResponses.length}개`);
+        for (const responseLog of apiResponses) {
+          console.log(`    [${responseLog.status}] ${responseLog.url}`);
+          if (
+            responseLog.status >= 400 ||
+            responseLog.body.includes("error") ||
+            responseLog.body.includes("필수")
+          ) {
+            console.log(`    응답: ${responseLog.body}`);
+          }
+        }
+
+        const pageText = (await this.page.locator("body").textContent()) || "";
+        if (pageText.includes("필수")) {
+          console.error("  ❌ 필수 필드 오류가 있는 것 같습니다");
+        }
+
+        if (apiResponses.length === 0) {
+          const requiredMarkers = await this.page
+            .locator('[class*="required"]:visible, [class*="error"]:visible')
+            .count()
+            .catch(() => 0);
+          console.log(`  📋 화면의 필수/에러 표시: ${requiredMarkers}개`);
+          throw new Error(
+            "폼 제출 실패: 프론트엔드 유효성 검증 미통과 (API 호출 0건). 필수 필드를 확인하세요.",
+          );
+        }
+
+        throw error;
+      }
+    } finally {
+      this.page.off("response", responseHandler);
+    }
+  }
 
   /**
    * 상품 등록 제출 및 목록 페이지 대기

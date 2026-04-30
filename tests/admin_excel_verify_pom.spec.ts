@@ -31,6 +31,43 @@ const ORDER_SEARCH_API = (userOrderNumber: string) =>
     userOrderNumber,
   )}&payment_status=&page=1&size=10`;
 
+type OrderSearchRow = {
+  user_order_number?: unknown;
+};
+
+function isOrderSearchRow(row: unknown): row is OrderSearchRow {
+  return typeof row === "object" && row !== null;
+}
+
+async function fetchOrderSearchRows(
+  page: Page,
+  orderNo: string,
+): Promise<{ status: number; rows: unknown[] }> {
+  let latestStatus = 0;
+  let latestRows: unknown[] = [];
+
+  await expect
+    .poll(
+      async () => {
+        const { status, body } = await fetchJson(
+          page,
+          ORDER_SEARCH_API(orderNo),
+        );
+        latestStatus = status;
+        latestRows = status === 200 ? extractRows(body).rows : [];
+        return status < 500;
+      },
+      {
+        timeout: 15_000,
+        intervals: [1_000, 2_000, 3_000],
+      },
+    )
+    .toBeTruthy()
+    .catch(() => {});
+
+  return { status: latestStatus, rows: latestRows };
+}
+
 // ===========================================================================
 // 공통 유틸
 // ===========================================================================
@@ -257,17 +294,15 @@ test.describe("Admin 주문 엑셀 → API 역검증 @feature:admin_makestar.ord
       const apiErrors: Array<{ orderNo: string; status: number }> = [];
 
       for (const orderNo of samples) {
-        const { status, body } = await fetchJson(
-          page,
-          ORDER_SEARCH_API(orderNo),
-        );
+        const { status, rows } = await fetchOrderSearchRows(page, orderNo);
         if (status !== 200) {
           apiErrors.push({ orderNo, status });
           continue;
         }
-        const { rows } = extractRows(body);
         const found = rows.some(
-          (r: any) => String(r?.user_order_number ?? "") === orderNo,
+          (row) =>
+            isOrderSearchRow(row) &&
+            String(row.user_order_number ?? "") === orderNo,
         );
         if (!found) notFound.push(orderNo);
       }

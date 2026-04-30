@@ -322,11 +322,25 @@ export class OrderListPage extends AdminBasePage {
   async applyCombinedStatusFilters(
     snapshot: OrderStatusSnapshot,
   ): Promise<void> {
+    const requiredKeys: OrderStatusKey[] = [
+      "orderStatus",
+      "paymentStatus",
+      "deliveryStatus",
+    ];
+    for (const key of requiredKeys) {
+      expect(
+        this.isMeaningfulValue(snapshot[key]),
+        `상태 조합 필수값이 비어 있습니다: ${key}`,
+      ).toBeTruthy();
+    }
+
     await this.selectStatusOption("deliveryStatus", snapshot.deliveryStatus);
-    await this.selectStatusOption(
-      "stockAllocationStatus",
-      snapshot.stockAllocationStatus,
-    );
+    if (this.isMeaningfulValue(snapshot.stockAllocationStatus)) {
+      await this.selectStatusOption(
+        "stockAllocationStatus",
+        snapshot.stockAllocationStatus,
+      );
+    }
     await this.selectStatusOption("orderStatus", snapshot.orderStatus);
     await this.selectStatusOption("paymentStatus", snapshot.paymentStatus);
   }
@@ -642,6 +656,24 @@ export class OrderListPage extends AdminBasePage {
           `${key} 불일치: 기대=${value}, 행=${rowText}`,
         ).toBeTruthy();
       }
+    }
+  }
+
+  /**
+   * 검색 결과 행에 지정 텍스트가 포함되는지 검증합니다.
+   */
+  async assertRowsContainText(
+    expectedText: string,
+    sampleLimit: number = 10,
+  ): Promise<void> {
+    const rowTexts = await this.getRowTexts(sampleLimit);
+    expect(rowTexts.length, "검색 결과가 없습니다.").toBeGreaterThan(0);
+
+    for (const rowText of rowTexts) {
+      expect(
+        rowText.includes(expectedText),
+        `검색 결과 행에 "${expectedText}"가 포함되지 않았습니다: ${rowText}`,
+      ).toBeTruthy();
     }
   }
 

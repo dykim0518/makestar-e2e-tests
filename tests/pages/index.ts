@@ -92,6 +92,10 @@ export type { CategorySearchOptions } from "./admin-category-list.page";
 export { CategoryCreatePage } from "./admin-category-create.page";
 export type { CategoryCreateOptions } from "./admin-category-create.page";
 
+// Admin 대분류 상세 페이지
+export { CategoryDetailPage } from "./admin-category-detail.page";
+export type { CategoryItemCreateOptions } from "./admin-category-detail.page";
+
 // Admin SKU 생성 페이지
 export { SkuCreatePage } from "./admin-sku-create.page";
 
@@ -99,6 +103,10 @@ export { SkuCreatePage } from "./admin-sku-create.page";
 export { EventCreatePage } from "./admin-event-create.page";
 export type { EventCreateOptions } from "./admin-event-create.page";
 export type { SkuCreateOptions } from "./admin-sku-create.page";
+
+// Admin 전시 카테고리 페이지
+export { DisplayCategoryPage } from "./admin-display-category.page";
+export type { DisplayCategoryNames } from "./admin-display-category.page";
 
 // POCAAlbum Admin 대시보드 페이지
 export {
