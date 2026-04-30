@@ -1,8 +1,6 @@
 export type CmrRuntimeEnvironment = "prod" | "stg" | "unknown";
 
 export const CMR_PRICE_OPTION_PRODUCT_ENV_KEYS = {
-  generic: "CMR_PRICE_OPTION_PRODUCT_IDS",
-  prod: "CMR_PRICE_OPTION_PRODUCT_IDS_PROD",
   stg: "CMR_PRICE_OPTION_PRODUCT_IDS_STG",
 } as const;
 
@@ -31,25 +29,13 @@ export function parseProductIds(value: string | undefined): number[] {
 
 export function getPriceOptionProductIds(baseUrl: string): number[] {
   const environment = getCmrRuntimeEnvironment(baseUrl);
-  const envSpecificKey =
-    environment === "prod"
-      ? CMR_PRICE_OPTION_PRODUCT_ENV_KEYS.prod
-      : environment === "stg"
-        ? CMR_PRICE_OPTION_PRODUCT_ENV_KEYS.stg
-        : null;
-  const envSpecificIds = envSpecificKey
-    ? parseProductIds(process.env[envSpecificKey])
-    : [];
-
-  if (envSpecificIds.length > 0) {
-    return envSpecificIds;
-  }
-
-  const genericIds = parseProductIds(
-    process.env[CMR_PRICE_OPTION_PRODUCT_ENV_KEYS.generic],
-  );
-  if (genericIds.length > 0) {
-    return genericIds;
+  if (environment === "stg") {
+    const stgIds = parseProductIds(
+      process.env[CMR_PRICE_OPTION_PRODUCT_ENV_KEYS.stg],
+    );
+    if (stgIds.length > 0) {
+      return stgIds;
+    }
   }
 
   return [...DEFAULT_PRICE_OPTION_PRODUCT_IDS[environment]];
