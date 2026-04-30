@@ -5,7 +5,12 @@
  */
 
 import { Page, Locator, expect } from "@playwright/test";
-import { BasePage, DEFAULT_TIMEOUTS, TimeoutConfig } from "./base.page";
+import {
+  BasePage,
+  DEFAULT_TIMEOUTS,
+  type ImageVerificationResult,
+  type TimeoutConfig,
+} from "./base.page";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -441,10 +446,9 @@ export class AlbumBuddyPage extends BasePage {
   /**
    * 이미지 로드 확인
    */
-  async verifyImagesLoaded(): Promise<{
-    count: number;
-    firstImageLoaded: boolean;
-  }> {
+  override async verifyImagesLoaded(): Promise<
+    ImageVerificationResult & { count: number; firstImageLoaded: boolean }
+  > {
     const result = await this.page.evaluate(() => {
       const images = Array.from(
         document.querySelectorAll("img"),
@@ -468,6 +472,9 @@ export class AlbumBuddyPage extends BasePage {
     });
 
     return {
+      total: result.count,
+      broken: result.count - result.loadedVisibleCount,
+      brokenSrcs: [],
       count: result.count,
       firstImageLoaded: result.loadedVisibleCount > 0,
     };

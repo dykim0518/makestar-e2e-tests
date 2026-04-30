@@ -489,107 +489,30 @@ test.describe
     }
   });
 
-  test("QA102-PAGE-01: B2B 주문 목록 + 결제수단 필터 노출", async ({
-    page,
-  }) => {
-    await expect(
-      page.getByRole("button", { name: "조회하기", exact: true }),
-      "조회하기 버튼이 노출되어야 합니다",
-    ).toBeVisible({ timeout: ELEMENT_TIMEOUT });
-
-    await expect(
-      page.getByText("결제수단", { exact: false }).first(),
-      "결제수단 필터가 노출되어야 합니다",
-    ).toBeVisible({ timeout: ELEMENT_TIMEOUT });
+  test("QA102-PAGE-01: B2B 주문 목록 + 결제수단 필터 노출", async () => {
+    await qa102OrderPage.expectPaymentMethodFilterVisible();
   });
 
-  test("QA102-FLT-01: 결제수단 '예치금' 필터 적용 가능", async ({ page }) => {
-    await page.getByText("결제수단", { exact: false }).first().click();
-    await page.waitForTimeout(500);
-    await page.getByText("예치금", { exact: true }).first().click();
-    await page.waitForTimeout(300);
-    await page.keyboard.press("Escape");
-    await page.keyboard.press("Escape");
-    await page.waitForTimeout(300);
-    await page
-      .getByRole("button", { name: "조회하기", exact: true })
-      .click({ force: true });
-    await page
-      .waitForLoadState("networkidle", { timeout: 15000 })
-      .catch(() => {});
-    await page.waitForTimeout(1500);
-
-    const hasSummary = await page
-      .getByText("상품 주문내역")
-      .first()
-      .isVisible({ timeout: ELEMENT_TIMEOUT })
-      .catch(() => false);
-    const hasNoResult = await page
-      .getByText(/검색결과가 없습니다/)
-      .first()
-      .isVisible({ timeout: 2000 })
-      .catch(() => false);
+  test("QA102-FLT-01: 결제수단 '예치금' 필터 적용 가능", async () => {
+    const metrics = await qa102OrderPage.applyPaymentMethodFilter("예치금");
 
     expect(
-      hasSummary || hasNoResult,
-      "조회 후 '상품 주문내역' 또는 '검색결과 없음'이 노출되어야 합니다",
+      metrics.noResultState ||
+        metrics.rowCount > 0 ||
+        metrics.summaryCount !== null,
+      `조회 후 '상품 주문내역' 또는 '검색결과 없음'이 노출되어야 합니다: ${JSON.stringify(metrics)}`,
     ).toBe(true);
   });
 
-  test("QA102-FLT-02: 예치금 필터 결과의 결제수단 정합성 (다른 결제수단 0건)", async ({
-    page,
-  }) => {
-    await expect(page.getByText("예치금", { exact: true }).first()).toBeVisible(
-      { timeout: 15000 },
-    );
-    await page.waitForTimeout(500);
+  test("QA102-FLT-02: 예치금 필터 결과의 결제수단 정합성 (다른 결제수단 0건)", async () => {
+    await qa102OrderPage.applyPaymentMethodFilter("예치금");
+    const counts = await qa102OrderPage.getVisiblePaymentMethodCounts();
 
-    // 텍스트 클릭으로는 체크박스가 토글되지 않아 input[checkbox] 직접 클릭
-    const checked = await page.evaluate(() => {
-      const deposits = Array.from(document.querySelectorAll("*")).filter(
-        (n) => n.children.length === 0 && n.textContent?.trim() === "예치금",
-      );
-      for (const n of deposits) {
-        let node: Element | null = n.parentElement;
-        for (let i = 0; i < 4 && node; i++) {
-          const cb = node.querySelector(
-            'input[type="checkbox"]',
-          ) as HTMLInputElement | null;
-          if (cb) {
-            cb.click();
-            return cb.checked;
-          }
-          node = node.parentElement;
-        }
-      }
-      return null;
-    });
-    expect(checked, "예치금 체크박스를 선택할 수 있어야 합니다").toBe(true);
-
-    await page.waitForTimeout(500);
-    await page
-      .getByRole("button", { name: "조회하기", exact: true })
-      .click({ force: true });
-    await page
-      .waitForLoadState("networkidle", { timeout: 15000 })
-      .catch(() => {});
-    await page.waitForTimeout(2000);
-
-    const counts = await page.evaluate(() => {
-      const text = document.body.innerText;
-      return {
-        예치금: (text.match(/예치금/g) || []).length,
-        직접송금: (text.match(/직접송금/g) || []).length,
-        신용카드: (text.match(/신용카드|카드결제/g) || []).length,
-        무통장: (text.match(/무통장/g) || []).length,
-      };
-    });
-
-    expect(counts.예치금, "예치금 텍스트가 노출되어야 합니다").toBeGreaterThan(
+    expect(counts.deposit, "예치금 텍스트가 노출되어야 합니다").toBeGreaterThan(
       0,
     );
     expect(
-      counts.직접송금 + counts.신용카드 + counts.무통장,
+      counts.directTransfer + counts.creditCard + counts.bankTransfer,
       `예치금 필터 결과에 다른 결제수단이 포함되어서는 안 됩니다: ${JSON.stringify(counts)}`,
     ).toBe(0);
   });
@@ -617,60 +540,17 @@ test.describe
     ).toBe(true);
   });
 
-  test("QA100-DATA-01: 예치금 필터 후 결제상태 '결제완료' 노출 + 정합성 검증", async ({
-    page,
-  }) => {
-    await expect(page.getByText("예치금", { exact: true }).first()).toBeVisible(
-      { timeout: 15000 },
-    );
-    await page.waitForTimeout(500);
-
-    const checked = await page.evaluate(() => {
-      const deposits = Array.from(document.querySelectorAll("*")).filter(
-        (n) => n.children.length === 0 && n.textContent?.trim() === "예치금",
-      );
-      for (const n of deposits) {
-        let node: Element | null = n.parentElement;
-        for (let i = 0; i < 4 && node; i++) {
-          const cb = node.querySelector(
-            'input[type="checkbox"]',
-          ) as HTMLInputElement | null;
-          if (cb) {
-            cb.click();
-            return cb.checked;
-          }
-          node = node.parentElement;
-        }
-      }
-      return null;
-    });
-    expect(checked).toBe(true);
-
-    await page.waitForTimeout(500);
-    await page
-      .getByRole("button", { name: "조회하기", exact: true })
-      .click({ force: true });
-    await page
-      .waitForLoadState("networkidle", { timeout: 15000 })
-      .catch(() => {});
-    await page.waitForTimeout(2000);
-
-    const counts = await page.evaluate(() => {
-      const text = document.body.innerText;
-      return {
-        결제완료: (text.match(/결제완료/g) || []).length,
-        결제실패: (text.match(/결제실패/g) || []).length,
-        결제취소: (text.match(/결제취소/g) || []).length,
-      };
-    });
+  test("QA100-DATA-01: 예치금 필터 후 결제상태 '결제완료' 노출 + 정합성 검증", async () => {
+    await qa102OrderPage.applyPaymentMethodFilter("예치금");
+    const counts = await qa102OrderPage.getVisiblePaymentStatusCounts();
 
     expect(
-      counts.결제완료,
+      counts.completed,
       "예치금 주문에 '결제완료' 결제상태가 노출되어야 합니다 (QA-100 회귀 방지)",
     ).toBeGreaterThan(0);
 
     expect(
-      counts.결제실패 + counts.결제취소,
+      counts.failed + counts.canceled,
       `예치금 주문 목록에 '결제실패/결제취소'가 노출되어서는 안 됩니다: ${JSON.stringify(counts)}`,
     ).toBe(0);
   });

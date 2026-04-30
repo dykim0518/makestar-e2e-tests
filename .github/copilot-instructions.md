@@ -44,10 +44,10 @@ npx playwright test --ui  # Interactive 모드
 
 ## JWT 토큰 관리 (중요)
 
-토큰은 **30분**마다 만료됨. `global-setup.js`가 자동 갱신 시도:
+access token은 짧게 만료될 수 있지만, `global-setup.js`가 refresh token 기준으로 자동 갱신 시도:
 1. `admin-tokens.json` → `auth.json`의 `refresh_token` 쿠키 순으로 확인
 2. 만료 시 브라우저 열어 Google 로그인 유도
-3. ISMS 심사로 **하루 1회 이상 재로그인** 필요할 수 있음
+3. STG(`.makeuni2026.com`) refresh token은 서버 정책의 실제 만료값을 따름
 
 ```typescript
 // 테스트에서 토큰 상태 확인 (admin_test_pom.spec.ts 참조)
@@ -230,7 +230,7 @@ await makestar.waitForContentStable('body', { stableTime: 500, timeout: 3000 }).
 | 증상 | 원인 | 해결 |
 |------|------|------|
 | Admin 테스트 모바일에서 실패 | 사이드바가 콘텐츠 가림 | 뷰포트 조건 `expect`로 즉시 Fail 후 데스크톱 환경에서 재실행 |
-| 401 Unauthorized | JWT 만료 (30분) | `npx playwright test tests/save-auth.spec.ts --headed` |
+| 401 Unauthorized | access/refresh token 만료 | `npx playwright test tests/save-auth.spec.ts --headed` |
 | `.auth-failed` 파일 존재 | 이전 인증 실패 | 파일 삭제 후 재실행 |
 | AlbumBuddy 세션 만료 | ab-auth.json 쿠키 만료 | `npx playwright test tests/ab-save-auth.spec.ts --headed` |
 | 테이블 로딩 타임아웃 | 네트워크 지연 | `ADMIN_TIMEOUTS.long` (10초) 사용 |

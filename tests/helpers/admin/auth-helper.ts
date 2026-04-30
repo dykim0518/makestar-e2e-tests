@@ -6,7 +6,7 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import type { Page } from "@playwright/test";
+import type { BrowserContext, Page } from "@playwright/test";
 
 // ============================================================================
 // 상수
@@ -48,10 +48,7 @@ type AuthSetupCache = {
 // 인증 캐시
 // ============================================================================
 
-let authSetupCache: AuthSetupCache = {
-  setupComplete: false,
-  lastSetup: 0,
-};
+let authSetupCacheByContext = new WeakMap<BrowserContext, AuthSetupCache>();
 
 // ============================================================================
 // 유틸리티 함수
@@ -176,10 +173,11 @@ export async function setupAuthCookies(page: Page): Promise<boolean> {
   const context = page.context();
   const adminDomain = BASE_URL.replace(/^https?:\/\//, "").split("/")[0];
 
-  // 캐시 확인 (5분 내 설정했으면 스킵)
+  // 캐시 확인 (같은 BrowserContext에 5분 내 설정했으면 스킵)
   const now = Date.now();
+  const authSetupCache = authSetupCacheByContext.get(context);
   if (
-    authSetupCache.setupComplete &&
+    authSetupCache?.setupComplete &&
     now - authSetupCache.lastSetup < 5 * 60 * 1000
   ) {
     return true;
@@ -272,8 +270,10 @@ export async function setupAuthCookies(page: Page): Promise<boolean> {
       }
     }
 
-    authSetupCache.setupComplete = true;
-    authSetupCache.lastSetup = now;
+    authSetupCacheByContext.set(context, {
+      setupComplete: true,
+      lastSetup: now,
+    });
     return true;
   } catch (e: unknown) {
     console.warn("⚠️ auth.json 파싱 실패:", (e as Error).message);
@@ -285,7 +285,7 @@ export async function setupAuthCookies(page: Page): Promise<boolean> {
  * 인증 캐시 초기화
  */
 export function resetAuthCache(): void {
-  authSetupCache = { setupComplete: false, lastSetup: 0 };
+  authSetupCacheByContext = new WeakMap<BrowserContext, AuthSetupCache>();
 }
 
 // ============================================================================

@@ -1297,8 +1297,7 @@ export class EventCreatePage extends AdminBasePage {
     }
 
     if (options.price) {
-      await this.setPrice(
-        options.price.finalPrice,
+      await this.setPriceWithDiscount(
         options.price.originalPrice,
         options.price.discountRate,
       );
