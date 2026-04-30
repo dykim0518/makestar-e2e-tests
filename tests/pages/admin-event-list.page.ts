@@ -58,7 +58,9 @@ export class EventListPage extends AdminBasePage {
   readonly newWindowButton: Locator;
 
   // 조회 버튼 (새 UI)
-  readonly searchButton: Locator;
+  override readonly searchButton: Locator = this.page.locator(
+    'button:has-text("조회하기"), .input__right__icons',
+  );
 
   constructor(page: Page) {
     super(page, ADMIN_TIMEOUTS);
@@ -93,11 +95,6 @@ export class EventListPage extends AdminBasePage {
 
     // 추가 검색 옵션
     this.simpleSearchButton = page.locator('button:has-text("간단하게 검색")');
-
-    // 검색 실행 버튼/아이콘
-    this.searchButton = page.locator(
-      'button:has-text("조회하기"), .input__right__icons',
-    );
 
     // 액션 버튼 초기화 (새 UI에서는 "등록하기" 버튼)
     this.createProductButton = page.locator(

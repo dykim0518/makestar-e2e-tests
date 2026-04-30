@@ -1065,7 +1065,10 @@ test.describe("상품/장바구니 기능 @feature:cmr.cart @feature:cmr.product
         type: "data-unavailable",
         description: checkedDetails.join(" | "),
       });
-      test.skip(true, reason);
+      test.skip(
+        !priceChanged,
+        `데이터 조건 미충족으로 가격 변동 검증을 건너뜁니다. ${reason}`,
+      );
     }
   });
 

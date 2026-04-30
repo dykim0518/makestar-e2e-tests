@@ -22,8 +22,8 @@ type LocalStorageRequirement = {
 };
 
 type AuthFileOptions = {
-  requiredCookies?: CookieRequirement[];
-  requiredLocalStorage?: LocalStorageRequirement[];
+  requiredCookies?: readonly CookieRequirement[];
+  requiredLocalStorage?: readonly LocalStorageRequirement[];
 };
 
 /**

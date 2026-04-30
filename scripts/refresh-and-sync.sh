@@ -52,10 +52,17 @@ echo ""
 # 토큰 잔여 시간 출력
 node -e "
   const auth = JSON.parse(require('fs').readFileSync('auth.json','utf8'));
-  const rt = auth.cookies?.find(c => c.name === 'refresh_token' && c.domain?.includes('makestar'));
-  if (rt?.expires) {
-    const h = ((rt.expires - Date.now()/1000) / 3600).toFixed(1);
-    console.log('   refresh_token 잔여: ' + h + '시간');
+  const tokens = (auth.cookies || []).filter(c => c.name === 'refresh_token');
+  for (const rt of tokens) {
+    let exp = rt.expires && rt.expires > 0 ? rt.expires * 1000 : null;
+    try {
+      const payload = JSON.parse(Buffer.from(rt.value.split('.')[1], 'base64').toString());
+      if (payload.exp) exp = payload.exp * 1000;
+    } catch {}
+    if (exp) {
+      const h = ((exp - Date.now()) / 3600000).toFixed(1);
+      console.log('   refresh_token @ ' + (rt.domain || 'unknown') + ' 잔여: ' + h + '시간');
+    }
   }
 "
 

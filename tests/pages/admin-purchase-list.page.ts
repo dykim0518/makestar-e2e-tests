@@ -1086,7 +1086,7 @@ export class PurchaseListPage extends AdminBasePage {
       .toLowerCase();
   }
 
-  private isMeaningfulValue(value: string): boolean {
+  override isMeaningfulValue(value: string): boolean {
     const normalized = this.normalize(value);
     if (!normalized.length) return false;
     if (normalized === "-" || normalized === "--") return false;

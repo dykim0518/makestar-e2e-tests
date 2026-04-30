@@ -12,7 +12,7 @@ import * as fs from "fs";
 import * as path from "path";
 
 type StoredCookie = { name: string; value: string; expires?: number };
-type StorageState = Awaited<ReturnType<Page["context"]["storageState"]>>;
+type StorageState = Awaited<ReturnType<BrowserContext["storageState"]>>;
 type AuthSnapshot = {
   hasRefreshToken: boolean;
   hasLoggedInUser: boolean;

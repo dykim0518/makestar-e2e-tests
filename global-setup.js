@@ -2,9 +2,9 @@
  * Playwright Global Setup
  * 
  * 테스트 실행 전 자동으로 토큰 유효성을 확인하고 필요시 갱신합니다.
- * 
+ *
  * 중요: 토큰 이슈 시 자동으로 브라우저를 열어 로그인을 유도합니다.
- * ISMS 심사로 인해 하루에 한 번은 재로그인이 필요할 수 있습니다.
+ * 인증 정책 또는 refresh token 만료 시 재로그인이 필요할 수 있습니다.
  */
 
 const { isTokenValid, autoRefreshToken, hasSession, getTokenRemaining, setupGoogleSession } = require('./auto-refresh-token');
@@ -75,7 +75,7 @@ async function globalSetup() {
   // 4. 자동 갱신 실패 또는 세션 없음 - 브라우저 열어서 로그인 유도
   printHeader('🔐 Google 로그인 필요', colors.yellow);
   console.log(`${colors.yellow}${colors.bold}브라우저가 열립니다. Google 계정으로 로그인해주세요!${colors.reset}`);
-  console.log('💡 ISMS 심사로 인해 하루 1회 이상 재로그인이 필요합니다.\n');
+  console.log('💡 저장된 refresh token이 없거나 만료되어 재로그인이 필요합니다.\n');
   console.log(`${colors.cyan}로그인 완료 후 자동으로 테스트가 시작됩니다...${colors.reset}\n`);
   
   // 브라우저 열어서 Google 로그인 실행

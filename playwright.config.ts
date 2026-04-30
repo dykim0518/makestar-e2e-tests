@@ -8,9 +8,37 @@ type StoredCookie = {
   domain?: string;
 };
 
-// 환경별 auth 파일 선택: STG → stg-auth.json, Prod → auth.json
+function getRefreshTokenExpiresAt(cookie: StoredCookie): Date | null {
+  if (cookie.value) {
+    try {
+      const payload = JSON.parse(
+        Buffer.from(cookie.value.split(".")[1], "base64").toString(),
+      );
+      if (payload.exp) {
+        return new Date(payload.exp * 1000);
+      }
+    } catch {
+      // JWT 파싱 실패 시 cookie expires를 확인
+    }
+  }
+
+  if (cookie.expires && cookie.expires > 0) {
+    return new Date(cookie.expires * 1000);
+  }
+
+  return null;
+}
+
+// 환경별 auth 파일 선택:
+// - STG는 stg-auth.json을 우선 사용하되, 없으면 auth.json의 .makeuni2026.com 토큰을 fallback으로 사용
+// - Prod는 auth.json만 사용
 const isSTG = process.env.MAKESTAR_BASE_URL?.includes("stage");
-const authFile = isSTG ? "./stg-auth.json" : "./auth.json";
+const authFileCandidates = isSTG
+  ? ["./stg-auth.json", "./auth.json"]
+  : ["./auth.json"];
+const authFile =
+  authFileCandidates.find((candidate) => fs.existsSync(candidate)) ??
+  authFileCandidates[0];
 let hasValidAuthFile = false;
 const excludeAuthTests = process.env.EXCLUDE_AUTH_TESTS === "true";
 const manualAuthSpecPatterns = [
@@ -34,27 +62,26 @@ if (fs.existsSync(authFile)) {
         c.value?.includes("mock_session") || c.value?.includes("mock_token"),
     );
 
-    // refresh_token JWT가 유효한지 확인
-    // 환경별 도메인 필터: STG는 .makeuni2026.com, Prod는 .makestar.com 쿠키만 검사.
-    // 파일에 두 환경 쿠키가 혼재되어 있을 때 엉뚱한 도메인의 만료 토큰을 잡아 false negative가 나는 걸 방지.
+    // refresh_token 유효성 확인
+    // STG 실행은 .makeuni2026.com 토큰만 storageState로 자동 적용한다.
+    // 기본 실행(auth.json)에 STG Admin 토큰만 있는 경우에는 유효성을 로그로만 알리고
+    // prod storageState로 오인 적용하지 않는다.
     let hasValidRefreshToken = false;
     const targetDomain = isSTG ? ".makeuni2026.com" : ".makestar.com";
-    const refreshCookie = authData.cookies?.find(
+    const refreshCookies = (authData.cookies ?? []).filter(
+      (c: StoredCookie) => c.name === "refresh_token",
+    );
+    const refreshCookie = refreshCookies.find(
       (c: StoredCookie) =>
         c.name === "refresh_token" && c.domain === targetDomain,
     );
     if (refreshCookie?.value) {
-      try {
-        const payload = JSON.parse(
-          Buffer.from(refreshCookie.value.split(".")[1], "base64").toString(),
+      const expiresAt = getRefreshTokenExpiresAt(refreshCookie);
+      hasValidRefreshToken = !!expiresAt && expiresAt > new Date();
+      if (hasValidRefreshToken) {
+        console.log(
+          `✅ ${authFile} refresh_token 유효 (${targetDomain}, 만료: ${expiresAt?.toISOString()})`,
         );
-        const expiresAt = new Date(payload.exp * 1000);
-        hasValidRefreshToken = expiresAt > new Date();
-        if (hasValidRefreshToken) {
-          console.log(`✅ ${authFile} refresh_token 유효`);
-        }
-      } catch {
-        // JWT 파싱 실패 — 토큰 형식 이상
       }
     }
 
@@ -63,7 +90,21 @@ if (fs.existsSync(authFile)) {
     if (hasValidAuthFile) {
       console.log(`✅ ${authFile} 로드됨 (쿠키 ${authData.cookies.length}개)`);
     } else if (!hasValidRefreshToken) {
-      console.log(`⚠️ ${authFile}의 refresh_token이 없거나 만료됨`);
+      const otherValidDomains = refreshCookies
+        .map((cookie: StoredCookie) => {
+          const expiresAt = getRefreshTokenExpiresAt(cookie);
+          if (!expiresAt || expiresAt <= new Date()) return null;
+          return `${cookie.domain ?? "unknown"} (${expiresAt.toISOString()})`;
+        })
+        .filter((value: string | null): value is string => !!value);
+
+      if (otherValidDomains.length > 0) {
+        console.log(
+          `ℹ️ ${authFile}에 ${targetDomain} refresh_token은 없지만 다른 유효 토큰이 있습니다: ${otherValidDomains.join(", ")}`,
+        );
+      } else {
+        console.log(`⚠️ ${authFile}의 refresh_token이 없거나 만료됨`);
+      }
     }
   } catch (e) {
     console.log(`⚠️ ${authFile} 파싱 실패`);

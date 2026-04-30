@@ -29,6 +29,19 @@ export type OrderResultMetrics = {
 
 export type PaymentMethodKey = "예치금" | "직접송금" | "신용카드" | "무통장";
 
+export type PaymentMethodCounts = {
+  deposit: number;
+  directTransfer: number;
+  creditCard: number;
+  bankTransfer: number;
+};
+
+export type PaymentStatusCounts = {
+  completed: number;
+  failed: number;
+  canceled: number;
+};
+
 export type OrderDetailPaymentInfo = {
   method: string;
   info: string;
@@ -49,6 +62,7 @@ export class OrderListPage extends AdminBasePage {
   readonly submitSearchButton: Locator;
   readonly searchResetButton: Locator;
   readonly resultSummary: Locator;
+  readonly paymentMethodFilterLabel: Locator;
 
   constructor(page: Page) {
     super(page, ADMIN_TIMEOUTS);
@@ -63,6 +77,9 @@ export class OrderListPage extends AdminBasePage {
     });
     this.resultSummary = page
       .getByText(/상품 주문내역|프로젝트별 주문내역/i)
+      .first();
+    this.paymentMethodFilterLabel = page
+      .getByText("결제수단", { exact: false })
       .first();
   }
 
@@ -132,6 +149,30 @@ export class OrderListPage extends AdminBasePage {
       undefined,
       { timeout },
     );
+  }
+
+  /**
+   * 주문 조회 결과 영역이 제품 UI 기준으로 로드되었는지 검증하고 메트릭을 반환합니다.
+   */
+  async expectOrderResultAreaLoaded(
+    context: string = "주문 조회",
+  ): Promise<OrderResultMetrics> {
+    await this.waitForTableOrNoResult();
+
+    const metrics = await this.getResultMetrics();
+    const loaded =
+      metrics.noResultState ||
+      metrics.rowCount > 0 ||
+      metrics.summaryCount !== null ||
+      (await this.resultSummary.isVisible().catch(() => false));
+
+    expect(
+      loaded,
+      `${context} 결과 영역이 로드되지 않았습니다. ` +
+        `url=${this.currentUrl}, metrics=${JSON.stringify(metrics)}`,
+    ).toBeTruthy();
+
+    return metrics;
   }
 
   async getRowCount(): Promise<number> {
@@ -1178,7 +1219,7 @@ export class OrderListPage extends AdminBasePage {
       .toLowerCase();
   }
 
-  private isMeaningfulValue(value: string): boolean {
+  override isMeaningfulValue(value: string): boolean {
     const normalized = this.normalize(value);
     if (normalized.length === 0) return false;
     if (normalized === "-" || normalized === "--") return false;
@@ -1617,27 +1658,25 @@ export class OrderListPage extends AdminBasePage {
    * 모두 미오픈으로 폐기되었으며, "텍스트 leaf → 부모 컨테이너의 체크박스
    * direct click" 패턴은 QA102-FLT-02 / QA100-DATA-01 에서 검증됨.
    *
-   * spec에서 1회 호출을 전제로 작성되었으며, 멱등성을 위한 토글 감지는
-   * 수행하지 않습니다.
-   *
    * @param method - 적용할 결제수단 옵션 (예: "예치금")
    */
-  async applyPaymentMethodFilter(method: PaymentMethodKey): Promise<void> {
+  async applyPaymentMethodFilter(
+    method: PaymentMethodKey,
+  ): Promise<OrderResultMetrics> {
     // 드롭다운 트리거 노출 대기
-    const trigger = this.page.getByText("결제수단", { exact: false }).first();
     await expect(
-      trigger,
-      "결제수단 드롭다운 트리거가 노출되어야 합니다",
+      this.paymentMethodFilterLabel,
+      `결제수단 드롭다운 트리거가 노출되어야 합니다. url=${this.currentUrl}`,
     ).toBeVisible({ timeout: this.timeouts.long });
 
     // 1) 드롭다운 펼치기: 라벨 클릭으로 옵션 패널이 펼쳐지길 기다린다.
     //    옵션 패널은 동일 라벨("예치금" 등 옵션 텍스트)이 leaf로 노출되는 시점.
-    await trigger.click({ force: true });
+    await this.paymentMethodFilterLabel.click({ force: true });
 
     const optionLeaf = this.page.getByText(method, { exact: true }).first();
     await expect(
       optionLeaf,
-      `결제수단 드롭다운에서 '${method}' 옵션이 노출되어야 합니다`,
+      `결제수단 드롭다운에서 '${method}' 옵션이 노출되어야 합니다. url=${this.currentUrl}`,
     ).toBeVisible({ timeout: this.timeouts.long });
 
     // 2) 옵션 텍스트 leaf의 가장 가까운 체크박스 컨테이너를 찾아 input 직접 클릭.
@@ -1658,6 +1697,9 @@ export class OrderListPage extends AdminBasePage {
             'input[type="checkbox"]',
           ) as HTMLInputElement | null;
           if (cb) {
+            if (cb.checked) {
+              return true;
+            }
             cb.click();
             return cb.checked;
           }
@@ -1670,7 +1712,7 @@ export class OrderListPage extends AdminBasePage {
     if (checked !== true) {
       throw new Error(
         `결제수단 '${method}' 체크박스를 선택하지 못했습니다. ` +
-          `evaluate 결과=${checked}`,
+          `url=${this.currentUrl}, evaluate 결과=${checked}`,
       );
     }
 
@@ -1681,8 +1723,59 @@ export class OrderListPage extends AdminBasePage {
     await this.submitSearchButton.click({ force: true });
 
     // 4) 결과 안정화 대기
-    await this.waitForTableOrNoResult();
+    const metrics = await this.expectOrderResultAreaLoaded(
+      `결제수단 '${method}' 필터 조회`,
+    );
     await this.waitForNetworkStable(this.timeouts.long).catch(() => {});
+    return metrics;
+  }
+
+  /**
+   * B2B 주문 목록에서 결제수단 필터와 조회 버튼이 노출되는지 검증합니다.
+   */
+  async expectPaymentMethodFilterVisible(): Promise<void> {
+    await expect(
+      this.submitSearchButton,
+      `조회하기 버튼이 노출되어야 합니다. url=${this.currentUrl}`,
+    ).toBeVisible({ timeout: this.timeouts.long });
+
+    await expect(
+      this.paymentMethodFilterLabel,
+      `결제수단 필터가 노출되어야 합니다. url=${this.currentUrl}`,
+    ).toBeVisible({ timeout: this.timeouts.long });
+  }
+
+  /**
+   * 현재 화면에 노출된 결제수단 텍스트 수를 반환합니다.
+   */
+  async getVisiblePaymentMethodCounts(): Promise<PaymentMethodCounts> {
+    await this.expectOrderResultAreaLoaded("결제수단 카운트 수집");
+
+    return await this.page.evaluate(() => {
+      const text = document.body.innerText;
+      return {
+        deposit: (text.match(/예치금/g) || []).length,
+        directTransfer: (text.match(/직접송금/g) || []).length,
+        creditCard: (text.match(/신용카드|카드결제/g) || []).length,
+        bankTransfer: (text.match(/무통장/g) || []).length,
+      };
+    });
+  }
+
+  /**
+   * 현재 화면에 노출된 결제상태 텍스트 수를 반환합니다.
+   */
+  async getVisiblePaymentStatusCounts(): Promise<PaymentStatusCounts> {
+    await this.expectOrderResultAreaLoaded("결제상태 카운트 수집");
+
+    return await this.page.evaluate(() => {
+      const text = document.body.innerText;
+      return {
+        completed: (text.match(/결제완료/g) || []).length,
+        failed: (text.match(/결제실패/g) || []).length,
+        canceled: (text.match(/결제취소/g) || []).length,
+      };
+    });
   }
 
   /**

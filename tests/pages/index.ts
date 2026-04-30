@@ -53,6 +53,9 @@ export type {
 export { SKUListPage } from "./admin-sku-list.page";
 export type { SKUSearchOptions } from "./admin-sku-list.page";
 
+// Admin 포토카드 SKU 작업 현황 페이지
+export { PhotocardSkuWorkPage } from "./admin-photocard-sku-work.page";
+
 // Admin 이벤트 목록 페이지
 export { EventListPage } from "./admin-event-list.page";
 export type { EventSearchOptions } from "./admin-event-list.page";
