@@ -205,16 +205,6 @@ export default defineConfig({
         viewport: { width: 1920, height: 1080 },
       },
     },
-    // 모바일 뷰포트 테스트 - Admin 테스트 제외
-    {
-      name: "mobile-chrome",
-      testIgnore: nonAdminIgnorePatterns,
-      use: {
-        ...devices["Pixel 5"],
-        // 모바일에서도 auth 유지
-        ...(hasValidAuthFile ? { storageState: authFile } : {}),
-      },
-    },
     // CMR 묶음 — monitoring + payment 등 cmr_*_pom.spec.ts 모두 포함 (Desktop Chrome 기준)
     // QA Hub Trigger에서 `--project=cmr` 로 일괄 실행에 사용.
     {

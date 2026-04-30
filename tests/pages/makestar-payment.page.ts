@@ -62,6 +62,11 @@ export class MakestarPaymentPage extends BasePage {
   /**
    * 상품 상세 페이지 진입 후 옵션 선택 + Purchase 클릭 → /payments 이동까지.
    * 옵션이 필요한 상품은 첫 번째 옵션 자동 선택.
+   *
+   * 데스크톱: 페이지 본체 옵션 select → Purchase 클릭 → 즉시 `/payments` 이동.
+   * 모바일: Purchase 클릭이 "Select option" 바텀시트를 띄우는 분기 — 모달 내부의
+   * Purchase를 다시 눌러야 `/payments`로 진행한다. 첫 클릭 후 짧게 URL 진입을
+   * 기다려 보고 미진입이면 모달 처리로 fall-through.
    */
   async openProductAndPurchase(productId: number | string): Promise<void> {
     await this._page.goto(`${this.baseUrl}/product/${productId}`, {
@@ -82,10 +87,52 @@ export class MakestarPaymentPage extends BasePage {
       );
     }
     await purchase.click();
+
+    // 데스크톱은 클릭 즉시 /payments로 이동(보통 1초 미만). 5초 timeout으로 우선권을 주고,
+    // 진입 못 하면 모바일 옵션 모달이 떴다고 보고 fallback. race로 두면 데스크톱에서도
+    // 페이지 어딘가의 "Select option"-유사 텍스트가 잠깐 visible해지는 순간 false-positive로
+    // 모달 분기에 빠질 수 있어, deterministic한 timeout-fallback 패턴을 사용한다.
+    const directNav = await this._page
+      .waitForURL(/\/payments/, {
+        timeout: this.timeouts.medium,
+        waitUntil: "commit",
+      })
+      .then(() => true)
+      .catch(() => false);
+    if (directNav) return;
+
+    await this._confirmOptionModalPurchase(productId);
     await this._page.waitForURL(/\/payments/, {
       timeout: this.timeouts.navigation,
       waitUntil: "commit",
     });
+  }
+
+  /**
+   * "Select option" 바텀시트가 열린 상태에서 모달 내부 Purchase를 클릭한다.
+   * 모달은 페이지 본체 Purchase 버튼과 동일 텍스트의 버튼을 가지므로 last()로 잡는다.
+   */
+  private async _confirmOptionModalPurchase(
+    productId: number | string,
+  ): Promise<void> {
+    const modalHeader = this._page.getByText(/Select option/i).first();
+    const headerVisible = await modalHeader
+      .waitFor({ state: "visible", timeout: this.timeouts.medium })
+      .then(() => true)
+      .catch(() => false);
+    if (!headerVisible) {
+      throw new Error(
+        `Purchase 클릭 후 /payments 진입에 실패했고 옵션 모달도 감지되지 않음 (상품 ${productId}).`,
+      );
+    }
+    const modalPurchase = this._page
+      .locator('button:has-text("Purchase")')
+      .last();
+    await modalPurchase.waitFor({
+      state: "visible",
+      timeout: this.timeouts.medium,
+    });
+    await modalPurchase.click({ timeout: this.timeouts.medium });
   }
 
   /** 바로 /payments 경로로 이동 — 이미 카트에 상품이 있을 때만 사용 */

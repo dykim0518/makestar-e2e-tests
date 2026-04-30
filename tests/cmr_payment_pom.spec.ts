@@ -343,6 +343,16 @@ test.describe.serial("CMR 결제 회귀", () => {
         Number(amount),
         `amount 파라미터는 주문 총액(${expectedAmount})과 일치해야 합니다`,
       ).toBe(expectedAmount);
+
+      // 결제 완주 후 정상 랜딩(/payments/toss/success) 회귀 가드.
+      // 과거 manual에서 결제 후 /cart로 떨어지는 케이스가 보고되어, 자동화에서도
+      // 같은 회귀가 발생하면 즉시 실패하도록 success URL + 완료 본문 한 줄을 검증한다.
+      await expect(payment.page).toHaveURL(/\/payments\/toss\/success/, {
+        timeout: 20000,
+      });
+      await expect(
+        payment.page.getByText(/successfully completed/i).first(),
+      ).toBeVisible({ timeout: 5000 });
     },
   );
 });
