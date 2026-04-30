@@ -197,6 +197,13 @@ export class EventListPage extends AdminBasePage {
   }
 
   /**
+   * 현재 검색 결과 첫 번째 행 텍스트를 반환합니다.
+   */
+  async getFirstResultText(): Promise<string> {
+    return (await this.tableRows.first().textContent()) || "";
+  }
+
+  /**
    * 조회하기 버튼 클릭
    */
   async clickSearchButton(): Promise<void> {

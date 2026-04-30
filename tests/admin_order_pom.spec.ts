@@ -81,46 +81,51 @@ test.describe.serial("주문관리 목록 @feature:admin_makestar.order.list", (
     ).toBeTruthy();
   });
 
-  test("ORD-SEARCH-01: 상태 조합 검색(주문/결제/배송/재고할당) 정합성 검증", async () => {
-    const candidateTabs: OrderTabKey[] = ["all", "b2c", "b2b"];
-    const errors: string[] = [];
-    let verified = false;
+  test("ORD-SEARCH-01: 상태+주문번호 조합 검색 정합성 검증", async () => {
+    await orderPage.switchTab("all");
 
-    for (const tab of candidateTabs) {
-      await orderPage.switchTab(tab);
-      try {
-        const appliedSnapshot =
-          await orderPage.applyFirstAvailableCombinedStatusFilters();
-        await orderPage.clickSearchAndWait();
+    const initialCount = await orderPage.getRowCount();
+    expect(initialCount, "초기 주문 목록이 비어 있습니다.").toBeGreaterThan(0);
 
-        const isNoResult = await orderPage.hasNoResultOrEmptyTable();
-        if (isNoResult) {
-          const hasNoResultBanner = await orderPage.noResultMessage
-            .isVisible({ timeout: ELEMENT_TIMEOUT })
-            .catch(() => false);
-          const hasZeroSummary = await orderPage.hasZeroSummaryCount();
-          expect(
-            hasNoResultBanner || hasZeroSummary,
-            `${tab} 탭 조합 검색 결과 0건이지만 no-result 문구/요약(전체 0건)이 확인되지 않습니다.`,
-          ).toBeTruthy();
-          verified = true;
-          break;
-        }
+    const firstRow = await orderPage.getFirstRowFingerprint();
+    const orderNo = firstRow.match(/[A-Z]-[A-Z0-9]+/)?.[0] ?? "";
+    expect(
+      orderNo,
+      `첫 번째 행에서 주문번호를 추출하지 못했습니다: ${firstRow}`,
+    ).not.toBe("");
 
-        await orderPage.assertRowsMatchStatus(appliedSnapshot, 10);
-        verified = true;
-        break;
-      } catch (error: unknown) {
-        errors.push(
-          `${tab}: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      }
+    const orderOptions = await orderPage.getStatusOptionsByKey("orderStatus");
+    expect(orderOptions.length, "주문상태 옵션이 없습니다.").toBeGreaterThan(0);
+    const orderStatus =
+      orderOptions.find((option) => firstRow.includes(option)) ??
+      orderOptions[0];
+
+    await orderPage.resetFiltersAndWait();
+    const selectedOrderStatus = await orderPage.selectStatusOptionByValue(
+      "orderStatus",
+      orderStatus,
+    );
+    await orderPage.searchByKeyword(orderNo);
+
+    const metrics = await orderPage.getResultMetrics();
+    if (metrics.noResultState) {
+      expect(
+        metrics.hasNoResultMessage || metrics.hasZeroSummary,
+        `상태+주문번호 조합 검색 0건 결과 표기가 없습니다: ${JSON.stringify({
+          orderNo,
+          orderStatus: selectedOrderStatus,
+        })}`,
+      ).toBeTruthy();
+      return;
     }
 
-    expect(
-      verified,
-      `상태 조합 검색 검증을 수행할 수 있는 탭이 없습니다.\n${errors.join("\n")}`,
-    ).toBeTruthy();
+    await orderPage.assertRowsMatchPartialStatus(
+      {
+        orderStatus: selectedOrderStatus,
+      },
+      10,
+    );
+    await orderPage.assertRowsContainText(orderNo, 10);
   });
 
   test("ORD-SEARCH-02: 검색 초기화 후 동일 조건 재검색 시 재실행 가능성 검증", async () => {

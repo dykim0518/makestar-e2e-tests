@@ -2,7 +2,7 @@
  * 대분류 목록 페이지 객체
  */
 
-import { Page, Locator } from "@playwright/test";
+import { Page, Locator, expect } from "@playwright/test";
 import { AdminBasePage, ADMIN_TIMEOUTS } from "./admin-base.page";
 
 // ============================================================================
@@ -84,6 +84,30 @@ export class CategoryListPage extends AdminBasePage {
     await this.clickSearchAndWait();
   }
 
+  /**
+   * 현재 테이블에서 지정 텍스트를 포함하는 행 수를 반환합니다.
+   */
+  async getRowCountByText(text: string): Promise<number> {
+    return await this.tableRows.filter({ hasText: text }).count();
+  }
+
+  /**
+   * 현재 테이블에서 지정 텍스트를 포함하는 첫 번째 행을 반환합니다.
+   */
+  getRowByText(text: string): Locator {
+    return this.tableRows.filter({ hasText: text }).first();
+  }
+
+  /**
+   * 지정 텍스트를 포함하는 대분류 행이 노출되는지 검증합니다.
+   */
+  async expectRowVisible(text: string): Promise<void> {
+    await expect(
+      this.getRowByText(text),
+      `대분류 "${text}" 행을 찾을 수 없습니다.`,
+    ).toBeVisible({ timeout: this.timeouts.long });
+  }
+
   // --------------------------------------------------------------------------
   // 액션 메서드
   // --------------------------------------------------------------------------
@@ -102,6 +126,18 @@ export class CategoryListPage extends AdminBasePage {
   async downloadExcel(): Promise<void> {
     await this.excelDownloadButton.click();
     await this.wait(1000);
+  }
+
+  /**
+   * 지정 텍스트를 포함하는 대분류 행의 이름 셀을 클릭해 상세로 진입합니다.
+   */
+  async openDetailByText(text: string, nameCellIndex: number = 3): Promise<void> {
+    const row = this.getRowByText(text);
+    await expect(row, `대분류 "${text}" 행을 찾을 수 없습니다.`).toBeVisible({
+      timeout: this.timeouts.long,
+    });
+    await row.locator("td").nth(nameCellIndex).click();
+    await this.page.waitForLoadState("domcontentloaded");
   }
 
   // --------------------------------------------------------------------------
