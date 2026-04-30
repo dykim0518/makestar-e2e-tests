@@ -261,6 +261,7 @@ jobs:
           DASHBOARD_API_SECRET: ${{ secrets.DASHBOARD_API_SECRET }}
           SUITE_INPUT: ${{ github.event.inputs.suite || 'cmr' }}
           ENVIRONMENT_INPUT: ${{ github.event.inputs.environment || 'prod' }}
+          CMR_PRICE_OPTION_PRODUCT_IDS_STG: ${{ secrets.CMR_PRICE_OPTION_PRODUCT_IDS_STG }}
 
       - name: Publish run summary
         if: always()
