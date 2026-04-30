@@ -215,7 +215,9 @@ export class MakestarPage extends BasePage {
     // 장바구니 요소 초기화
     this.cartItem = page.locator('img[alt="album"]');
     this.cartCheckbox = page.locator('input[type="checkbox"]');
-    this.cartDeleteButton = page.locator('button:has-text("Delete")');
+    this.cartDeleteButton = page.locator(
+      'button:has-text("Delete"), button:has-text("삭제"), button:has-text("Remove")',
+    );
 
     // 검색 결과/필터 요소 초기화
     this.searchResultCards = page.locator(
@@ -396,7 +398,9 @@ export class MakestarPage extends BasePage {
   private async dismissAllBlockingModals(
     options: { waitForDelayedMs?: number } = {},
   ): Promise<void> {
-    const overlayLocator = this._page.locator('div.fixed[class*="z-[40]"]');
+    const overlayLocator = this._page.locator(
+      'div.fixed[class*="z-[40]"], div.fixed[class*="z-40"]',
+    );
     const { waitForDelayedMs = 0 } = options;
 
     // 지연 로드되는 프로모션 팝업 대응: 지정 시간만큼 오버레이 출현을 기다림
@@ -2090,7 +2094,21 @@ export class MakestarPage extends BasePage {
 
   /** 장바구니 아이템 개수 반환 */
   async getCartItemCount(): Promise<number> {
-    const imageCount = await this.cartItem.count();
+    const imageCount = await this.cartItem
+      .evaluateAll((images) => {
+        return images.filter((image) => {
+          if (!(image instanceof HTMLElement)) return false;
+          const rect = image.getBoundingClientRect();
+          const style = window.getComputedStyle(image);
+          return (
+            rect.width > 0 &&
+            rect.height > 0 &&
+            style.visibility !== "hidden" &&
+            style.display !== "none"
+          );
+        }).length;
+      })
+      .catch(() => 0);
     if (imageCount > 0) {
       return imageCount;
     }
@@ -2221,35 +2239,62 @@ export class MakestarPage extends BasePage {
         `   기존 상품 ${itemCount}개 (삭제 시도 ${attempt + 1}/${maxAttempts})`,
       );
 
-      // 체크박스 클릭
-      if ((await this.cartCheckbox.count()) > 0) {
-        const firstCheckbox = this.cartCheckbox.first();
-        const isChecked = await firstCheckbox.isChecked().catch(() => false);
+      const checkboxCount = await this.cartCheckbox.count();
+      for (let i = 0; i < checkboxCount; i++) {
+        const checkbox = this.cartCheckbox.nth(i);
+        const visible = await checkbox
+          .isVisible({ timeout: this.timeouts.short })
+          .catch(() => false);
+        const enabled = await checkbox.isEnabled().catch(() => false);
+        if (!visible || !enabled) continue;
+
+        const isChecked = await checkbox.isChecked().catch(() => false);
         if (!isChecked) {
-          await firstCheckbox.click();
+          await checkbox.click();
           await this.waitForContentStable(500);
         }
+        break;
       }
 
-      // Delete 버튼 클릭
-      if (
-        await this.cartDeleteButton
-          .first()
-          .isVisible({ timeout: 2000 })
-          .catch(() => false)
-      ) {
-        await this.cartDeleteButton.first().click();
+      const deleteButtonCount = await this.cartDeleteButton.count();
+      let deleteClicked = false;
+      for (let i = 0; i < deleteButtonCount; i++) {
+        const button = this.cartDeleteButton.nth(i);
+        const visible = await button
+          .isVisible({ timeout: this.timeouts.short })
+          .catch(() => false);
+        const enabled = await button.isEnabled().catch(() => false);
+        if (!visible || !enabled) continue;
+
+        await button.click();
+        deleteClicked = true;
         await this.waitForNetworkStable(3000).catch(() => {});
+        await this.waitForContentStable(500).catch(() => {});
+        break;
+      }
 
-        // 모달 내 Delete 버튼 클릭
-        const allDeleteBtns = this.cartDeleteButton;
-        if ((await allDeleteBtns.count()) >= 2) {
-          await allDeleteBtns.last().click();
-          await this.waitForNetworkStable(2000).catch(() => {});
-          await this.reload();
-          await this.waitForContentStable(500);
+      if (deleteClicked) {
+        const confirmButtons = this.page
+          .getByRole("button", { name: /Delete|삭제|Remove|Confirm|확인/i })
+          .or(this.cartDeleteButton);
+        const confirmCount = await confirmButtons.count().catch(() => 0);
+        for (let i = confirmCount - 1; i >= 0; i--) {
+          const button = confirmButtons.nth(i);
+          const visible = await button
+            .isVisible({ timeout: this.timeouts.short })
+            .catch(() => false);
+          const enabled = await button.isEnabled().catch(() => false);
+          if (!visible || !enabled) continue;
+
+          await button.click().catch(() => {});
+          await this.waitForNetworkStable(3000).catch(() => {});
+          await this.waitForContentStable(500).catch(() => {});
+          break;
         }
       }
+
+      await this.reload();
+      await this.waitForContentStable(500).catch(() => {});
     }
 
     throw new Error(
