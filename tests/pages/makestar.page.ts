@@ -2090,29 +2090,77 @@ export class MakestarPage extends BasePage {
 
   /** 장바구니 아이템 개수 반환 */
   async getCartItemCount(): Promise<number> {
-    return await this.cartItem.count();
+    const imageCount = await this.cartItem.count();
+    if (imageCount > 0) {
+      return imageCount;
+    }
+
+    const visibleCheckboxCount = await this.cartCheckbox
+      .evaluateAll((checkboxes) => {
+        return checkboxes.filter((checkbox) => {
+          if (!(checkbox instanceof HTMLInputElement)) return false;
+          const rect = checkbox.getBoundingClientRect();
+          const style = window.getComputedStyle(checkbox);
+          return (
+            !checkbox.disabled &&
+            rect.width > 0 &&
+            rect.height > 0 &&
+            style.visibility !== "hidden" &&
+            style.display !== "none"
+          );
+        }).length;
+      })
+      .catch(() => 0);
+
+    return Math.max(0, visibleCheckboxCount - 1);
   }
 
   /** 장바구니 수량 입력값 반환 (EN/KO 다국어 지원) */
   async getCartQuantity(): Promise<number> {
-    // spinbutton (수량 +/- 컨트롤) 또는 textbox 중 보이는 것을 사용
-    const candidates = [
-      this.page.getByRole("spinbutton").first(),
-      this.page.getByRole("textbox", { name: /Quantity|수량/i }),
-      this.page.locator('input[type="number"]').first(),
-    ];
+    const quantities = await this.page
+      .locator("input")
+      .evaluateAll((inputs) => {
+        const isVisible = (element: HTMLElement): boolean => {
+          const rect = element.getBoundingClientRect();
+          const style = window.getComputedStyle(element);
+          return (
+            rect.width > 0 &&
+            rect.height > 0 &&
+            style.visibility !== "hidden" &&
+            style.display !== "none"
+          );
+        };
 
-    for (const input of candidates) {
-      if (
-        await input
-          .isVisible({ timeout: this.timeouts.short })
-          .catch(() => false)
-      ) {
-        const value = await input.inputValue();
-        return parseInt(value, 10) || 0;
-      }
+        return inputs
+          .filter((input): input is HTMLInputElement => {
+            if (!(input instanceof HTMLInputElement)) return false;
+            if (input.disabled || input.readOnly || !isVisible(input)) {
+              return false;
+            }
+
+            const descriptor = [
+              input.type,
+              input.name,
+              input.placeholder,
+              input.getAttribute("aria-label"),
+              input.getAttribute("role"),
+            ]
+              .filter((value): value is string => Boolean(value))
+              .join(" ");
+
+            return /number|spinbutton|quantity|수량/i.test(descriptor);
+          })
+          .map((input) => Number.parseInt(input.value, 10))
+          .filter((value) => Number.isInteger(value));
+      })
+      .catch(() => []);
+
+    const positiveQuantity = quantities.find((quantity) => quantity > 0);
+    if (positiveQuantity !== undefined) {
+      return positiveQuantity;
     }
-    return 0;
+
+    return quantities[0] ?? 0;
   }
 
   /** 장바구니 총 금액 반환 (정수, 원화 또는 센트) — EN/KO 다국어 지원 */
@@ -2159,6 +2207,9 @@ export class MakestarPage extends BasePage {
   async clearCart(maxAttempts = 3): Promise<void> {
     let lastItemCount = -1;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      await this.waitForNetworkStable(3000).catch(() => {});
+      await this.waitForContentStable(500).catch(() => {});
+
       const itemCount = await this.getCartItemCount();
       if (itemCount === 0) {
         if (attempt > 0) console.log("   ✅ 장바구니 초기화 완료");
@@ -2623,36 +2674,34 @@ export class MakestarPage extends BasePage {
     const spinVisible = await spinbutton
       .isVisible({ timeout: this.timeouts.short })
       .catch(() => false);
-    if (!spinVisible) {
-      return false;
-    }
-
-    const previousValue = parseInt(
-      (await spinbutton.inputValue().catch(() => "0")) || "0",
-      10,
-    );
-    const container = spinbutton.locator("xpath=..");
-    const plusCandidates = [
-      container.locator("img").last(),
-      container.locator("button").last(),
-    ];
-
-    for (const plusButton of plusCandidates) {
-      const visible = await plusButton
-        .isVisible({ timeout: this.timeouts.short })
-        .catch(() => false);
-      if (!visible) continue;
-
-      await plusButton.click().catch(() => {});
-      await this.waitForContentStable(300).catch(() => {});
-
-      const nextValue = parseInt(
+    if (spinVisible) {
+      const previousValue = parseInt(
         (await spinbutton.inputValue().catch(() => "0")) || "0",
         10,
       );
-      if (nextValue > previousValue) {
-        console.log(`   ✅ 옵션 ${index + 1} 선택 (spinbutton)`);
-        return true;
+      const container = spinbutton.locator("xpath=..");
+      const plusCandidates = [
+        container.locator("img").last(),
+        container.locator("button").last(),
+      ];
+
+      for (const plusButton of plusCandidates) {
+        const visible = await plusButton
+          .isVisible({ timeout: this.timeouts.short })
+          .catch(() => false);
+        if (!visible) continue;
+
+        await plusButton.click().catch(() => {});
+        await this.waitForContentStable(300).catch(() => {});
+
+        const nextValue = parseInt(
+          (await spinbutton.inputValue().catch(() => "0")) || "0",
+          10,
+        );
+        if (nextValue > previousValue) {
+          console.log(`   ✅ 옵션 ${index + 1} 선택 (spinbutton)`);
+          return true;
+        }
       }
     }
 
