@@ -33,7 +33,7 @@ Admin 인증은 아래 중 하나가 필요하다. Admin 대상은 `stage-new-ad
 /Users/makestar_edkim/Projects/my-playwright-tests/auth.json
 ```
 
-workflow는 secret을 우선 사용하고, secret이 없으면 `ADMIN_AUTH_STATE_PATH`의 파일을 runner workspace의 `auth.json`으로 복사한다.
+workflow는 `ADMIN_AUTH_STATE_PATH` 파일을 우선 사용하고, 파일이 없으면 secret을 runner workspace의 `auth.json`으로 복사한다. 실행 중 갱신된 인증 상태는 다시 `ADMIN_AUTH_STATE_PATH`에 보존한다.
 
 ## Dashboard trigger flow
 

@@ -572,15 +572,15 @@ jobs:
           AUTH_STATE_PATH_INPUT="${{ vars.ADMIN_AUTH_STATE_PATH }}"
           AUTH_STATE_PATH="${AUTH_STATE_PATH_INPUT:-${ADMIN_AUTH_STATE_PATH:-}}"
 
-          if [ -n "$STG_AUTH_JSON" ]; then
+          if [ -n "$AUTH_STATE_PATH" ] && [ -f "$AUTH_STATE_PATH" ]; then
+            cp "$AUTH_STATE_PATH" auth.json
+            echo "✅ 로컬 인증 파일 복사 완료"
+          elif [ -n "$STG_AUTH_JSON" ]; then
             printf '%s' "$STG_AUTH_JSON" > auth.json
             echo "✅ STG 인증 정보 설정 완료"
           elif [ -n "$AUTH_JSON" ]; then
             printf '%s' "$AUTH_JSON" > auth.json
             echo "✅ 인증 정보 설정 완료"
-          elif [ -n "$AUTH_STATE_PATH" ] && [ -f "$AUTH_STATE_PATH" ]; then
-            cp "$AUTH_STATE_PATH" auth.json
-            echo "✅ 로컬 인증 파일 복사 완료"
           else
             echo "::error::AUTH_JSON/STG_AUTH_JSON secret 또는 ADMIN_AUTH_STATE_PATH 로컬 인증 파일이 필요합니다."
             exit 1
@@ -673,6 +673,22 @@ jobs:
           DASHBOARD_API_SECRET: ${{ secrets.DASHBOARD_API_SECRET }}
           SUITE_INPUT: admin
           ENVIRONMENT_INPUT: stg
+
+      - name: Persist Admin authentication
+        if: always()
+        run: |
+          AUTH_STATE_PATH_INPUT="${{ vars.ADMIN_AUTH_STATE_PATH }}"
+          AUTH_STATE_PATH="${AUTH_STATE_PATH_INPUT:-${ADMIN_AUTH_STATE_PATH:-}}"
+
+          if [ -z "$AUTH_STATE_PATH" ] || [ ! -f auth.json ]; then
+            echo "로컬 인증 파일 보존을 건너뜁니다."
+            exit 0
+          fi
+
+          mkdir -p "$(dirname "$AUTH_STATE_PATH")"
+          cp auth.json "$AUTH_STATE_PATH"
+          chmod 600 "$AUTH_STATE_PATH"
+          echo "✅ 로컬 인증 파일 보존 완료"
 
       - name: Publish run summary
         if: always()
