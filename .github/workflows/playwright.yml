@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
     inputs:
       suite:
-        description: "실행할 테스트 스위트 (admin은 GitHub Hosted Runner에서 미지원)"
+        description: "실행할 테스트 스위트 (admin은 self-hosted runner에서 실행)"
         type: choice
         options:
           - cmr
@@ -63,6 +63,7 @@ concurrency:
 jobs:
   test:
     name: Playwright Monitoring
+    if: ${{ github.event_name != 'workflow_dispatch' || ((github.event.inputs.suite || 'cmr') != 'admin' && !contains(github.event.inputs.project || '', 'admin')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -471,6 +472,412 @@ jobs:
 
           const outcome = process.env.RUN_OUTCOME || 'unknown';
           const suite = process.env.RUN_SUITE || 'cmr';
+          const env = process.env.RUN_ENVIRONMENT || 'prod';
+          const runUrl = `https://github.com/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
+          const triggeredBy = process.env.GITHUB_EVENT_NAME || 'unknown';
+
+          const emojiMap = { success: '✅', failure: '🔴', cancelled: '⚠️' };
+          const labelMap = { success: '성공', failure: '실패', cancelled: '취소' };
+          const emoji = emojiMap[outcome] || '❓';
+          const label = labelMap[outcome] || outcome;
+
+          let statsText = '';
+          let failureText = '';
+
+          const resultFile = 'test-results/results.json';
+          if (fs.existsSync(resultFile)) {
+            try {
+              const data = JSON.parse(fs.readFileSync(resultFile, 'utf-8'));
+              const s = data.stats || {};
+              const dur = typeof s.duration === 'number' ? `${Math.round(s.duration / 1000)}s` : '-';
+              statsText = `통과: ${s.expected ?? '-'} | 실패: ${s.unexpected ?? 0} | Flaky: ${s.flaky ?? 0} | 스킵: ${s.skipped ?? 0} | 소요: ${dur}`;
+
+              const failures = [];
+              const failedStates = new Set(['failed', 'timedOut', 'interrupted']);
+              const walk = (node) => {
+                for (const spec of node.specs || []) {
+                  for (const t of spec.tests || []) {
+                    if ((t.results || []).some(r => failedStates.has(r.status))) {
+                      const title = [...(spec.titlePath || []), ...(t.titlePath || [])].filter(Boolean).join(' > ') || t.title || spec.title;
+                      failures.push(title);
+                    }
+                  }
+                }
+                for (const child of node.suites || []) walk(child);
+              };
+              for (const topSuite of data.suites || []) walk(topSuite);
+
+              const unique = [...new Set(failures)];
+              if (unique.length > 0) {
+                failureText = '\n\n*실패 테스트:*\n' + unique.slice(0, 5).map(f => `• ${f}`).join('\n');
+                if (unique.length > 5) failureText += `\n  ...외 ${unique.length - 5}건`;
+              }
+            } catch {}
+          }
+
+          const text = `${emoji} *Playwright ${suite.toUpperCase()} (${env})* — ${label}\n${statsText}${failureText}\n\n<${runUrl}|GitHub Actions에서 보기> | 트리거: ${triggeredBy}`;
+
+          const webhookUrl = process.env.SLACK_WEBHOOK_URL;
+          if (!webhookUrl) {
+            console.log('SLACK_WEBHOOK_URL not set, skipping');
+            process.exit(0);
+          }
+
+          const url = new URL(webhookUrl);
+          const payload = JSON.stringify({ text });
+          const req = https.request({
+            hostname: url.hostname,
+            path: url.pathname,
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
+          }, (res) => {
+            let body = '';
+            res.on('data', d => body += d);
+            res.on('end', () => console.log(`Slack response: ${res.statusCode} ${body}`));
+          });
+          req.on('error', (e) => console.log(`Slack request failed: ${e.message}`));
+          req.write(payload);
+          req.end();
+          SLACK_EOF
+        env:
+          RUN_OUTCOME: ${{ steps.run_playwright.outcome }}
+          RUN_SUITE: ${{ steps.run_playwright.outputs.suite }}
+          RUN_ENVIRONMENT: ${{ steps.run_playwright.outputs.environment }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  admin-local:
+    name: Playwright Admin Local
+    if: ${{ github.event_name == 'workflow_dispatch' && ((github.event.inputs.suite || 'cmr') == 'admin' || contains(github.event.inputs.project || '', 'admin')) }}
+    runs-on: [self-hosted, macOS, admin-local]
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium
+
+      - name: Setup Admin authentication
+        run: |
+          ENV_INPUT="${{ github.event.inputs.environment || 'prod' }}"
+          AUTH_STATE_PATH_INPUT="${{ vars.ADMIN_AUTH_STATE_PATH }}"
+          AUTH_STATE_PATH="${AUTH_STATE_PATH_INPUT:-${ADMIN_AUTH_STATE_PATH:-}}"
+
+          if [ "${ENV_INPUT}" = "stg" ] && [ -n "$STG_AUTH_JSON" ]; then
+            printf '%s' "$STG_AUTH_JSON" > auth.json
+            echo "✅ STG 인증 정보 설정 완료"
+          elif [ -n "$AUTH_JSON" ]; then
+            printf '%s' "$AUTH_JSON" > auth.json
+            echo "✅ 인증 정보 설정 완료"
+          elif [ -n "$AUTH_STATE_PATH" ] && [ -f "$AUTH_STATE_PATH" ]; then
+            cp "$AUTH_STATE_PATH" auth.json
+            echo "✅ 로컬 인증 파일 복사 완료"
+          else
+            echo "::error::AUTH_JSON/STG_AUTH_JSON secret 또는 ADMIN_AUTH_STATE_PATH 로컬 인증 파일이 필요합니다."
+            exit 1
+          fi
+        env:
+          AUTH_JSON: ${{ secrets.AUTH_JSON }}
+          STG_AUTH_JSON: ${{ secrets.STG_AUTH_JSON }}
+
+      - name: Auto-refresh auth tokens
+        id: auth_refresh
+        run: node scripts/ci-refresh-auth.js
+        continue-on-error: true
+        env:
+          ENVIRONMENT_INPUT: ${{ github.event.inputs.environment || 'prod' }}
+
+      - name: Validate auth tokens
+        id: auth_check
+        run: node scripts/validate-auth.js
+        env:
+          AUTH_WARN_HOURS: "2"
+          ENVIRONMENT_INPUT: ${{ github.event.inputs.environment || 'prod' }}
+
+      - name: Run Admin Playwright tests
+        id: run_playwright
+        run: |
+          SUITE_INPUT="${{ github.event.inputs.suite || 'admin' }}"
+          PROJECT_INPUT="${{ github.event.inputs.project || '' }}"
+          SPEC_INPUT="${{ github.event.inputs.spec || '' }}"
+          GREP_INPUT="${{ github.event.inputs.grep || '' }}"
+          RETRIES_INPUT="${{ github.event.inputs.retries || '1' }}"
+          ENV_INPUT="${{ github.event.inputs.environment || 'prod' }}"
+
+          if ! [[ "${RETRIES_INPUT}" =~ ^[0-5]$ ]]; then
+            echo "retries 입력값은 0~5 정수만 허용됩니다: ${RETRIES_INPUT}"
+            exit 1
+          fi
+
+          CMD=(npx playwright test --config=playwright.ci.config.js "--retries=${RETRIES_INPUT}")
+          EFFECTIVE_TARGETS=()
+          SKIP_REASONS=()
+
+          add_project() {
+            local project="$1"
+            CMD+=("--project=${project}")
+            EFFECTIVE_TARGETS+=("${project}")
+          }
+
+          if [ -n "${SPEC_INPUT}" ]; then
+            CMD+=("${SPEC_INPUT}")
+          fi
+
+          if [ -n "${PROJECT_INPUT}" ]; then
+            if [[ "${PROJECT_INPUT}" != *admin* ]]; then
+              echo "::error::admin-local job은 admin project만 실행합니다. 입력값: ${PROJECT_INPUT}"
+              exit 1
+            fi
+            add_project "${PROJECT_INPUT}"
+          else
+            add_project "admin-gate"
+          fi
+
+          if [ "${#EFFECTIVE_TARGETS[@]}" -eq 0 ]; then
+            echo "::error::실행 가능한 admin project가 없습니다."
+            exit 1
+          fi
+
+          if [ -n "${GREP_INPUT}" ]; then
+            CMD+=("-g" "${GREP_INPUT}")
+          fi
+
+          PLAYWRIGHT_CMD="${CMD[*]}"
+          EFFECTIVE_TARGETS_JOINED="$(IFS=,; echo "${EFFECTIVE_TARGETS[*]}")"
+          SKIP_REASONS_JOINED=""
+
+          echo "playwright_command=${PLAYWRIGHT_CMD}" >> "$GITHUB_OUTPUT"
+          echo "suite=admin" >> "$GITHUB_OUTPUT"
+          echo "environment=${ENV_INPUT}" >> "$GITHUB_OUTPUT"
+          echo "effective_targets=${EFFECTIVE_TARGETS_JOINED}" >> "$GITHUB_OUTPUT"
+          echo "skip_reasons=${SKIP_REASONS_JOINED}" >> "$GITHUB_OUTPUT"
+          echo "project=${PROJECT_INPUT}" >> "$GITHUB_OUTPUT"
+          echo "spec=${SPEC_INPUT}" >> "$GITHUB_OUTPUT"
+          echo "grep=${GREP_INPUT}" >> "$GITHUB_OUTPUT"
+          echo "retries=${RETRIES_INPUT}" >> "$GITHUB_OUTPUT"
+
+          echo "▶ 실행 명령: ${PLAYWRIGHT_CMD}"
+          "${CMD[@]}"
+        env:
+          CI: true
+          DASHBOARD_URL: ${{ secrets.DASHBOARD_URL }}
+          DASHBOARD_API_SECRET: ${{ secrets.DASHBOARD_API_SECRET }}
+          SUITE_INPUT: admin
+          ENVIRONMENT_INPUT: ${{ github.event.inputs.environment || 'prod' }}
+
+      - name: Publish run summary
+        if: always()
+        run: |
+          node <<'EOF'
+          const fs = require('fs');
+
+          const summaryPath = process.env.GITHUB_STEP_SUMMARY;
+          const outcome = process.env.RUN_OUTCOME || 'unknown';
+          const suite = process.env.RUN_SUITE || 'admin';
+          const effectiveTargets = process.env.RUN_EFFECTIVE_TARGETS || '';
+          const skipReasonsRaw = process.env.RUN_SKIP_REASONS || '';
+          const project = process.env.RUN_PROJECT || '';
+          const spec = process.env.RUN_SPEC || '';
+          const grep = process.env.RUN_GREP || '';
+          const retries = process.env.RUN_RETRIES || '1';
+          const environment = process.env.RUN_ENVIRONMENT || 'prod';
+          const command = process.env.RUN_COMMAND || '';
+          const resultFile = 'test-results/results.json';
+          const skipReasons = skipReasonsRaw
+            .split('||')
+            .map((item) => item.trim())
+            .filter(Boolean);
+
+          const outcomeLabelMap = {
+            success: '성공',
+            failure: '실패',
+            cancelled: '취소됨',
+            timed_out: '시간 초과',
+          };
+          const outcomeLabel = outcomeLabelMap[outcome] || outcome;
+
+          const lines = [];
+          lines.push('## Playwright Admin 실행 요약');
+          lines.push('');
+          lines.push('| 항목 | 값 |');
+          lines.push('|---|---|');
+          lines.push(`| 결과 | ${outcomeLabel} |`);
+          lines.push(`| 요청 suite | ${suite} |`);
+          lines.push(`| 환경 | ${environment} |`);
+          lines.push(`| 실제 실행 프로젝트 | ${effectiveTargets || '-'} |`);
+          lines.push(`| project override | ${project || '-'} |`);
+          lines.push(`| spec | ${spec || '-'} |`);
+          lines.push(`| grep | ${grep || '-'} |`);
+          lines.push(`| retries | ${retries} |`);
+          lines.push(`| command | \`${command || '-'}\` |`);
+
+          if (fs.existsSync(resultFile)) {
+            try {
+              const raw = fs.readFileSync(resultFile, 'utf-8');
+              const data = JSON.parse(raw);
+              const stats = data.stats || {};
+              const durationMs = typeof stats.duration === 'number' ? stats.duration : null;
+              const durationSec = durationMs === null ? '-' : `${Math.round(durationMs / 1000)}s`;
+
+              lines.push('');
+              lines.push('### 테스트 통계');
+              lines.push('');
+              lines.push('| metric | value |');
+              lines.push('|---|---|');
+              lines.push(`| expected | ${stats.expected ?? '-'} |`);
+              lines.push(`| unexpected | ${stats.unexpected ?? '-'} |`);
+              lines.push(`| flaky | ${stats.flaky ?? '-'} |`);
+              lines.push(`| skipped | ${stats.skipped ?? '-'} |`);
+              lines.push(`| duration | ${durationSec} |`);
+
+              const failures = [];
+              const failedStates = new Set(['failed', 'timedOut', 'interrupted']);
+              const walkSuite = (suiteNode) => {
+                for (const specNode of suiteNode.specs || []) {
+                  for (const testNode of specNode.tests || []) {
+                    const hasFailure = (testNode.results || []).some((result) => failedStates.has(result.status));
+                    if (!hasFailure) {
+                      continue;
+                    }
+                    const titlePath = [
+                      ...(specNode.titlePath || []),
+                      ...(testNode.titlePath || []),
+                    ].filter(Boolean);
+                    failures.push({
+                      title: titlePath.join(' > ') || testNode.title || specNode.title || 'Unknown test',
+                      file: specNode.file || '-',
+                      line: specNode.line || 1,
+                    });
+                  }
+                }
+                for (const childSuite of suiteNode.suites || []) {
+                  walkSuite(childSuite);
+                }
+              };
+
+              for (const topSuite of data.suites || []) {
+                walkSuite(topSuite);
+              }
+
+              const dedupedFailures = [];
+              const seen = new Set();
+              for (const failure of failures) {
+                const key = `${failure.file}:${failure.line}:${failure.title}`;
+                if (seen.has(key)) {
+                  continue;
+                }
+                seen.add(key);
+                dedupedFailures.push(failure);
+              }
+
+              if (dedupedFailures.length > 0) {
+                lines.push('');
+                lines.push('### 주요 실패 테스트 (최대 10개)');
+                for (const failure of dedupedFailures.slice(0, 10)) {
+                  lines.push(`- ${failure.title} (\`${failure.file}:${failure.line}\`)`);
+                }
+              }
+            } catch (error) {
+              lines.push('');
+              lines.push(`- 결과 JSON 파싱 실패: ${error.message}`);
+            }
+          } else {
+            lines.push('');
+            lines.push('- `test-results/results.json` 파일이 없어 통계 파싱을 건너뜁니다.');
+          }
+
+          if (skipReasons.length > 0) {
+            lines.push('');
+            lines.push('### 실행 제외 항목');
+            for (const reason of skipReasons) {
+              lines.push(`- ${reason}`);
+            }
+          }
+
+          if (outcome === 'cancelled') {
+            lines.push('');
+            lines.push('### 참고');
+            lines.push('- 실행이 취소되었습니다. (가능 원인: 제한 시간 초과, 수동 취소, 새 실행으로 인한 취소)');
+          }
+
+          lines.push('');
+          lines.push('### 결과 확인 순서');
+          lines.push('1. 위 통계에서 unexpected/flaky 개수를 확인합니다.');
+          lines.push('2. 실패가 있으면 Artifacts의 `test-results-*`를 내려받아 `trace.zip`을 우선 확인합니다.');
+          lines.push('3. `playwright-report-*`가 있으면 `index.html`로 전체 리포트를 확인합니다.');
+
+          fs.appendFileSync(summaryPath, lines.join('\n') + '\n');
+          EOF
+        env:
+          RUN_OUTCOME: ${{ steps.run_playwright.outcome }}
+          RUN_SUITE: ${{ steps.run_playwright.outputs.suite }}
+          RUN_ENVIRONMENT: ${{ steps.run_playwright.outputs.environment }}
+          RUN_EFFECTIVE_TARGETS: ${{ steps.run_playwright.outputs.effective_targets }}
+          RUN_SKIP_REASONS: ${{ steps.run_playwright.outputs.skip_reasons }}
+          RUN_PROJECT: ${{ steps.run_playwright.outputs.project }}
+          RUN_SPEC: ${{ steps.run_playwright.outputs.spec }}
+          RUN_GREP: ${{ steps.run_playwright.outputs.grep }}
+          RUN_RETRIES: ${{ steps.run_playwright.outputs.retries }}
+          RUN_COMMAND: ${{ steps.run_playwright.outputs.playwright_command }}
+
+      - name: Upload Playwright Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-admin-${{ github.run_id }}-${{ github.run_attempt }}
+          path: playwright-report/
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Upload Test Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-admin-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/
+          retention-days: 7
+
+      - name: Push results to dashboard
+        if: always()
+        run: |
+          if [ ! -f "test-results/results.json" ]; then
+            echo "results.json not found, skipping dashboard push"
+            exit 0
+          fi
+          curl -s -X POST "$DASHBOARD_URL/api/results" \
+            -H "Authorization: Bearer $DASHBOARD_API_SECRET" \
+            -H "Content-Type: application/json" \
+            -H "X-GitHub-Run-Id: ${{ github.run_id }}" \
+            -H "X-GitHub-Suite: admin" \
+            -H "X-GitHub-Environment: ${{ steps.run_playwright.outputs.environment }}" \
+            -H "X-GitHub-Sha: ${{ github.sha }}" \
+            -H "X-GitHub-Branch: ${{ github.ref_name }}" \
+            -H "X-GitHub-Triggered-By: ${{ github.event_name }}" \
+            --data-binary @test-results/results.json \
+            --max-time 15 || true
+        env:
+          DASHBOARD_URL: ${{ secrets.DASHBOARD_URL }}
+          DASHBOARD_API_SECRET: ${{ secrets.DASHBOARD_API_SECRET }}
+
+      - name: Notify Slack
+        if: always() && inputs.notify_slack == true
+        run: |
+          node <<'SLACK_EOF'
+          const fs = require('fs');
+          const https = require('https');
+
+          const outcome = process.env.RUN_OUTCOME || 'unknown';
+          const suite = process.env.RUN_SUITE || 'admin';
           const env = process.env.RUN_ENVIRONMENT || 'prod';
           const runUrl = `https://github.com/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
           const triggeredBy = process.env.GITHUB_EVENT_NAME || 'unknown';
