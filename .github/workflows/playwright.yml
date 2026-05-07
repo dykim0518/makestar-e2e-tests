@@ -569,11 +569,11 @@ jobs:
 
       - name: Setup Admin authentication
         run: |
-          ENV_INPUT="${{ github.event.inputs.environment || 'prod' }}"
+          ENV_INPUT="stg"
           AUTH_STATE_PATH_INPUT="${{ vars.ADMIN_AUTH_STATE_PATH }}"
           AUTH_STATE_PATH="${AUTH_STATE_PATH_INPUT:-${ADMIN_AUTH_STATE_PATH:-}}"
 
-          if [ "${ENV_INPUT}" = "stg" ] && [ -n "$STG_AUTH_JSON" ]; then
+          if [ -n "$STG_AUTH_JSON" ]; then
             printf '%s' "$STG_AUTH_JSON" > auth.json
             echo "✅ STG 인증 정보 설정 완료"
           elif [ -n "$AUTH_JSON" ]; then
@@ -595,14 +595,14 @@ jobs:
         run: node scripts/ci-refresh-auth.js
         continue-on-error: true
         env:
-          ENVIRONMENT_INPUT: ${{ github.event.inputs.environment || 'prod' }}
+          ENVIRONMENT_INPUT: stg
 
       - name: Validate auth tokens
         id: auth_check
         run: node scripts/validate-auth.js
         env:
           AUTH_WARN_HOURS: "2"
-          ENVIRONMENT_INPUT: ${{ github.event.inputs.environment || 'prod' }}
+          ENVIRONMENT_INPUT: stg
 
       - name: Run Admin Playwright tests
         id: run_playwright
@@ -612,7 +612,7 @@ jobs:
           SPEC_INPUT="${{ github.event.inputs.spec || '' }}"
           GREP_INPUT="${{ github.event.inputs.grep || '' }}"
           RETRIES_INPUT="${{ github.event.inputs.retries || '1' }}"
-          ENV_INPUT="${{ github.event.inputs.environment || 'prod' }}"
+          ENV_INPUT="stg"
 
           if ! [[ "${RETRIES_INPUT}" =~ ^[0-5]$ ]]; then
             echo "retries 입력값은 0~5 정수만 허용됩니다: ${RETRIES_INPUT}"
@@ -673,7 +673,7 @@ jobs:
           DASHBOARD_URL: ${{ secrets.DASHBOARD_URL }}
           DASHBOARD_API_SECRET: ${{ secrets.DASHBOARD_API_SECRET }}
           SUITE_INPUT: admin
-          ENVIRONMENT_INPUT: ${{ github.event.inputs.environment || 'prod' }}
+          ENVIRONMENT_INPUT: stg
 
       - name: Publish run summary
         if: always()

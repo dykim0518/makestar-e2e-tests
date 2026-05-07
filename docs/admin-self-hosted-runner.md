@@ -22,7 +22,7 @@
 - `DASHBOARD_URL`: QA Hub URL
 - `DASHBOARD_API_SECRET`: QA Hub API 인증 토큰
 
-Admin 인증은 아래 중 하나가 필요하다.
+Admin 인증은 아래 중 하나가 필요하다. Admin 대상은 `stage-new-admin.makeuni2026.com`이므로 workflow는 `suite=admin` 요청을 STG 인증으로 실행한다.
 
 - `AUTH_JSON` 또는 `STG_AUTH_JSON` GitHub Actions secret
 - 또는 repository variable `ADMIN_AUTH_STATE_PATH`
@@ -49,7 +49,7 @@ workflow는 secret을 우선 사용하고, secret이 없으면 `ADMIN_AUTH_STATE
 
 ```text
 suite: admin
-environment: prod
+environment: stg
 project:
 spec:
 grep:
