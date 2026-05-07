@@ -78,8 +78,14 @@ export class OrderListPage extends AdminBasePage {
     this.resultSummary = page
       .getByText(/상품 주문내역|프로젝트별 주문내역/i)
       .first();
+    // 2026-05-06 회귀 대응: 다른 필터(주문상태/결제상태 등)는 combobox role 트리거를
+    // 사용하지만 결제수단 트리거만 일반 div(cursor=pointer + "선택" 텍스트 + 화살표 img)로
+    // 변경됨. 라벨 클릭은 트리거 동작이 없으므로 라벨의 다음 형제 div(트리거)를 잡는다.
     this.paymentMethodFilterLabel = page
-      .getByText("결제수단", { exact: false })
+      .getByText("결제수단", { exact: true })
+      .locator("xpath=following-sibling::*[1]")
+      .or(page.getByRole("combobox", { name: /결제수단/i }))
+      .or(page.getByText("결제수단", { exact: false }))
       .first();
   }
 
@@ -1695,66 +1701,59 @@ export class OrderListPage extends AdminBasePage {
   async applyPaymentMethodFilter(
     method: PaymentMethodKey,
   ): Promise<OrderResultMetrics> {
-    // 드롭다운 트리거 노출 대기
-    await expect(
-      this.paymentMethodFilterLabel,
-      `결제수단 드롭다운 트리거가 노출되어야 합니다. url=${this.currentUrl}`,
-    ).toBeVisible({ timeout: this.timeouts.long });
+    // 2026-05-06 회귀: 새 결제수단 dropdown UI는 Vue 컴포넌트 mount + form-state
+    // binding 안정화에 명시 시간 필요. expect.toBeVisible 즉시 통과 시 dropdown
+    // animation 중 옵션 click이 발생하여 backend filter param 미커밋 → 결과 0건.
+    // 진단(auto_payment_dropdown_pom.spec.ts)으로 명시 waitForTimeout 흐름이
+    // 사용자 manual 결과(30건)와 일치함을 확인.
 
-    // 1) 드롭다운 펼치기: 라벨 클릭으로 옵션 패널이 펼쳐지길 기다린다.
-    //    옵션 패널은 동일 라벨("예치금" 등 옵션 텍스트)이 leaf로 노출되는 시점.
-    await this.paymentMethodFilterLabel.click({ force: true });
+    // 0) 페이지 mount 안정화
+    await this.page.waitForTimeout(3000);
 
-    const optionLeaf = this.page.getByText(method, { exact: true }).first();
-    await expect(
-      optionLeaf,
-      `결제수단 드롭다운에서 '${method}' 옵션이 노출되어야 합니다. url=${this.currentUrl}`,
-    ).toBeVisible({ timeout: this.timeouts.long });
-
-    // 2) 옵션 텍스트 leaf의 가장 가까운 체크박스 컨테이너를 찾아 input 직접 클릭.
-    //    텍스트 클릭만으로는 체크박스가 토글되지 않는 STG 동작 회피.
-    const checked = await this.page.evaluate((label) => {
-      const candidates = Array.from(
+    // 1) "결제수단" 라벨의 next-sibling 트리거 div click
+    const triggerHandle = await this.page.evaluateHandle((label) => {
+      const labels = Array.from(
         document.querySelectorAll<HTMLElement>("*"),
       ).filter(
         (n) =>
-          n.children.length === 0 &&
-          (n.textContent || "").trim() === label &&
-          n.offsetParent !== null,
+          (n.textContent || "").trim() === label && n.offsetParent !== null,
       );
-      for (const node of candidates) {
-        let parent: Element | null = node.parentElement;
-        for (let depth = 0; depth < 4 && parent; depth += 1) {
-          const cb = parent.querySelector(
-            'input[type="checkbox"]',
-          ) as HTMLInputElement | null;
-          if (cb) {
-            if (cb.checked) {
-              return true;
-            }
-            cb.click();
-            return cb.checked;
-          }
-          parent = parent.parentElement;
-        }
-      }
-      return null;
-    }, method);
-
-    if (checked !== true) {
+      labels.sort((a, b) => a.children.length - b.children.length);
+      const lab = labels[0];
+      return lab ? (lab.nextElementSibling as HTMLElement | null) : null;
+    }, "결제수단");
+    const triggerEl = triggerHandle.asElement();
+    if (!triggerEl) {
       throw new Error(
-        `결제수단 '${method}' 체크박스를 선택하지 못했습니다. ` +
-          `url=${this.currentUrl}, evaluate 결과=${checked}`,
+        `결제수단 트리거를 찾지 못했습니다. url=${this.currentUrl}`,
       );
     }
+    await triggerEl.click();
+    await this.page.waitForTimeout(1500); // dropdown 펼침 animation
 
-    // 드롭다운 닫기 (다른 요소를 가리지 않도록)
-    await this.page.keyboard.press("Escape").catch(() => {});
+    // 2) 옵션 leaf hover + click → 옵션 select
+    const optionLeaf = this.page.getByText(method, { exact: true }).first();
+    await optionLeaf.hover();
+    await optionLeaf.click();
+    await this.page.waitForTimeout(1500); // selection commit 비동기 buffer
 
-    // 3) [조회하기] 버튼 클릭 → 결과 갱신
-    await this.submitSearchButton.click({ force: true });
+    // 3) 페이지 heading 클릭 → dropdown blur + form-state commit
+    await this.page
+      .getByRole("heading", { name: "주문관리" })
+      .first()
+      .click({ force: true });
+    await this.page.waitForTimeout(1000); // dropdown 닫힘 transition
 
-    // 4) 결과 안정화 대기
+    // 4) [조회하기] 클릭. actionability check 우선, 실패 시 force fallback
+    await this.submitSearchButton.click().catch(async () => {
+      await this.submitSearchButton.click({ force: true });
+    });
+    // 결과 갱신 backend round-trip + UI re-render buffer (inline 진단 흐름과
+    // 동일 timing — POM에서 즉시 expectOrderResultAreaLoaded 호출 시 결과
+    // 안정화 전 metrics가 0건으로 잡히는 회귀 발견됨)
+    await this.page.waitForTimeout(3000);
+
+    // 5) 결과 안정화 대기
     const metrics = await this.expectOrderResultAreaLoaded(
       `결제수단 '${method}' 필터 조회`,
     );
@@ -1779,12 +1778,45 @@ export class OrderListPage extends AdminBasePage {
 
   /**
    * 현재 화면에 노출된 결제수단 텍스트 수를 반환합니다.
+   *
+   * 2026-05-06: STG 결과 영역이 <table> 기반에서 div grid 기반으로 변경됨.
+   * 행 단위 carry: 체크박스(첫 헤더 체크박스 제외)의 가까운 row 컨테이너
+   * textContent 합산. 검색 폼 트리거 라벨에 표시되는 method 텍스트는
+   * 자연스럽게 제외(검색 폼 영역에 input[type=checkbox] 없음).
    */
   async getVisiblePaymentMethodCounts(): Promise<PaymentMethodCounts> {
     await this.expectOrderResultAreaLoaded("결제수단 카운트 수집");
 
     return await this.page.evaluate(() => {
-      const text = document.body.innerText;
+      const checkboxes = Array.from(
+        document.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'),
+      ).filter((c) => (c as HTMLElement).offsetParent !== null);
+
+      const rowTexts: string[] = [];
+      // 첫 체크박스는 보통 헤더 전체선택. skip.
+      for (let i = 1; i < checkboxes.length; i++) {
+        const cb = checkboxes[i];
+        // 부모를 한 단계씩 올라가면서 text 길이가 행 1건 수준 (50~2000자)인
+        // 가장 작은 컨테이너 선택. 너무 큰 컨테이너는 인접 행/페이지 영역이 섞여
+        // 중복 카운팅 발생.
+        let cur: HTMLElement | null = cb.parentElement;
+        let row: HTMLElement | null = null;
+        for (let d = 0; d < 8 && cur; d++) {
+          const tLen = (cur.textContent || "").trim().length;
+          // 행 1건 텍스트 적정 범위 (주문번호+상태+결제금액+배송 등)
+          if (tLen >= 50 && tLen <= 2000) {
+            row = cur;
+            break;
+          }
+          if (tLen > 2000) break; // 너무 커지면 중단
+          cur = cur.parentElement;
+        }
+        if (row) {
+          const t = (row.textContent || "").replace(/\s+/g, " ").trim();
+          rowTexts.push(t);
+        }
+      }
+      const text = rowTexts.join("\n");
       return {
         deposit: (text.match(/예치금/g) || []).length,
         directTransfer: (text.match(/직접송금/g) || []).length,
