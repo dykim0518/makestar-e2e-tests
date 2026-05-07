@@ -483,15 +483,17 @@ test.describe
   let qa102OrderPage: OrderListPage;
 
   test.beforeEach(async ({ page }) => {
-    qa102OrderPage = await initPageWithRecovery(
-      OrderListPage,
-      page,
-      "주문관리(B2B)",
-    );
-    if (!page.url().includes("openedTab=b2b")) {
-      await page.goto(TARGET_URL);
-      await qa102OrderPage.waitForTableOrNoResult(20000).catch(() => {});
-    }
+    // 2026-05-06 회귀(QA102 새 dropdown UI) 대응: initPageWithRecovery의
+    // 이중 navigation(/order/list → /order/list?openedTab=b2b)이 새 dropdown
+    // form-state binding을 default 탭에 고정하는 회귀가 진단됨. 단일 navigation
+    // 후 충분한 stable 대기로 새 dropdown UI에 b2b 탭 form-state가 정상 binding
+    // 되도록 한다. (인증은 admin-pc project storageState로 처리)
+    qa102OrderPage = new OrderListPage(page);
+    await page.goto(TARGET_URL);
+    await page.waitForLoadState("domcontentloaded");
+    await qa102OrderPage.waitForTableOrNoResult(20000).catch(() => {});
+    // Vue 컴포넌트 mount + form-state 안정화 buffer
+    await page.waitForTimeout(1500);
   });
 
   test("QA102-PAGE-01: B2B 주문 목록 + 결제수단 필터 노출", async () => {

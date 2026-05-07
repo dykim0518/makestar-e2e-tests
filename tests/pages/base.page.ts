@@ -369,6 +369,8 @@ export abstract class BasePage {
   ];
 
   protected readonly modalCloseTexts: readonly string[] = [
+    "건너뛰기",
+    "Skip",
     "닫기",
     "확인",
     "Close",
@@ -403,6 +405,10 @@ export abstract class BasePage {
 
   /**
    * 모달 처리 - "다시 보지 않기" 우선, 없으면 "닫기" 클릭
+   *
+   * 2026-05-06: STG에 "How would you rate your experience?" 설문 모달이 추가됨
+   * (z-40 fixed full-screen backdrop). "건너뛰기" dismiss 후 backdrop이
+   * detached 될 때까지 짧게 기다려 GNB 클릭이 backdrop에 가로채이지 않게 한다.
    */
   async handleModal(): Promise<void> {
     try {
@@ -416,6 +422,13 @@ export abstract class BasePage {
       if (!dismissed) {
         await this.clickModalCloseButton(this.modalCloseTexts, 800);
       }
+
+      // 설문 등 fixed full-screen z-40 backdrop이 잔존하면 GNB pointer-events 가로챔
+      await this._page
+        .locator('[class*="fixed"][class*="z-40"][class*="w-screen"]')
+        .first()
+        .waitFor({ state: "detached", timeout: 1500 })
+        .catch(() => {});
     } catch {
       // 모달이 없거나 처리 실패 - 정상
     }
