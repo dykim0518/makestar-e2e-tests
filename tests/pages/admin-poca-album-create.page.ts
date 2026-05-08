@@ -6,6 +6,7 @@
 
 import { Page, Locator, expect } from "@playwright/test";
 import { AdminBasePage, ADMIN_TIMEOUTS } from "./admin-base.page";
+import * as fs from "fs";
 import * as path from "path";
 
 // ============================================================================
@@ -170,10 +171,18 @@ export class PocaAlbumCreatePage extends AdminBasePage {
     const absolutePath = path.isAbsolute(filePath)
       ? filePath
       : path.resolve(__dirname, "..", filePath);
+    const extension = path.extname(absolutePath).toLowerCase();
+    const uniqueName = `${path.basename(absolutePath, extension)}-${Date.now()}${extension || ".png"}`;
+    const mimeType =
+      extension === ".jpg" || extension === ".jpeg" ? "image/jpeg" : "image/png";
 
     const fileInput = this.page.locator('input[type="file"]').first();
-    await fileInput.setInputFiles(absolutePath);
-    console.log(`ℹ️ 이미지 업로드 시도: ${absolutePath}`);
+    await fileInput.setInputFiles({
+      name: uniqueName,
+      mimeType,
+      buffer: fs.readFileSync(absolutePath),
+    });
+    console.log(`ℹ️ 이미지 업로드 시도: ${absolutePath} (${uniqueName})`);
   }
 
   /** 아티스트 선택 (커스텀 드롭다운) */
