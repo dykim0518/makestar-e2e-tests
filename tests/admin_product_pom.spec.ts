@@ -1075,7 +1075,7 @@ test.describe.serial("상품 등록 @feature:admin_makestar.event.create", () =>
       await categoryDetailPage.ensureItemExists({
         nameKr: "[자동화테스트] 전용 품목",
         nameEn: "[Automation] Dedicated Item",
-        skuSelectCount: 2,
+        skuSelectCount: 1,
       });
       await waitForPageStable(page);
     });
