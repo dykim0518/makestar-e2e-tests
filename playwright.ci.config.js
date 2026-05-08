@@ -75,6 +75,17 @@ export default defineConfig({
       },
     },
     {
+      name: "admin-full",
+      testMatch: ["**/admin_*.spec.ts"],
+      testIgnore: ["**/admin_auth_pom.spec.ts"],
+      dependencies: ["admin-setup"],
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 1920, height: 1080 },
+        storageState: "./auth.json",
+      },
+    },
+    {
       name: "admin-gate",
       testMatch: [
         "**/admin_product_pom.spec.ts",

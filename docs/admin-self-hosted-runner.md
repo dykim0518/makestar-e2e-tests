@@ -40,7 +40,7 @@ workflow는 `ADMIN_AUTH_STATE_PATH` 파일을 우선 사용하고, 파일이 없
 1. QA Hub `/trigger`에서 suite `통합매니저`를 선택한다.
 2. QA Hub가 기존처럼 `playwright.yml` workflow dispatch를 호출한다.
 3. `suite=admin` 또는 `project`에 `admin`이 포함된 요청은 Ubuntu job을 건너뛰고 `admin-local` job으로 라우팅된다.
-4. `admin-local` job은 `playwright.ci.config.js`의 `admin-gate` project를 실행한다.
+4. `admin-local` job은 `playwright.ci.config.js`의 `admin-full` project를 실행한다.
 5. `lib/live-reporter.js`와 final results push가 QA Hub에 실행 상태와 결과를 전송한다.
 
 ## Smoke check

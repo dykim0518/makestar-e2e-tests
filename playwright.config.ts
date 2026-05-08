@@ -178,17 +178,8 @@ export default defineConfig({
     // Admin 테스트 전용 (PC 환경만) - Setup 완료 후 실행
     {
       name: "admin-pc",
-      testMatch: [
-        "**/admin_product_pom.spec.ts",
-        "**/admin_order_pom.spec.ts",
-        "**/admin_poca_*_pom.spec.ts",
-        "**/admin_pocaalbum_functional.spec.ts",
-        "**/admin_user_pom.spec.ts",
-        "**/admin_artist_pom.spec.ts",
-        "**/admin_isms_*.spec.ts",
-        "**/admin_excel*pom.spec.ts",
-        "**/auto_*_pom.spec.ts",
-      ],
+      testMatch: ["**/admin_*.spec.ts", "**/auto_*_pom.spec.ts"],
+      testIgnore: ["**/admin_auth_pom.spec.ts"],
       dependencies: ["admin-setup"], // Setup 프로젝트에 의존
       use: {
         ...devices["Desktop Chrome"],
