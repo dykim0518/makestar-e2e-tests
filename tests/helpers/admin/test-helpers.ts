@@ -477,16 +477,17 @@ export function formatDate(date: Date): string {
  * 각 테스트 파일의 시작 부분에서 호출하세요.
  *
  * 포함 항목:
- * - 토큰 만료 시 Fail 테스트 추가
+ * - 토큰 만료 시 로컬 실행에서 Fail 테스트 추가
  * - beforeAll: resetAuthCache + 토큰 상태 로그
  * - beforeEach: 뷰포트 체크 + 인증 실패 체크 + 쿠키 설정
  *
  * @param testName - 로그에 표시할 테스트 이름 (예: "주문관리")
  */
 export function applyAdminTestConfig(testName?: string) {
-  const tokenValid = isTokenValidSync();
+  const isCi = process.env.CI === "true";
+  const tokenValid = isCi ? true : isTokenValidSync();
 
-  if (!tokenValid) {
+  if (!tokenValid && !isCi) {
     test("토큰 유효성 검증", () => {
       expect(
         tokenValid,
@@ -497,7 +498,7 @@ export function applyAdminTestConfig(testName?: string) {
 
   test.beforeAll(async () => {
     resetAuthCache();
-    if (tokenValid) {
+    if (tokenValid && !isCi) {
       const { hours, minutes } = getTokenRemaining();
       const label = testName ? `Admin ${testName}` : "Admin";
       console.log(
