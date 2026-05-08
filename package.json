@@ -11,6 +11,7 @@
     "test:ops": "npm run typecheck && node scripts/check-false-green.js && npx playwright test --config=playwright.ops.config.js",
     "test:cmr": "npx playwright test --project=cmr",
     "test:admin": "npx playwright test --project=admin-setup --project=admin-pc",
+    "test:admin:full": "npm run typecheck && node scripts/check-false-green.js && npx playwright test --config=playwright.ci.config.js --project=admin-full",
     "test:admin:gate": "npm run typecheck && node scripts/check-false-green.js && npx playwright test --config=playwright.ci.config.js --project=admin-gate",
     "test:admin:ops": "npm run typecheck && node scripts/check-false-green.js && npx playwright test --config=playwright.ops.config.js --project=admin-ops",
     "test:admin:product": "npx playwright test tests/admin_product_pom.spec.ts --project=admin-setup --project=admin-pc",

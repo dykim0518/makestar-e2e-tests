@@ -639,7 +639,7 @@ jobs:
             fi
             add_project "${PROJECT_INPUT}"
           else
-            add_project "admin-gate"
+            add_project "admin-full"
           fi
 
           if [ "${#EFFECTIVE_TARGETS[@]}" -eq 0 ]; then
