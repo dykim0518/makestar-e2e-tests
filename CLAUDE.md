@@ -81,14 +81,15 @@ global-setup.js      # 테스트 전 인증 점검/갱신
 
 ### 테스트 ID: `{영역}-{기능}-{번호}`
 
-| 영역            | 접두사 | 영역           | 접두사 |
-| --------------- | ------ | -------------- | ------ |
-| CMR 모니터링    | `CMR`  | Admin 인증     | `AUTH` |
-| Admin 주문      | `ORD`  | AlbumBuddy     | `AB`   |
-| Admin 대분류    | `CAT`  | Admin 회원관리 | `USR`  |
-| Admin SKU       | `SKU`  | —              | —      |
-| Admin 상품      | `PRD`  | —              | —      |
-| POCAAlbum Admin | `PA`   | —              | —      |
+| 영역              | 접두사 | 영역           | 접두사 |
+| ----------------- | ------ | -------------- | ------ |
+| CMR 모니터링      | `CMR`  | Admin 인증     | `AUTH` |
+| Admin 주문        | `ORD`  | AlbumBuddy     | `AB`   |
+| Admin 대분류      | `CAT`  | Admin 회원관리 | `USR`  |
+| Admin SKU         | `SKU`  | —              | —      |
+| Admin 상품        | `PRD`  | —              | —      |
+| POCAAlbum Admin   | `PA`   | —              | —      |
+| Admin 이벤트 당첨 | `EWN`  | —              | —      |
 
 | 기능 코드 | 의미         | 기능 코드 | 의미          |
 | --------- | ------------ | --------- | ------------- |

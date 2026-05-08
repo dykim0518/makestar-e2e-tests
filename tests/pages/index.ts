@@ -187,3 +187,19 @@ export type {
   NoticeCheckboxLabel,
   NoticeCheckboxState,
 } from "./admin-event-update.page";
+
+// Admin 이벤트 당첨 관리 페이지
+export {
+  EventWinningManagePage,
+  EVENT_WINNING_STATUS_FILTERS,
+  EVENT_WINNING_TABLE_HEADERS,
+} from "./admin-event-winning-manage.page";
+export type {
+  EventWinningSortOption,
+  WinningStatusExpectation,
+  WinningStatusFilter,
+} from "./admin-event-winning-manage.page";
+
+// Admin 이벤트 당첨 관리 — 상세 페이지
+export { EventWinningDetailPage } from "./admin-event-winning-detail.page";
+export type { DetailTabKey } from "./admin-event-winning-detail.page";
