@@ -105,11 +105,11 @@ test.describe("POCAAlbum Admin Shop 테스트", () => {
   // ========================================================================
   // Shop 포인트상품 생성/삭제 (serial)
   // ========================================================================
-  test.describe.serial("Shop 포인트상품 생성/삭제 @feature:admin_pocaalbum.shop.create", () => {
+  test.describe.serial("Shop 포인트상품 생성/삭제 @suite:ops @feature:admin_pocaalbum.shop.create", () => {
     let sharedShopTitle = "";
     let sharedShopCreated = false;
 
-    test("PS-CREATE-01: 포인트상품 생성 폼 입력 및 등록", async ({ page }) => {
+    test("PS-CREATE-01: 포인트상품 생성 폼 입력 및 등록 @suite:ops", async ({ page }) => {
       const shopCreatePage = new PocaShopCreatePage(page);
       await shopCreatePage.navigate();
       await waitForPageStable(page);
@@ -169,7 +169,7 @@ test.describe("POCAAlbum Admin Shop 테스트", () => {
       console.log(`  상품 검색 결과: ${hasData ? "데이터 있음" : "미발견"}`);
     });
 
-    test("PS-ACTION-01: 테스트 상품 삭제", async ({ page }) => {
+    test("PS-ACTION-01: 테스트 상품 삭제 @suite:ops", async ({ page }) => {
       expect(
         sharedShopCreated,
         "❌ PS-CREATE-01에서 상품이 생성되지 않음",

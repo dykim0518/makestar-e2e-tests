@@ -741,7 +741,7 @@ test.describe.serial("상세 페이지 @feature:admin_makestar.user.detail", () 
 // B2B 예치금 관리 — QA-98: 예치금 충전 불가
 // Jira: https://makestar-product.atlassian.net/browse/QA-98
 // ============================================================================
-test.describe.serial("[QA-98] B2B 예치금 충전/차감 검증", () => {
+test.describe.serial("[QA-98] B2B 예치금 충전/차감 검증 @suite:ops", () => {
   const DEPOSIT_URL = "https://stage-new-admin.makeuni2026.com/user-group/474";
   const CHARGE_AMOUNT = "1";
   const DEPOSIT_SUFFIX = Date.now().toString().slice(-6);
@@ -787,7 +787,7 @@ test.describe.serial("[QA-98] B2B 예치금 충전/차감 검증", () => {
     await expect(page.getByRole("button", { name: "확인" })).toBeVisible();
   });
 
-  test("QA98-CREATE-02: 예치금 충전 실행 및 잔액 변경 확인", async ({
+  test("QA98-CREATE-02: 예치금 충전 실행 및 잔액 변경 확인 @suite:ops", async ({
     page,
   }) => {
     const balanceText = await page.evaluate(() => {
@@ -847,7 +847,7 @@ test.describe.serial("[QA-98] B2B 예치금 충전/차감 검증", () => {
     console.log("  ✅ 내역에서 충전 기록 확인");
   });
 
-  test("QA98-CREATE-03: 예치금 차감 실행 및 잔액 원복 확인", async ({
+  test("QA98-CREATE-03: 예치금 차감 실행 및 잔액 원복 확인 @suite:ops", async ({
     page,
   }) => {
     const beforeText = await page.evaluate(() => {

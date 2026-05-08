@@ -37,6 +37,8 @@ type Target = {
   };
 };
 
+const USER_LIST_API_PATTERN = /\/admin\/user\/list_new_commerce_user\/?\?/;
+
 const TARGETS: Target[] = [
   // === 상품 ===
   {
@@ -162,8 +164,16 @@ async function runPreAction(page: Page, action: PreAction) {
   if (action === "user-b2b-tab") {
     const tab = page.locator('div:text-is("B2B 회원 관리")').first();
     await tab.waitFor({ state: "visible", timeout: 10000 });
+    const responsePromise = page.waitForResponse(
+      (response) => USER_LIST_API_PATTERN.test(response.url()),
+      { timeout: 20000 },
+    );
     await tab.click();
-    await page.waitForTimeout(3000);
+    const response = await responsePromise;
+    expect(
+      response.status(),
+      `B2B 회원 관리 API 응답 실패: ${response.status()} ${response.url()}`,
+    ).toBeLessThan(400);
   } else if (action === "event-winner-menu") {
     // "엑셀다운로드" 트리거 먼저 열기
     const trigger = page
@@ -173,7 +183,10 @@ async function runPreAction(page: Page, action: PreAction) {
       .first();
     await trigger.waitFor({ state: "visible", timeout: 10000 });
     await trigger.click();
-    await page.waitForTimeout(1500);
+    await expect(
+      page.locator('button:has-text("당첨자 선정 엑셀 다운로드")').first(),
+      "이벤트 당첨자 엑셀 다운로드 메뉴가 열려야 합니다.",
+    ).toBeVisible({ timeout: 10000 });
   }
 }
 
@@ -190,7 +203,6 @@ test.describe("Admin 엑셀 다운로드 검증", () => {
       await page
         .waitForLoadState("networkidle", { timeout: 15000 })
         .catch(() => {});
-      await page.waitForTimeout(5000);
 
       if (t.preAction) await runPreAction(page, t.preAction);
 

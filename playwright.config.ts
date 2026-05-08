@@ -46,7 +46,11 @@ const manualAuthSpecPatterns = [
   "**/ab-save-auth.spec.ts",
 ];
 const testIgnorePatterns = ["**/backup/**"];
-const nonAdminIgnorePatterns = ["**/admin_*.spec.ts", "**/backup/**"];
+const nonAdminIgnorePatterns = [
+  "**/admin_*.spec.ts",
+  "**/cmr_*.spec.ts",
+  "**/backup/**",
+];
 
 if (excludeAuthTests) {
   testIgnorePatterns.push(...manualAuthSpecPatterns);

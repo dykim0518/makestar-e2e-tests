@@ -5,7 +5,7 @@ Makestar.com 서비스 E2E 모니터링 테스트 (Playwright + Page Object Mode
 ## 프로젝트 구조
 
 ```
-├── playwright.config.js          # 로컬 실행용 설정
+├── playwright.config.ts          # 로컬 실행용 설정
 ├── playwright.ci.config.js       # CI 전용 설정
 ├── global-setup.js               # 테스트 전 토큰 검증/갱신
 ├── auto-refresh-token.js         # 토큰 자동 갱신 모듈
@@ -57,6 +57,12 @@ npm run test:cmr
 # Admin 테스트 (인증 Setup 포함)
 npm run test:admin
 
+# Admin POCA 앨범 테스트
+npm run test:admin:poca
+
+# 로컬 실행 게이트
+npm run test:gate
+
 # 전체 실행 (수동 인증 저장 스펙 제외: save-auth / ab-save-auth)
 npm test
 
@@ -66,6 +72,8 @@ npx playwright test -g "TC-HOME"
 # 브라우저 표시 모드
 HEADED=true npm run test:cmr
 ```
+
+`ops` 전용 suite는 현재 제공되지 않습니다. `playwright.ops.config.js`가 없으므로 `test:ops`, `test:admin:ops` npm script도 제공하지 않습니다.
 
 ### 커버리지 대시보드 업데이트 (Admin 로컬 실행 후)
 

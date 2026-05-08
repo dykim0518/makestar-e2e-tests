@@ -26,10 +26,10 @@
  *   PM-SEARCH-01: 키워드 검색
  *
  * ============================================================================
- * Section 12: 캐시 관리 — QA-78: 선택한 캐시 삭제 기능 동작 불가
+ * Section 12: 캐시 관리 변경성 — QA-78: 선택한 캐시 삭제 기능 동작 불가
  * ============================================================================
  *   QA78-PAGE-01: 캐시 목록 기본 요소 노출
- *   QA78-ACTION-01: 캐시 선택 후 삭제 동작 검증
+ *   QA78-ACTION-01: 캐시 선택 후 삭제 변경성 동작 검증
  *
  * @see tests/pages/ (POM 클래스)
  * @see tests/helpers/admin/ (인증/공통 유틸)
@@ -252,10 +252,10 @@ test.describe("POCAAlbum Admin 읽기 전용 테스트", () => {
   });
 
   // ========================================================================
-  // Section 12: 캐시 관리 — QA-78: 선택한 캐시 삭제 기능 동작 불가
+  // Section 12: 캐시 관리 변경성 — QA-78: 선택한 캐시 삭제 기능 동작 불가
   // Jira: https://makestar-product.atlassian.net/browse/QA-78
   // ========================================================================
-  test.describe.serial("캐시 관리 @feature:admin_pocaalbum.cache.list", () => {
+  test.describe.serial("캐시 관리 변경성 검증 @suite:ops @feature:admin_pocaalbum.cache.list", () => {
     const CACHE_URL =
       "https://stage-new-admin.makeuni2026.com/pocaalbum/system/cache/list";
 
@@ -296,7 +296,9 @@ test.describe("POCAAlbum Admin 읽기 전용 테스트", () => {
       ).toBeVisible();
     });
 
-    test("QA78-ACTION-01: 캐시 선택 후 삭제 동작 검증", async ({ page }) => {
+    test("QA78-ACTION-01: 캐시 선택 후 삭제 변경성 동작 검증 @suite:ops", async ({
+      page,
+    }) => {
       await expect(page.locator("table")).toBeVisible({
         timeout: ELEMENT_TIMEOUT,
       });
