@@ -58,6 +58,9 @@ const STATUS_FILTER_FALLBACK_INDEX: Record<OrderStatusKey, number> = {
   stockAllocationStatus: 4,
 } as const;
 
+const ORDER_LIST_API_PATTERN = /\/admin\/commerce\/order\/?\?/;
+const PAYMENT_METHOD_OPTION_MAX_TEXT_LENGTH = 80;
+
 export class OrderListPage extends AdminBasePage {
   readonly submitSearchButton: Locator;
   readonly searchResetButton: Locator;
@@ -1681,6 +1684,121 @@ export class OrderListPage extends AdminBasePage {
   // QA-102 회귀: B2B 예치금 결제수단 검증 헬퍼
   // --------------------------------------------------------------------------
 
+  private async waitForOrderListResponse(context: string): Promise<void> {
+    const response = await this.page.waitForResponse(
+      (candidate) => ORDER_LIST_API_PATTERN.test(candidate.url()),
+      { timeout: this.timeouts.navigation },
+    );
+    expect(
+      response.status(),
+      `${context} API 응답 실패: ${response.status()} ${response.url()}`,
+    ).toBeLessThan(400);
+  }
+
+  private async getPaymentMethodOptionChecked(
+    method: PaymentMethodKey,
+    clickIfUnchecked: boolean = false,
+  ): Promise<boolean | null> {
+    return await this.page.evaluate(
+      ({ label, maxTextLength, shouldClick }) => {
+        const normalize = (value: string) => value.replace(/\s+/g, " ").trim();
+        const nodes = Array.from(document.querySelectorAll<HTMLElement>("*"));
+
+        for (const node of nodes) {
+          if (
+            node.children.length > 0 ||
+            normalize(node.textContent || "") !== label ||
+            node.offsetParent === null
+          ) {
+            continue;
+          }
+
+          let current: HTMLElement | null = node.parentElement;
+          for (let depth = 0; depth < 8 && current; depth += 1) {
+            const text = normalize(current.textContent || "");
+            const checkbox = current.querySelector<HTMLInputElement>(
+              'input[type="checkbox"]',
+            );
+            if (
+              checkbox &&
+              text.includes(label) &&
+              text.length <= maxTextLength
+            ) {
+              checkbox.scrollIntoView({ block: "center" });
+              if (shouldClick && !checkbox.checked) {
+                checkbox.click();
+              }
+              return checkbox.checked;
+            }
+            current = current.parentElement;
+          }
+        }
+        return null;
+      },
+      {
+        label: method,
+        maxTextLength: PAYMENT_METHOD_OPTION_MAX_TEXT_LENGTH,
+        shouldClick: clickIfUnchecked,
+      },
+    );
+  }
+
+  private async hasVisiblePaymentMethodOption(
+    method: PaymentMethodKey,
+  ): Promise<boolean> {
+    return (await this.getPaymentMethodOptionChecked(method)) !== null;
+  }
+
+  private async waitForPaymentMethodOptionVisible(
+    method: PaymentMethodKey,
+  ): Promise<void> {
+    await expect
+      .poll(() => this.hasVisiblePaymentMethodOption(method), {
+        timeout: this.timeouts.long,
+        intervals: [200, 500, 1000],
+      })
+      .toBe(true);
+  }
+
+  private async clickPaymentMethodOption(
+    method: PaymentMethodKey,
+  ): Promise<void> {
+    const checked = await this.getPaymentMethodOptionChecked(method, true);
+
+    expect(
+      checked !== null,
+      `결제수단 '${method}' 옵션 체크박스를 클릭하지 못했습니다.`,
+    ).toBeTruthy();
+  }
+
+  private async isPaymentMethodSelected(
+    method: PaymentMethodKey,
+  ): Promise<boolean> {
+    return (await this.getPaymentMethodOptionChecked(method)) === true;
+  }
+
+  private async waitForPaymentMethodSelected(
+    method: PaymentMethodKey,
+  ): Promise<void> {
+    await expect
+      .poll(() => this.isPaymentMethodSelected(method), {
+        timeout: this.timeouts.medium,
+        intervals: [200, 500, 1000],
+      })
+      .toBe(true);
+  }
+
+  private async waitForPaymentMethodDropdownClosed(
+    method: PaymentMethodKey,
+  ): Promise<void> {
+    await expect
+      .poll(() => this.hasVisiblePaymentMethodOption(method), {
+        timeout: this.timeouts.medium,
+        intervals: [200, 500, 1000],
+      })
+      .toBe(false);
+  }
+
   /**
    * B2B 주문 목록의 결제수단 드롭다운 필터를 펼친 뒤, 지정한 결제수단
    * 옵션을 선택하고 [조회하기]를 눌러 결과를 갱신합니다.
@@ -1701,14 +1819,7 @@ export class OrderListPage extends AdminBasePage {
   async applyPaymentMethodFilter(
     method: PaymentMethodKey,
   ): Promise<OrderResultMetrics> {
-    // 2026-05-06 회귀: 새 결제수단 dropdown UI는 Vue 컴포넌트 mount + form-state
-    // binding 안정화에 명시 시간 필요. expect.toBeVisible 즉시 통과 시 dropdown
-    // animation 중 옵션 click이 발생하여 backend filter param 미커밋 → 결과 0건.
-    // 진단(auto_payment_dropdown_pom.spec.ts)으로 명시 waitForTimeout 흐름이
-    // 사용자 manual 결과(30건)와 일치함을 확인.
-
-    // 0) 페이지 mount 안정화
-    await this.page.waitForTimeout(3000);
+    await this.expectPaymentMethodFilterVisible();
 
     // 1) "결제수단" 라벨의 next-sibling 트리거 div click
     const triggerHandle = await this.page.evaluateHandle((label) => {
@@ -1729,29 +1840,27 @@ export class OrderListPage extends AdminBasePage {
       );
     }
     await triggerEl.click();
-    await this.page.waitForTimeout(1500); // dropdown 펼침 animation
+    await this.waitForPaymentMethodOptionVisible(method);
 
-    // 2) 옵션 leaf hover + click → 옵션 select
-    const optionLeaf = this.page.getByText(method, { exact: true }).first();
-    await optionLeaf.hover();
-    await optionLeaf.click();
-    await this.page.waitForTimeout(1500); // selection commit 비동기 buffer
+    // 2) 옵션 컨테이너 내부 checkbox 직접 클릭 → 옵션 select
+    await this.clickPaymentMethodOption(method);
+    await this.waitForPaymentMethodSelected(method);
 
     // 3) 페이지 heading 클릭 → dropdown blur + form-state commit
     await this.page
       .getByRole("heading", { name: "주문관리" })
       .first()
       .click({ force: true });
-    await this.page.waitForTimeout(1000); // dropdown 닫힘 transition
+    await this.waitForPaymentMethodDropdownClosed(method);
 
     // 4) [조회하기] 클릭. actionability check 우선, 실패 시 force fallback
+    const responsePromise = this.waitForOrderListResponse(
+      `결제수단 '${method}' 필터 조회`,
+    );
     await this.submitSearchButton.click().catch(async () => {
       await this.submitSearchButton.click({ force: true });
     });
-    // 결과 갱신 backend round-trip + UI re-render buffer (inline 진단 흐름과
-    // 동일 timing — POM에서 즉시 expectOrderResultAreaLoaded 호출 시 결과
-    // 안정화 전 metrics가 0건으로 잡히는 회귀 발견됨)
-    await this.page.waitForTimeout(3000);
+    await responsePromise;
 
     // 5) 결과 안정화 대기
     const metrics = await this.expectOrderResultAreaLoaded(

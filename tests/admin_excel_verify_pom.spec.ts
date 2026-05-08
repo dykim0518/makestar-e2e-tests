@@ -26,6 +26,8 @@ import { fetchJson } from "./helpers/admin/api-fetch";
 const BASE =
   process.env.ADMIN_BASE_URL || "https://stage-new-admin.makeuni2026.com";
 
+const ORDER_LIST_API_PATTERN = /\/admin\/commerce\/order\/?\?/;
+
 const ORDER_SEARCH_API = (userOrderNumber: string) =>
   `${BASE}/api/external/admin/apis/admin/commerce/order/?search=&period_type=all&start_date=&end_date=&user_order_number=${encodeURIComponent(
     userOrderNumber,
@@ -66,6 +68,46 @@ async function fetchOrderSearchRows(
     .catch(() => {});
 
   return { status: latestStatus, rows: latestRows };
+}
+
+async function waitForResponseMatching(
+  page: Page,
+  pattern: RegExp,
+  context: string,
+  timeout: number = 20000,
+): Promise<void> {
+  const response = await page.waitForResponse(
+    (candidate) => pattern.test(candidate.url()),
+    { timeout },
+  );
+  expect(
+    response.status(),
+    `${context} API 응답 실패: ${response.status()} ${response.url()}`,
+  ).toBeLessThan(400);
+}
+
+async function waitForCapturedApi(
+  capture: ReturnType<typeof captureApi>,
+  minCount: number,
+  context: string,
+  timeout: number = 20000,
+): Promise<void> {
+  await expect
+    .poll(() => capture.matched().length, {
+      timeout,
+      intervals: [500, 1000, 2000],
+    })
+    .toBeGreaterThanOrEqual(minCount);
+
+  const responses = capture.matched();
+  const latest = responses[responses.length - 1];
+  if (!latest) {
+    throw new Error(`${context} API 응답 캡처 실패`);
+  }
+  expect(
+    latest.status,
+    `${context} API 응답 실패: ${latest.status} ${latest.url}`,
+  ).toBeLessThan(400);
 }
 
 // ===========================================================================
@@ -146,15 +188,15 @@ test.describe("Admin 엑셀 키 컬럼 교집합 (API → Excel) @feature:admin_
       await page
         .waitForLoadState("networkidle", { timeout: 15000 })
         .catch(() => {});
-      await page.waitForTimeout(5000);
+      await waitForCapturedApi(capture, 1, `${t.id} 목록`);
 
       if (t.preAction === "user-b2b-tab") {
         const tab = page.locator('div:text-is("B2B 회원 관리")').first();
         await tab.waitFor({ state: "visible", timeout: 10000 });
+        const expectedApiCount = capture.matched().length + 1;
         await tab.click();
-        await page.waitForTimeout(3000);
+        await waitForCapturedApi(capture, expectedApiCount, "B2B 회원 관리");
       }
-      await page.waitForTimeout(2000);
 
       const apiResponses = capture.matched();
       expect(apiResponses.length, "API 응답 캡처 실패").toBeGreaterThan(0);
@@ -249,11 +291,16 @@ test.describe("Admin 주문 엑셀 → API 역검증 @feature:admin_makestar.ord
     test(`${t.id}: ${t.name}`, async ({ page }) => {
       resetAuthCache();
       await setupAuthCookies(page);
+      const listResponsePromise = waitForResponseMatching(
+        page,
+        ORDER_LIST_API_PATTERN,
+        "주문 목록",
+      );
       await page.goto(`${BASE}/order/list`, { waitUntil: "domcontentloaded" });
       await page
         .waitForLoadState("networkidle", { timeout: 15000 })
         .catch(() => {});
-      await page.waitForTimeout(5000);
+      await listResponsePromise;
 
       const button = await findButton(page, t.buttonText, true);
       await expect(button).toBeVisible({ timeout: 20000 });
@@ -343,7 +390,7 @@ test.describe("Admin 엑셀 필터 조합 @feature:admin_makestar.order.list", (
 
     await orderPage.selectStatusOptionByValue("orderStatus", preferred);
     await orderPage.clickSearchAndWait();
-    await page.waitForTimeout(2000);
+    await orderPage.expectOrderResultAreaLoaded("주문 상태 필터 조회");
 
     const btn = await findButton(page, "주문 엑셀 다운로드 V2", true);
     await expect(btn).toBeVisible({ timeout: 20000 });
@@ -416,7 +463,7 @@ test.describe("Admin 엑셀 필터 조합 @feature:admin_makestar.order.list", (
 
     await orderPage.resetFiltersAndWait();
     await orderPage.searchByKeyword(targetOrderNo);
-    await page.waitForTimeout(2000);
+    await orderPage.expectOrderResultAreaLoaded("주문번호 검색 결과");
 
     const btn = await findButton(page, "주문 엑셀 다운로드 V2", true);
     const dl = await clickAndDownloadExcel(page, btn, { timeoutMs: 90_000 });
