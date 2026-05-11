@@ -224,7 +224,7 @@ npm run auth:validate
 1. `admin_product_pom.spec.ts`
    - 상품/SKU/카테고리 생성과 검색 결과 대기 안정화
 
-2. `cmr_mypage_auth_pom.spec.ts`
+2. `cmr_04_mypage_auth_pom.spec.ts`
    - 상품 선택, 장바구니, 옵션 선택의 hard wait와 console 로그 정리
 
 3. QA Hub
@@ -275,7 +275,7 @@ QA Hub, Slack, GitHub Actions, 테스트 데이터 registry는 건드리지 마.
 npm run auth:validate
 # 통과: refresh_token @ .makeuni2026.com, 잔여 약 89일 23시간
 
-MAKESTAR_BASE_URL=https://stage-new.makeuni2026.com npx playwright test tests/cmr_mypage_auth_pom.spec.ts --project=cmr --grep='CMR-AUTH-08' --list
+MAKESTAR_BASE_URL=https://stage-new.makeuni2026.com npx playwright test tests/cmr_04_mypage_auth_pom.spec.ts --project=cmr --grep='CMR-AUTH-08' --list
 # 통과: CMR STG에서 auth.json 로드 및 CMR-AUTH-08 대상 테스트 확인
 
 npx playwright test tests/admin_order_pom.spec.ts --project=admin-setup --project=admin-pc --grep='QA102|QA100' --retries=0 --reporter=list

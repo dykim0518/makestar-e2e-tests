@@ -212,16 +212,17 @@
 완료:
 
 - `tests/cmr_monitoring_pom.spec.ts`를 목적별 CMR spec으로 분할했다.
-  - `tests/cmr_home_pages_pom.spec.ts`
-  - `tests/cmr_nav_pom.spec.ts`
-  - `tests/cmr_search_pom.spec.ts`
-  - `tests/cmr_mypage_auth_pom.spec.ts`
-  - `tests/cmr_cart_product_pom.spec.ts`
-  - `tests/cmr_artist_content_pom.spec.ts`
-  - `tests/cmr_performance_pom.spec.ts`
+  - `tests/cmr_01_home_pages_pom.spec.ts`
+  - `tests/cmr_02_nav_pom.spec.ts`
+  - `tests/cmr_03_search_pom.spec.ts`
+  - `tests/cmr_04_mypage_auth_pom.spec.ts`
+  - `tests/cmr_05_cart_product_pom.spec.ts`
+  - `tests/cmr_06_artist_content_pom.spec.ts`
+  - `tests/cmr_07_performance_pom.spec.ts`
 - CMR 공통 설정은 `tests/helpers/cmr-monitoring-config.ts`로 분리했다.
 - 상품 옵션 가격 검증 helper는 `tests/helpers/cmr-product-option.ts`로 분리했다.
 - `cmr_*_pom.spec.ts` 파일명 규칙을 유지해 기존 `cmr-monitoring`/`cmr` project의 `testMatch`와 호환되게 했다.
+- 순번 prefix로 기존 단일 spec의 실행 순서를 최대한 보존했다.
 
 남은 리스크:
 
