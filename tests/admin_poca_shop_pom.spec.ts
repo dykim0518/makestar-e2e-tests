@@ -56,8 +56,7 @@ test.describe("POCAAlbum Admin Shop 테스트", () => {
       });
 
       const isSearchVisible = await shopListPage.searchInput
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
+        .isVisible({ timeout: 5000 });
 
       if (!isSearchVisible) {
         console.log("ℹ️ Shop 검색 필드 미발견 - 검색 기능 없을 수 있음");
@@ -67,8 +66,7 @@ test.describe("POCAAlbum Admin Shop 테스트", () => {
       await shopListPage.searchByKeyword("앨범");
       const hasData = await shopListPage.hasTableData();
       const hasNoResult = await shopListPage.noResultMessage
-        .isVisible()
-        .catch(() => false);
+        .isVisible();
 
       expect(
         hasData || hasNoResult,
@@ -129,8 +127,7 @@ test.describe("POCAAlbum Admin Shop 테스트", () => {
       });
 
       const isCreateVisible = await shopCreatePage.createButton
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
+        .isVisible({ timeout: 5000 });
 
       expect(
         isCreateVisible,
@@ -158,8 +155,7 @@ test.describe("POCAAlbum Admin Shop 테스트", () => {
       await waitForPageStable(page);
 
       const isSearchVisible = await shopListPage.searchInput
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
+        .isVisible({ timeout: 5000 });
 
       if (isSearchVisible) {
         await shopListPage.searchByKeyword(sharedShopTitle);
@@ -180,8 +176,7 @@ test.describe("POCAAlbum Admin Shop 테스트", () => {
       await waitForPageStable(page);
 
       const isSearchVisible = await shopListPage.searchInput
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
+        .isVisible({ timeout: 5000 });
 
       if (isSearchVisible) {
         await shopListPage.searchByKeyword(sharedShopTitle);
@@ -189,25 +184,19 @@ test.describe("POCAAlbum Admin Shop 테스트", () => {
 
       // 첫 번째 행 클릭 → 상세 진입
       const rowCount = await shopListPage.getRowCount();
-      if (rowCount === 0) {
-        console.warn("⚠️ 삭제할 상품을 찾을 수 없음");
-        return;
-      }
+      expect(
+        rowCount,
+        `❌ 삭제할 테스트 상품을 찾을 수 없습니다: ${sharedShopTitle}`,
+      ).toBeGreaterThan(0);
 
       await shopListPage.clickFirstRow(1);
       await waitForPageStable(page);
 
       const deleteBtn = page.getByRole("button", { name: "삭제" }).first();
-      const isDeleteVisible = await deleteBtn
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
-
-      if (!isDeleteVisible) {
-        console.log(
-          "⚠️ 삭제 버튼을 찾을 수 없음 - 권한 또는 UI 구조 확인 필요",
-        );
-        return;
-      }
+      await expect(
+        deleteBtn,
+        "❌ 삭제 버튼을 찾을 수 없음 - 권한 또는 UI 구조 확인 필요",
+      ).toBeVisible({ timeout: 5000 });
 
       page.once("dialog", (dialog) => dialog.accept());
       await deleteBtn.click();

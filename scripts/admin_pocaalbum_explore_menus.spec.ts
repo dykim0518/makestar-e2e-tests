@@ -80,8 +80,7 @@ async function captureTableInfo(
 ): Promise<TableInfo | null> {
   const table = page.locator("table").first();
   const isTableVisible = await table
-    .isVisible({ timeout: 5000 })
-    .catch(() => false);
+    .isVisible({ timeout: 5000 });
 
   if (!isTableVisible) return null;
 
@@ -110,8 +109,7 @@ async function captureTableInfo(
   // 페이지네이션
   const hasPagination = await page
     .locator('nav[aria-label="Pagination"]')
-    .isVisible()
-    .catch(() => false);
+    .isVisible();
 
   // 버튼 텍스트 수집
   const buttonTexts = await page
@@ -298,7 +296,7 @@ test.describe("POCAAlbum 메뉴 탐색", () => {
 
         // 3. 메뉴 클릭
         await pocaPage.clickSidebarMenu(menuName as PocaSidebarMenu);
-        await page.waitForLoadState("domcontentloaded").catch(() => {});
+        await page.waitForLoadState("domcontentloaded");
         await waitForPageStable(page);
 
         result.mainUrl = page.url();
@@ -319,22 +317,20 @@ test.describe("POCAAlbum 메뉴 탐색", () => {
 
             try {
               await subMenuItems.nth(i).click();
-              await page.waitForLoadState("domcontentloaded").catch(() => {});
+              await page.waitForLoadState("domcontentloaded");
               await waitForPageStable(page, 10000);
 
               const subUrl = page.url();
               const hasTable = await page
                 .locator("table")
                 .first()
-                .isVisible({ timeout: 3000 })
-                .catch(() => false);
+                .isVisible({ timeout: 3000 });
               const hasCreateButton = await page
                 .locator(
                   'button:has-text("등록"), button:has-text("생성"), button:has-text("추가"), a:has-text("등록"), a:has-text("생성")',
                 )
                 .first()
-                .isVisible({ timeout: 2000 })
-                .catch(() => false);
+                .isVisible({ timeout: 2000 });
 
               result.subMenus.push({
                 text: subText,
@@ -375,8 +371,7 @@ test.describe("POCAAlbum 메뉴 탐색", () => {
           )
           .first();
         const hasCreateBtn = await createBtn
-          .isVisible({ timeout: 3000 })
-          .catch(() => false);
+          .isVisible({ timeout: 3000 });
 
         if (hasCreateBtn) {
           const createBtnText = (await createBtn.textContent())?.trim() || "";
@@ -385,11 +380,14 @@ test.describe("POCAAlbum 메뉴 탐색", () => {
           try {
             const currentUrl = page.url();
             await createBtn.click();
-            await page
-              .waitForURL((url) => url.toString() !== currentUrl, {
+            try {
+              await page.waitForURL((url) => url.toString() !== currentUrl, {
                 timeout: 10000,
-              })
-              .catch(() => {});
+              });
+            } catch (error: unknown) {
+              const msg = error instanceof Error ? error.message : String(error);
+              console.log(`  ℹ️ 생성 버튼 클릭 후 URL 변경 없음: ${msg}`);
+            }
             await waitForPageStable(page, 10000);
 
             const createUrl = page.url();

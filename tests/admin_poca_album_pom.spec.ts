@@ -70,8 +70,7 @@ test.describe("POCAAlbum Admin 앨범 테스트", () => {
       for (const header of ["제목", "아티스트"]) {
         const headerEl = albumListPage.page.locator(`th:has-text("${header}")`);
         const isVisible = await headerEl
-          .isVisible({ timeout: 5000 })
-          .catch(() => false);
+          .isVisible({ timeout: 5000 });
         if (isVisible) {
           console.log(`  ✅ 헤더 확인: ${header}`);
         } else {
@@ -82,16 +81,14 @@ test.describe("POCAAlbum Admin 앨범 테스트", () => {
 
     test("PA-SEARCH-01: 키워드로 앨범 검색", async () => {
       const isSearchVisible = await albumListPage.searchInput
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
+        .isVisible({ timeout: 5000 });
       expect(isSearchVisible, "❌ 검색 입력 필드가 없습니다").toBeTruthy();
 
       await albumListPage.searchByKeyword("BTS");
 
       const hasData = await albumListPage.hasTableData();
       const hasNoResult = await albumListPage.noResultMessage
-        .isVisible()
-        .catch(() => false);
+        .isVisible();
 
       expect(
         hasData || hasNoResult,
@@ -106,8 +103,7 @@ test.describe("POCAAlbum Admin 앨범 테스트", () => {
 
       const rowCount = await albumListPage.getRowCount();
       const hasNoResult = await albumListPage.noResultMessage
-        .isVisible()
-        .catch(() => false);
+        .isVisible();
 
       if (rowCount === 0 || hasNoResult) {
         console.log("  ✅ 검색결과 없음 확인");
@@ -130,10 +126,9 @@ test.describe("POCAAlbum Admin 앨범 테스트", () => {
       expect(rowCount, "❌ 테이블에 데이터가 없습니다").toBeGreaterThan(0);
 
       const isNextVisible = await albumListPage.nextPageButton
-        .isVisible()
-        .catch(() => false);
+        .isVisible();
       const isNextEnabled = isNextVisible
-        ? await albumListPage.nextPageButton.isEnabled().catch(() => false)
+        ? await albumListPage.nextPageButton.isEnabled()
         : false;
 
       if (!isNextVisible || !isNextEnabled) {
@@ -185,8 +180,7 @@ test.describe("POCAAlbum Admin 앨범 테스트", () => {
         await waitForPageStable(page);
 
         const isSearchVisible = await albumListPage.searchInput
-          .isVisible({ timeout: 5000 })
-          .catch(() => false);
+          .isVisible({ timeout: 5000 });
         if (isSearchVisible) {
           await albumListPage.searchByKeyword("[자동화테스트]");
           const rows = page.locator("table tbody tr");
@@ -239,8 +233,7 @@ test.describe("POCAAlbum Admin 앨범 테스트", () => {
       await test.step("등록 시도", async () => {
         const createBtn = albumCreatePage.createButton;
         const isVisible = await createBtn
-          .isVisible({ timeout: 5000 })
-          .catch(() => false);
+          .isVisible({ timeout: 5000 });
 
         expect(
           isVisible,
@@ -299,11 +292,10 @@ test.describe("POCAAlbum Admin 앨범 테스트", () => {
 
       await albumListPage.searchByKeyword(sharedAlbumTitle);
       const rowIndex = await albumListPage.findRowByText(sharedAlbumTitle);
-
-      if (rowIndex < 0) {
-        console.warn("⚠️ 목록에서 앨범을 찾을 수 없어 상세 진입 건너뜀");
-        return;
-      }
+      expect(
+        rowIndex,
+        `❌ 목록에서 생성된 앨범을 찾을 수 없습니다: ${sharedAlbumTitle}`,
+      ).toBeGreaterThanOrEqual(0);
 
       await albumListPage.openAlbumDetail(rowIndex);
 
@@ -345,8 +337,7 @@ test.describe("POCAAlbum Admin 앨범 테스트", () => {
           )
           .first();
         const isTypeVisible = await albumTypeSelect
-          .isVisible({ timeout: 3000 })
-          .catch(() => false);
+          .isVisible({ timeout: 3000 });
 
         if (isTypeVisible) {
           const tagName = await albumTypeSelect.evaluate((el) =>
@@ -387,8 +378,7 @@ test.describe("POCAAlbum Admin 앨범 테스트", () => {
               )
               .first();
             const isYtVisible = await ytOpt
-              .isVisible({ timeout: 3000 })
-              .catch(() => false);
+              .isVisible({ timeout: 3000 });
             if (isYtVisible) {
               await ytOpt.click();
               console.log("  ✅ 유튜브 타입 선택 (combobox)");
@@ -415,8 +405,7 @@ test.describe("POCAAlbum Admin 앨범 테스트", () => {
       await test.step("등록 시도", async () => {
         const createBtn = albumCreatePage.createButton;
         const isVisible = await createBtn
-          .isVisible({ timeout: 5000 })
-          .catch(() => false);
+          .isVisible({ timeout: 5000 });
 
         expect(
           isVisible,
@@ -443,11 +432,10 @@ test.describe("POCAAlbum Admin 앨범 테스트", () => {
 
       await albumListPage.searchByKeyword(sharedAlbumTitle);
       const rowIndex = await albumListPage.findRowByText(sharedAlbumTitle);
-
-      if (rowIndex < 0) {
-        console.warn("⚠️ 목록에서 앨범을 찾을 수 없어 수정 건너뜀");
-        return;
-      }
+      expect(
+        rowIndex,
+        `❌ 목록에서 수정 대상 앨범을 찾을 수 없습니다: ${sharedAlbumTitle}`,
+      ).toBeGreaterThanOrEqual(0);
 
       await albumListPage.openAlbumDetail(rowIndex);
       await waitForPageStable(page);
@@ -458,16 +446,10 @@ test.describe("POCAAlbum Admin 앨범 테스트", () => {
           'input[placeholder*="제목"], input[placeholder*="앨범명"], input[placeholder*="타이틀"]',
         )
         .first();
-      const isTitleVisible = await titleInput
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
-
-      if (!isTitleVisible) {
-        console.warn(
-          "⚠️ 제목 필드를 찾을 수 없음 - 수정 페이지 구조 확인 필요",
-        );
-        return;
-      }
+      await expect(
+        titleInput,
+        "❌ 제목 필드를 찾을 수 없음 - 수정 페이지 구조 확인 필요",
+      ).toBeVisible({ timeout: 5000 });
 
       // 제목에 "(수정됨)" 추가
       const updatedTitle = sharedAlbumTitle + " (수정됨)";
@@ -480,14 +462,10 @@ test.describe("POCAAlbum Admin 앨범 테스트", () => {
           'button:has-text("저장"), button:has-text("수정"), button:has-text("등록")',
         )
         .first();
-      const isSaveVisible = await saveBtn
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
-
-      if (!isSaveVisible) {
-        console.warn("⚠️ 저장 버튼을 찾을 수 없음 - UI 구조 확인 필요");
-        return;
-      }
+      await expect(
+        saveBtn,
+        "❌ 저장 버튼을 찾을 수 없음 - UI 구조 확인 필요",
+      ).toBeVisible({ timeout: 5000 });
 
       page.once("dialog", (dialog) => dialog.accept());
       await saveBtn.click();

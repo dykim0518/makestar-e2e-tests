@@ -316,8 +316,7 @@ test.describe("아티스트 목록", () => {
 
     test("ART-FLT-01: 노출여부 필터 드롭다운 존재 및 기본값 검증", async () => {
       const filterVisible = await artistPage.exposureFilter
-        .isVisible({ timeout: ELEMENT_TIMEOUT })
-        .catch(() => false);
+        .isVisible({ timeout: ELEMENT_TIMEOUT });
 
       expect(
         filterVisible,
@@ -352,10 +351,9 @@ test.describe("아티스트 목록", () => {
       expect(rowCount, "❌ 테이블에 데이터가 없습니다.").toBeGreaterThan(0);
 
       const isNextVisible = await artistPage.nextPageButton
-        .isVisible()
-        .catch(() => false);
+        .isVisible();
       const isNextEnabled = isNextVisible
-        ? await artistPage.nextPageButton.isEnabled().catch(() => false)
+        ? await artistPage.nextPageButton.isEnabled()
         : false;
 
       expect(
@@ -448,13 +446,11 @@ test.describe("아티스트 목록", () => {
       // 등록 폼이 표시되었는지 검증
       const formVisible = await page
         .getByText("기본정보")
-        .isVisible({ timeout: ELEMENT_TIMEOUT })
-        .catch(() => false);
+        .isVisible({ timeout: ELEMENT_TIMEOUT });
       const headingVisible = await page
         .getByText("아티스트 등록")
         .first()
-        .isVisible({ timeout: ELEMENT_TIMEOUT })
-        .catch(() => false);
+        .isVisible({ timeout: ELEMENT_TIMEOUT });
 
       expect(
         formVisible || headingVisible,
@@ -488,8 +484,7 @@ test.describe("아티스트 목록", () => {
         const visible = await page
           .getByText(section)
           .first()
-          .isVisible({ timeout: 5000 })
-          .catch(() => false);
+          .isVisible({ timeout: 5000 });
         if (visible) foundSections.push(section);
       }
 
@@ -505,12 +500,10 @@ test.describe("아티스트 목록", () => {
 
       const hasSubmit = await submitBtn
         .first()
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
+        .isVisible({ timeout: 5000 });
       const hasCancel = await cancelBtn
         .first()
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
+        .isVisible({ timeout: 5000 });
 
       console.log(
         `  ℹ️ 등록 버튼: ${hasSubmit ? "✅" : "❌"}, 취소 버튼: ${hasCancel ? "✅" : "❌"}`,

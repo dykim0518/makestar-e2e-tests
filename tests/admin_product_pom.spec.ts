@@ -175,8 +175,7 @@ test.describe("대분류 목록 @feature:admin_makestar.product.list", () => {
 
     test("CAT-PAGE-03: 브레드크럼 네비게이션 검증", async () => {
       const isBreadcrumbVisible = await categoryPage.breadcrumb
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
+        .isVisible({ timeout: 5000 });
       expect(
         isBreadcrumbVisible,
         "❌ 브레드크럼이 보이지 않습니다. UI가 변경되었는지 확인하세요.",
@@ -284,10 +283,9 @@ test.describe("대분류 목록 @feature:admin_makestar.product.list", () => {
       expect(rowCount, "❌ 테이블에 데이터가 없습니다").toBeGreaterThan(0);
 
       const isNextVisible = await categoryPage.nextPageButton
-        .isVisible()
-        .catch(() => false);
+        .isVisible();
       const isNextEnabled = isNextVisible
-        ? await categoryPage.nextPageButton.isEnabled().catch(() => false)
+        ? await categoryPage.nextPageButton.isEnabled()
         : false;
 
       expect(
@@ -416,7 +414,7 @@ test.describe
 
       const keywordInput = page.locator('input[placeholder="검색어 입력"]');
       expect(
-        await keywordInput.isVisible({ timeout: 5000 }).catch(() => false),
+        await keywordInput.isVisible({ timeout: 5000 }),
         "❌ 생성 결과를 검증할 검색 필드가 보이지 않습니다.",
       ).toBe(true);
 
@@ -434,8 +432,7 @@ test.describe
           .locator(`table tbody tr:has-text("${categoryNameKr}")`)
           .first();
         createdVisible = await createdRow
-          .isVisible({ timeout: ELEMENT_TIMEOUT })
-          .catch(() => false);
+          .isVisible({ timeout: ELEMENT_TIMEOUT });
         if (createdVisible) {
           break;
         }
@@ -619,10 +616,9 @@ test.describe.serial("SKU 목록 @feature:admin_makestar.sku.list", () => {
       expect(rowCount, "❌ 테이블에 데이터가 없습니다").toBeGreaterThan(0);
 
       const isNextVisible = await skuPage.nextPageButton
-        .isVisible()
-        .catch(() => false);
+        .isVisible();
       const isNextEnabled = isNextVisible
-        ? await skuPage.nextPageButton.isEnabled().catch(() => false)
+        ? await skuPage.nextPageButton.isEnabled()
         : false;
 
       expect(
@@ -656,7 +652,7 @@ test.describe.serial("SKU 목록 @feature:admin_makestar.sku.list", () => {
       const page1Button = skuPage.page.locator(
         'nav[aria-label="Pagination"] button:has-text("1")',
       );
-      const isPage1Visible = await page1Button.isVisible().catch(() => false);
+      const isPage1Visible = await page1Button.isVisible();
 
       if (isPage1Visible) {
         const isActive = await page1Button.getAttribute("aria-current");
@@ -832,8 +828,7 @@ test.describe("상품 목록 @feature:admin_makestar.event.list", () => {
 
     test("PRD-PAGE-03: 브레드크럼 네비게이션 검증", async () => {
       const isBreadcrumbVisible = await eventPage.breadcrumb
-        .isVisible({ timeout: 3000 })
-        .catch(() => false);
+        .isVisible({ timeout: 3000 });
       if (isBreadcrumbVisible) {
         await eventPage.assertBreadcrumb(eventPage.getBreadcrumbPath());
       } else {
@@ -880,8 +875,7 @@ test.describe("상품 목록 @feature:admin_makestar.event.list", () => {
 
       await eventPage.searchByName(searchToken);
       const hasNoResult = await eventPage.noResultMessage
-        .isVisible({ timeout: 3000 })
-        .catch(() => false);
+        .isVisible({ timeout: 3000 });
       expect(
         hasNoResult,
         `❌ "${searchToken}" 검색 시 결과가 없어야 할 이유가 없습니다.`,
@@ -913,8 +907,7 @@ test.describe("상품 목록 @feature:admin_makestar.event.list", () => {
 
       const rowCount = await eventPage.getRowCount();
       const hasNoResult = await eventPage.noResultMessage
-        .isVisible({ timeout: 3000 })
-        .catch(() => false);
+        .isVisible({ timeout: 3000 });
 
       expect(
         rowCount === 0 || hasNoResult,
@@ -941,8 +934,7 @@ test.describe("상품 목록 @feature:admin_makestar.event.list", () => {
         'nav[aria-label="Pagination"] button:has-text("2")',
       );
       const isPage2Visible = await page2Button
-        .isVisible({ timeout: 3000 })
-        .catch(() => false);
+        .isVisible({ timeout: 3000 });
 
       if (!isPage2Visible) {
         console.log("ℹ️ 페이지 2 버튼이 없음 - 데이터가 1페이지만 있음 (정상)");

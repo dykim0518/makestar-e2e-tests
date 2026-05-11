@@ -14,6 +14,7 @@
  */
 
 import { test, expect } from "@playwright/test";
+import { runOptionalStep } from "./helpers/optional-step";
 import {
   setupAuthCookies,
   resetAuthCache,
@@ -101,7 +102,9 @@ test.describe.serial("인증 검증", () => {
       waitUntil: "domcontentloaded",
       timeout: PAGE_LOAD_TIMEOUT,
     });
-    await page.waitForLoadState("load", { timeout: 10000 }).catch(() => {});
+    await runOptionalStep(() =>
+      page.waitForLoadState("load", { timeout: 10000 }),
+    );
 
     let authResult = await verifyAuthentication(page);
 
@@ -122,7 +125,9 @@ test.describe.serial("인증 검증", () => {
           waitUntil: "domcontentloaded",
           timeout: PAGE_LOAD_TIMEOUT,
         });
-        await page.waitForLoadState("load", { timeout: 10000 }).catch(() => {});
+        await runOptionalStep(() =>
+          page.waitForLoadState("load", { timeout: 10000 }),
+        );
 
         // 두 번째 인증 시도
         authResult = await verifyAuthentication(page);
