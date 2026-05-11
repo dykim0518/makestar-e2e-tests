@@ -399,7 +399,12 @@ export class MakestarPage extends BasePage {
     options: { waitForDelayedMs?: number } = {},
   ): Promise<void> {
     const overlayLocator = this._page.locator(
-      'div.fixed[class*="z-[40]"], div.fixed[class*="z-40"]',
+      [
+        'div.fixed[class*="z-[40]"]',
+        'div.fixed[class*="z-40"]',
+        'div.fixed[class*="bg-[rgba(0,0,0"]',
+        'div.fixed[class*="w-screen"][class*="h-svh"]',
+      ].join(", "),
     );
     const { waitForDelayedMs = 0 } = options;
 
@@ -1039,25 +1044,7 @@ export class MakestarPage extends BasePage {
       await this.waitForContentStable(300).catch(() => {});
     }
 
-    // 검색 모달/오버레이가 로고를 가릴 수 있으므로 닫기 시도
-    const overlaySelector =
-      'div.fixed[class*="z-[40]"], div.fixed.w-\\[100vw\\], div[class*="bg-[rgba(0,0,0"]';
-    const overlay = this.page.locator(overlaySelector).first();
-
-    if (await overlay.isVisible({ timeout: 500 }).catch(() => false)) {
-      // ESC 키로 닫기 시도
-      await this.page.keyboard.press("Escape");
-      await overlay.waitFor({ state: "hidden", timeout: 1000 }).catch(() => {});
-
-      // 여전히 보이면 handleModal 재시도
-      if (await overlay.isVisible({ timeout: 300 }).catch(() => false)) {
-        await this.handleModal();
-        await overlay
-          .waitFor({ state: "hidden", timeout: 1000 })
-          .catch(() => {});
-      }
-      console.log("✅ 오버레이 닫기 시도 완료");
-    }
+    await this.dismissAllBlockingModals({ waitForDelayedMs: 1500 });
 
     // findVisibleElement의 isVisible은 timeout을 기다리지 않고 즉시 판정하는
     // Playwright 특성 때문에, 로고 렌더 직전/모달 dismiss 직후 race가 발생.
@@ -1075,7 +1062,17 @@ export class MakestarPage extends BasePage {
     } catch {
       throw new Error("로고를 찾을 수 없습니다");
     }
-    await logoLocator.click({ timeout: this.timeouts.medium });
+    try {
+      await logoLocator.click({ timeout: this.timeouts.medium });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/intercepts pointer events|Timeout/i.test(message)) {
+        throw error;
+      }
+
+      await this.dismissAllBlockingModals({ waitForDelayedMs: 1000 });
+      await logoLocator.click({ timeout: this.timeouts.medium });
+    }
     const escapedBaseUrl = this.baseUrl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     await this.expectUrlMatches(new RegExp(`^${escapedBaseUrl}\\/?$`));
     console.log("✅ 로고 클릭으로 Home 복귀 완료");
