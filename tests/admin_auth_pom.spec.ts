@@ -13,7 +13,7 @@
  * @see tests/helpers/admin/test-helpers.ts
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page, type Response } from "@playwright/test";
 import { runOptionalStep } from "./helpers/optional-step";
 import {
   setupAuthCookies,
@@ -21,6 +21,7 @@ import {
   setupApiInterceptor,
   performGoogleLogin,
 } from "./helpers/admin";
+import { SKUListPage } from "./pages";
 import {
   isAuthFailed,
   markAuthFailed,
@@ -35,6 +36,86 @@ import {
 // 테스트 설정
 // ============================================================================
 let tokenValid = isTokenValidSync();
+
+type ApiResponseSnapshot = {
+  url: string;
+  status: number;
+};
+
+type AdminIdentity =
+  | {
+      source: string;
+      value: string;
+    }
+  | null;
+
+function isAdminCoreApiResponse(response: Response): boolean {
+  const url = response.url();
+  const resourceType = response.request().resourceType();
+  return (
+    /^https:\/\/(stage-new-admin|stage-api|stage-auth)\.makeuni2026\.com\//.test(
+      url,
+    ) &&
+    url.includes("/api/") &&
+    (resourceType === "fetch" || resourceType === "xhr")
+  );
+}
+
+async function readAdminIdentity(page: Page): Promise<AdminIdentity> {
+  return page.evaluate(() => {
+    type RuntimeAuth = Record<string, unknown>;
+    type RuntimeWindow = Window & {
+      __NUXT__?: {
+        pinia?: {
+          auth?: RuntimeAuth;
+        };
+      };
+    };
+
+    const parseJson = (value: string | null): RuntimeAuth | null => {
+      if (!value) return null;
+      try {
+        const parsed = JSON.parse(value) as unknown;
+        return parsed && typeof parsed === "object"
+          ? (parsed as RuntimeAuth)
+          : null;
+      } catch {
+        return null;
+      }
+    };
+
+    const pickIdentity = (
+      source: string,
+      record: RuntimeAuth | null | undefined,
+    ) => {
+      if (!record) return null;
+      const candidate =
+        record.email ?? record.userName ?? record.name ?? record.userId;
+      if (candidate === undefined || candidate === null) return null;
+      const value = String(candidate).trim();
+      return value ? { source, value } : null;
+    };
+
+    const localUser = parseJson(window.localStorage.getItem("user_info"));
+    const localIdentity = pickIdentity("localStorage.user_info", localUser);
+    if (localIdentity) return localIdentity;
+
+    const auth = (window as RuntimeWindow).__NUXT__?.pinia?.auth;
+    const runtimeUser =
+      auth && typeof auth.user === "object"
+        ? (auth.user as RuntimeAuth)
+        : auth && typeof auth.userInfo === "object"
+          ? (auth.userInfo as RuntimeAuth)
+          : auth;
+    const runtimeIdentity = pickIdentity("runtime.auth", runtimeUser);
+    if (runtimeIdentity) return runtimeIdentity;
+
+    const accessToken = window.localStorage.getItem("access_token");
+    return accessToken
+      ? { source: "localStorage.access_token", value: "present" }
+      : null;
+  });
+}
 
 // ============================================================================
 // 전역 설정
@@ -94,6 +175,14 @@ test.describe.serial("인증 검증", () => {
   test("AUTH-VERIFY-01: 어드민 페이지 접근 인증 확인", async ({ page }) => {
     // 이 테스트가 실패하면 이후 모든 테스트는 스킵됨 (파일 기반 상태 공유)
     const adminUrl = "https://stage-new-admin.makeuni2026.com/sku/list";
+    const adminApiResponses: ApiResponseSnapshot[] = [];
+    page.on("response", (response) => {
+      if (!isAdminCoreApiResponse(response)) return;
+      adminApiResponses.push({
+        url: response.url(),
+        status: response.status(),
+      });
+    });
 
     console.log("🔐 어드민 페이지 인증 검증 중...");
 
@@ -156,7 +245,32 @@ test.describe.serial("인증 검증", () => {
     clearAuthFailed();
     console.log("✅ 인증 검증 완료 - 어드민 페이지 정상 접근 가능");
 
-    // 페이지가 정상적으로 로드되었는지 확인
+    const skuPage = new SKUListPage(page);
+
+    // 페이지, 권한 있는 메뉴, 핵심 API, 사용자 식별자를 함께 확인한다.
     await expect(page).toHaveURL(/stage-new-admin\.makeuni2026\.com/);
+    await skuPage.assertPageTitle();
+    await skuPage.assertHeading();
+    await expect(
+      skuPage.skuCodeInput,
+      "SKU 목록 검색 입력이 보여야 읽기 권한 있는 메뉴 접근으로 볼 수 있습니다.",
+    ).toBeVisible({ timeout: 10000 });
+
+    await expect
+      .poll(
+        () => adminApiResponses.some((response) => response.status === 200),
+        {
+          message: "어드민 핵심 API 200 응답이 최소 1건 이상 있어야 합니다.",
+          timeout: 10000,
+        },
+      )
+      .toBeTruthy();
+
+    const identity = await readAdminIdentity(page);
+    expect(
+      identity,
+      "Admin 런타임에서 사용자 식별자 또는 access token을 확인할 수 있어야 합니다.",
+    ).not.toBeNull();
+    console.log(`✅ Admin 사용자 식별자 확인 (${identity?.source})`);
   });
 });

@@ -58,7 +58,7 @@ function main() {
   const refreshTokens = findRefreshTokens(cookies);
   if (refreshTokens.length === 0) {
     console.log(
-      "::error::refresh_token 쿠키를 찾을 수 없습니다. AUTH_JSON secret을 갱신하세요.",
+      `::error::${AUTH_FILE_LABEL}에서 refresh_token 쿠키를 찾을 수 없습니다. 대응하는 GitHub Secret을 갱신하세요.`,
     );
     outputRefreshGuide("refresh_token 없음");
     process.exit(1);
@@ -69,7 +69,7 @@ function main() {
   );
   if (targetRefreshTokens.length === 0) {
     console.log(
-      `::error::${TARGET_DOMAIN} refresh_token 쿠키를 찾을 수 없습니다. 실행 환경에 맞는 AUTH_JSON/STG_AUTH_JSON secret을 갱신하세요.`,
+      `::error::${AUTH_FILE_LABEL}에서 ${TARGET_DOMAIN} refresh_token 쿠키를 찾을 수 없습니다. 실행 환경에 맞는 인증 Secret을 갱신하세요.`,
     );
     outputRefreshGuide(`${TARGET_DOMAIN} refresh_token 없음`);
     process.exit(1);
@@ -139,6 +139,7 @@ function main() {
 }
 
 function outputRefreshGuide(reason) {
+  const refreshCommand = getRefreshCommand();
   const guide = [
     "",
     "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
@@ -147,9 +148,9 @@ function outputRefreshGuide(reason) {
     "",
     "로컬에서 아래 명령어를 실행하세요:",
     "",
-    "  npm run auth:refresh",
+    `  ${refreshCommand}`,
     "",
-    "(브라우저에서 로그인 → 자동 저장 → GitHub Secret 동기화)",
+    "(브라우저에서 로그인 → 인증 파일 저장 → 대응하는 GitHub Secret 동기화)",
     "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
   ];
   console.log(guide.join("\n"));
@@ -165,13 +166,23 @@ function outputRefreshGuide(reason) {
       "로컬에서 다음 명령어를 실행하세요:",
       "",
       "```bash",
-      "npm run auth:refresh",
+      refreshCommand,
       "```",
       "",
-      "> 브라우저에서 로그인 완료 후 자동으로 auth.json 저장 + GitHub Secret 동기화됩니다.",
+      "> 브라우저에서 로그인 완료 후 인증 파일을 저장하고 대응하는 GitHub Secret을 동기화하세요.",
     ];
     fs.appendFileSync(summaryPath, md.join("\n") + "\n");
   }
+}
+
+function getRefreshCommand() {
+  if (AUTH_FILE_LABEL === "ab-auth.json") {
+    return "npx playwright test tests/ab-save-auth.spec.ts --headed";
+  }
+  if (AUTH_FILE_LABEL === "stg-auth.json") {
+    return "npx playwright test tests/save-stg-auth.spec.ts --headed";
+  }
+  return "npm run auth:refresh";
 }
 
 main();

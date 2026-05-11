@@ -24,6 +24,7 @@ const fs = require("fs");
 const path = require("path");
 const {
   getLatestRefreshTokenExpiry,
+  mergeCookies,
   readStorageState,
   resolveTargetDomain,
 } = require("./auth-state");
@@ -127,20 +128,6 @@ function needsRefresh(cookies) {
 
 function isAuthPageUrl(url) {
   return LOGIN_PATTERNS[0].test(url);
-}
-
-/**
- * 기존 auth.json 쿠키와 새 쿠키를 병합
- */
-function mergeCookies(existingCookies, newCookies) {
-  const map = new Map();
-  for (const c of existingCookies) {
-    map.set(`${c.name}@@${c.domain}`, c);
-  }
-  for (const c of newCookies) {
-    map.set(`${c.name}@@${c.domain}`, c);
-  }
-  return [...map.values()];
 }
 
 async function refreshAuth() {

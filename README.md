@@ -103,6 +103,16 @@ scripts/refresh-coverage.sh admin_order_pom admin_user_pom
 
 Settings > Secrets and variables > Actions > New repository secret
 
+### 인증 검증
+
+```bash
+npm run auth:validate
+npm run auth:validate:ab
+```
+
+- `auth:validate`: `auth.json`의 Makestar/Admin `refresh_token` 유효성 확인
+- `auth:validate:ab`: `ab-auth.json`의 AlbumBuddy `refresh_token` 유효성 확인
+
 ### 수동 실행
 
 Actions 탭 > Playwright Tests > Run workflow

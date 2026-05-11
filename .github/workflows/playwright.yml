@@ -126,6 +126,34 @@ jobs:
           AUTH_WARN_HOURS: "2"
           ENVIRONMENT_INPUT: ${{ github.event.inputs.environment || 'prod' }}
 
+      - name: Validate AlbumBuddy auth tokens
+        id: ab_auth_check
+        run: |
+          SUITE_INPUT="${{ github.event.inputs.suite || 'cmr' }}"
+          PROJECT_INPUT="${{ github.event.inputs.project || '' }}"
+
+          if node - <<'NODE'
+          const { readStorageState } = require("./scripts/auth-state");
+          const state = readStorageState("ab-auth.json");
+          process.exit(state.ok && state.cookies.length > 0 ? 0 : 1);
+          NODE
+          then
+            if AUTH_FILE_PATH=ab-auth.json AUTH_TARGET_DOMAIN=.makestar.com node scripts/validate-auth.js; then
+              echo "AB_AUTH_VALID=1" >> "$GITHUB_ENV"
+            else
+              echo "AB_AUTH_VALID=0" >> "$GITHUB_ENV"
+              if [[ "${SUITE_INPUT}" == "albumbuddy" || "${SUITE_INPUT}" == "all" || "${PROJECT_INPUT}" == *albumbuddy* ]]; then
+                exit 1
+              fi
+              echo "::warning::ab-auth.json refresh_token이 만료되어 AlbumBuddy suite는 제외됩니다."
+            fi
+          else
+            echo "AB_AUTH_VALID=0" >> "$GITHUB_ENV"
+            echo "ℹ️ ab-auth.json이 비어 있어 AlbumBuddy 인증 검증을 건너뜁니다. AlbumBuddy suite 요청 시 실행 단계에서 차단됩니다."
+          fi
+        env:
+          AUTH_WARN_HOURS: "2"
+
       # 테스트 실행
       - name: Run Playwright tests
         id: run_playwright
@@ -164,7 +192,7 @@ jobs:
           }
 
           HAS_AB_AUTH=0
-          if has_non_empty_cookies "ab-auth.json"; then
+          if [ "${AB_AUTH_VALID:-0}" = "1" ] && has_non_empty_cookies "ab-auth.json"; then
             HAS_AB_AUTH=1
           fi
 
