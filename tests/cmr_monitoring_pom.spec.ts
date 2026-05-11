@@ -39,6 +39,7 @@
 
 import { test, expect } from "@playwright/test";
 import { getPriceOptionProductIds } from "./fixtures/cmr-products";
+import { runOptionalStep } from "./helpers/optional-step";
 import { MakestarPage } from "./pages/makestar.page";
 import type { WebVitalsResult } from "./pages/makestar.page";
 
@@ -172,7 +173,7 @@ test.describe("기본 페이지 @feature:cmr.home @feature:cmr.event @feature:cm
 
     await makestar.waitForLoadState("domcontentloaded");
     await makestar.waitForPageContent();
-    await page.evaluate(() => window.scrollTo(0, 0)).catch(() => {});
+    await runOptionalStep(() => page.evaluate(() => window.scrollTo(0, 0)));
 
     // 로고 검증
     let logoFound = await makestar.verifyLogo(10000);
@@ -185,8 +186,7 @@ test.describe("기본 페이지 @feature:cmr.home @feature:cmr.event @feature:cm
 
     // Event 링크 확인 (POM 로케이터 + 폴백)
     const eventButtonVisible = await makestar.eventButton
-      .isVisible({ timeout: 5000 })
-      .catch(() => false);
+      .isVisible({ timeout: 5000 });
     if (!eventButtonVisible) {
       const eventLinkFound = await makestar.hasEventLink(5000);
       expect(eventLinkFound, "Event 링크가 표시되어야 합니다").toBe(true);
@@ -247,7 +247,10 @@ test.describe("기본 페이지 @feature:cmr.home @feature:cmr.event @feature:cm
 
     // GNB Event 버튼 클릭 (유저 시나리오)
     await makestar.navigateToEvent();
-    await makestar.clickOngoingTab().catch(() => false);
+    const ongoingClicked = await makestar.clickOngoingTab();
+    if (!ongoingClicked) {
+      console.log("ℹ️ 진행중인 이벤트 탭 클릭 불가 - 기본 이벤트 목록에서 진행");
+    }
     await makestar.clickFirstEventCard();
 
     const hasTitle = await makestar.verifyProductTitle();
@@ -262,7 +265,10 @@ test.describe("기본 페이지 @feature:cmr.home @feature:cmr.event @feature:cm
 
     // GNB Event 버튼 클릭 (유저 시나리오)
     await makestar.navigateToEvent();
-    await makestar.clickOngoingTab().catch(() => false);
+    const ongoingClicked = await makestar.clickOngoingTab();
+    if (!ongoingClicked) {
+      console.log("ℹ️ 진행중인 이벤트 탭 클릭 불가 - 기본 이벤트 목록에서 진행");
+    }
     try {
       await makestar.clickFirstEventCard();
     } catch (error) {
@@ -290,8 +296,8 @@ test.describe("기본 페이지 @feature:cmr.home @feature:cmr.event @feature:cm
     expect(purchaseClicked).toBeTruthy();
 
     // 결제/로그인 진입은 비동기 라우팅이라 초기 URL을 너무 빨리 읽으면 거짓 실패가 날 수 있음
-    await page
-      .waitForFunction(
+    await runOptionalStep(() =>
+      page.waitForFunction(
         () => {
           const url = window.location.href;
           const text = (document.body?.innerText || "").replace(/\s+/g, " ");
@@ -304,8 +310,8 @@ test.describe("기본 페이지 @feature:cmr.home @feature:cmr.event @feature:cm
         },
         undefined,
         { timeout: 10000 },
-      )
-      .catch(() => {});
+      ),
+    );
 
     await makestar.waitForNetworkStable();
     const afterClickUrl = page.url();
@@ -444,8 +450,7 @@ test.describe("GNB 네비게이션 @feature:cmr.home @feature:cmr.shop @feature:
 
     // Home 버튼 존재 여부 확인 (폴백 없이 명확하게 실패 처리)
     const homeButtonFound = await makestar.homeButton
-      .isVisible({ timeout: 3000 })
-      .catch(() => false);
+      .isVisible({ timeout: 3000 });
     expect(homeButtonFound, "Home 버튼이 표시되어야 합니다").toBe(true);
 
     await makestar.homeButton.click();
@@ -479,8 +484,7 @@ test.describe("검색 기능 @feature:cmr.home", () => {
     expect(hasRecommended).toBeTruthy();
 
     const hasCancelBtn = await makestar.cancelButton
-      .isVisible({ timeout: 2000 })
-      .catch(() => false);
+      .isVisible({ timeout: 2000 });
     expect(hasCancelBtn).toBeTruthy();
   });
 
@@ -627,18 +631,18 @@ test.describe
     test.setTimeout(TEST_TIMEOUT);
 
     await makestar.handleModal();
-    await makestar
-      .waitForContentStable("body", { timeout: 3000 })
-      .catch(() => {});
+    await runOptionalStep(() =>
+      makestar.waitForContentStable("body", { timeout: 3000 }),
+    );
     await makestar.prepareForGlobalNavigation();
 
     // GNB Shop 버튼 클릭 (POM 로케이터 사용)
     await expect(makestar.shopButton).toBeVisible({ timeout: 5000 });
     await makestar.shopButton.click();
     await makestar.waitForLoadState("domcontentloaded");
-    await makestar
-      .waitForContentStable("body", { timeout: 3000 })
-      .catch(() => {});
+    await runOptionalStep(() =>
+      makestar.waitForContentStable("body", { timeout: 3000 }),
+    );
 
     const currentUrl = makestar.currentUrl;
     console.log(`📍 Shop 버튼 클릭 후 URL: ${currentUrl}`);
@@ -652,18 +656,18 @@ test.describe
     test.setTimeout(TEST_TIMEOUT);
 
     await makestar.handleModal();
-    await makestar
-      .waitForContentStable("body", { timeout: 3000 })
-      .catch(() => {});
+    await runOptionalStep(() =>
+      makestar.waitForContentStable("body", { timeout: 3000 }),
+    );
     await makestar.prepareForGlobalNavigation();
 
     // GNB Event 버튼 클릭 (POM 로케이터 사용)
     await expect(makestar.eventButton).toBeVisible({ timeout: 5000 });
     await makestar.eventButton.click();
     await makestar.waitForLoadState("domcontentloaded");
-    await makestar
-      .waitForContentStable("body", { timeout: 3000 })
-      .catch(() => {});
+    await runOptionalStep(() =>
+      makestar.waitForContentStable("body", { timeout: 3000 }),
+    );
 
     const currentUrl = makestar.currentUrl;
     console.log(`📍 Event 버튼 클릭 후 URL: ${currentUrl}`);
@@ -680,18 +684,18 @@ test.describe
     test.setTimeout(TEST_TIMEOUT);
 
     await makestar.handleModal();
-    await makestar
-      .waitForContentStable("body", { timeout: 3000 })
-      .catch(() => {});
+    await runOptionalStep(() =>
+      makestar.waitForContentStable("body", { timeout: 3000 }),
+    );
     await makestar.prepareForGlobalNavigation();
 
     // GNB Funding 버튼 클릭 (POM 로케이터 사용)
     await expect(makestar.fundingButton).toBeVisible({ timeout: 5000 });
     await makestar.fundingButton.click();
     await makestar.waitForLoadState("domcontentloaded");
-    await makestar
-      .waitForContentStable("body", { timeout: 3000 })
-      .catch(() => {});
+    await runOptionalStep(() =>
+      makestar.waitForContentStable("body", { timeout: 3000 }),
+    );
 
     const currentUrl = makestar.currentUrl;
     console.log(`📍 Funding 버튼 클릭 후 URL: ${currentUrl}`);
@@ -1143,7 +1147,7 @@ test.describe("상품/장바구니 기능 @feature:cmr.cart @feature:cmr.product
         "장바구니 담기 버튼 클릭이 성공해야 합니다",
       ).toBe(true);
 
-      await makestar.waitForNetworkStable().catch(() => {});
+      await runOptionalStep(() => makestar.waitForNetworkStable());
       await makestar.handleModal();
       await makestar.gotoCart();
       await makestar.waitForContentStable();
@@ -1161,14 +1165,10 @@ test.describe("상품/장바구니 기능 @feature:cmr.cart @feature:cmr.product
     {},
     testInfo,
   ) => {
-    // 모바일 UA: 옵션 선택 spinbutton/장바구니 버튼이 없고 구매하기 바텀시트 방식
-    if (testInfo.project.name === "mobile-chrome") {
-      console.log(
-        "   ℹ️ 모바일에서는 장바구니 UI가 데스크톱과 다름 — 데스크톱 전용 테스트",
-      );
-      expect(true).toBeTruthy();
-      return;
-    }
+    test.skip(
+      testInfo.project.name === "mobile-chrome",
+      "모바일은 장바구니 UI가 데스크톱과 달라 데스크톱 전용으로 검증",
+    );
     test.setTimeout(TEST_TIMEOUT * 2);
 
     // Step 0: 장바구니 초기화
@@ -1392,8 +1392,7 @@ test.describe("상품/장바구니 기능 @feature:cmr.cart @feature:cmr.product
       const eventContentVisible = await incognitoPage
         .locator('img[alt="sample_image"], img[alt="event-thumb-image"]')
         .first()
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
+        .isVisible({ timeout: 5000 });
 
       expect(eventUrl.includes("event") || eventContentVisible).toBeTruthy();
       const eventChecked = [
@@ -1512,8 +1511,7 @@ test.describe("아티스트/콘텐츠 @feature:cmr.artist", () => {
 
     const artistMention = makestar.page.getByText(artistName).first();
     const hasArtistMention = await artistMention
-      .isVisible({ timeout: 5000 })
-      .catch(() => false);
+      .isVisible({ timeout: 5000 });
 
     if (hasArtistMention) {
       console.log(`✅ 검색 결과에 "${artistName}" 표시됨`);

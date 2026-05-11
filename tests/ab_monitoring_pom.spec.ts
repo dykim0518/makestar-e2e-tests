@@ -20,6 +20,7 @@
  */
 
 import { test, expect } from "@playwright/test";
+import { runOptionalStep } from "./helpers/optional-step";
 import {
   AlbumBuddyPage,
   ALBUMBUDDY_PAGES,
@@ -93,9 +94,9 @@ test.describe.serial("Health Check", () => {
         waitUntil: "domcontentloaded",
         timeout: 60000,
       });
-      await page
-        .waitForLoadState("networkidle", { timeout: 10000 })
-        .catch(() => {});
+      await runOptionalStep(() =>
+        page.waitForLoadState("networkidle", { timeout: 10000 }),
+      );
     });
 
     expect(criticalFailures).toHaveLength(0);
@@ -248,8 +249,7 @@ test.describe("홈페이지", () => {
           'input[type="search"], input[placeholder*="search" i], input[placeholder*="검색" i]',
         )
         .first()
-        .isVisible({ timeout: 3000 })
-        .catch(() => false);
+        .isVisible({ timeout: 3000 });
       expect(opened || hasSearchInput, "검색 기능을 찾을 수 없습니다").toBe(
         true,
       );

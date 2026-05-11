@@ -17,6 +17,7 @@
  */
 
 import { test, expect } from "@playwright/test";
+import { runOptionalStep } from "./helpers/optional-step";
 import { UserListPage, UserDetailPage } from "./pages";
 import { initPageWithRecovery } from "./helpers/admin";
 import {
@@ -280,7 +281,7 @@ test.describe.serial("검색 기능 @feature:admin_makestar.user.list", () => {
     await userPage.searchByKeyword(impossibleKeyword);
 
     // 검색 후 네트워크 안정화 대기
-    await page.waitForLoadState("networkidle").catch(() => {});
+    await runOptionalStep(() => page.waitForLoadState("networkidle"));
 
     const metrics = await userPage.getResultMetrics();
 
@@ -337,8 +338,7 @@ test.describe.serial("필터 기능 @feature:admin_makestar.user.list", () => {
 
     // 조회 버튼이 보이는지 확인 후 클릭
     const searchBtnVisible = await userPage.submitSearchButton
-      .isVisible({ timeout: 5000 })
-      .catch(() => false);
+      .isVisible({ timeout: 5000 });
     if (searchBtnVisible) {
       await userPage.clickSearchAndWait();
     }
@@ -389,11 +389,10 @@ test.describe.serial("필터 기능 @feature:admin_makestar.user.list", () => {
 
     // 조회 버튼이 보이는지 확인 후 클릭
     const searchBtnVisible = await userPage.submitSearchButton
-      .isVisible({ timeout: 5000 })
-      .catch(() => false);
+      .isVisible({ timeout: 5000 });
     if (searchBtnVisible) {
       await userPage.clickSearchAndWait();
-      await page.waitForLoadState("networkidle").catch(() => {});
+      await runOptionalStep(() => page.waitForLoadState("networkidle"));
     }
 
     const filteredMetrics = await userPage.getResultMetrics();
@@ -459,7 +458,7 @@ test.describe.serial("페이지네이션 @feature:admin_makestar.user.list", () 
     expect(moved, "❌ 다음 페이지 이동에 실패했습니다.").toBeTruthy();
 
     // 데이터 로드 안정화 대기
-    await page.waitForLoadState("networkidle").catch(() => {});
+    await runOptionalStep(() => page.waitForLoadState("networkidle"));
     await userPage.waitForTableOrNoResult();
 
     const afterUrl = page.url();

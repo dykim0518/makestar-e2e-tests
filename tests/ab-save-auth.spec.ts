@@ -10,6 +10,7 @@
 import { test, expect, Page, Browser, BrowserContext } from "@playwright/test";
 import * as fs from "fs";
 import * as path from "path";
+import { runOptionalStep } from "./helpers/optional-step";
 
 type StoredCookie = { name: string; value: string; expires?: number };
 type StorageState = Awaited<ReturnType<BrowserContext["storageState"]>>;
@@ -44,7 +45,7 @@ async function hasVisibleLoginEntry(page: Page): Promise<boolean> {
   const candidates = getLoginEntryCandidates(page);
 
   for (const candidate of candidates) {
-    const visible = await candidate.isVisible({ timeout: 1000 }).catch(() => false);
+    const visible = await candidate.isVisible({ timeout: 1000 });
     if (visible) {
       return true;
     }
@@ -55,14 +56,14 @@ async function hasVisibleLoginEntry(page: Page): Promise<boolean> {
 
 async function clickVisibleLoginEntry(page: Page): Promise<boolean> {
   for (const candidate of getLoginEntryCandidates(page)) {
-    const visible = await candidate.isVisible({ timeout: 1000 }).catch(() => false);
+    const visible = await candidate.isVisible({ timeout: 1000 });
     if (!visible) {
       continue;
     }
 
-    await candidate.click({ force: true }).catch(() => {});
-    await page.waitForLoadState("domcontentloaded").catch(() => {});
-    await page.waitForTimeout(3000).catch(() => {});
+    await runOptionalStep(() => candidate.click({ force: true }));
+    await runOptionalStep(() => page.waitForLoadState("domcontentloaded"));
+    await runOptionalStep(() => page.waitForTimeout(3000));
     return true;
   }
 
@@ -83,8 +84,8 @@ async function clickVisibleLoginEntryAndResolvePage(page: Page): Promise<Page> {
 
   const popup = await popupPromise;
   if (popup && !popup.isClosed()) {
-    await popup.waitForLoadState("domcontentloaded").catch(() => {});
-    await popup.waitForTimeout(3000).catch(() => {});
+    await runOptionalStep(() => popup.waitForLoadState("domcontentloaded"));
+    await runOptionalStep(() => popup.waitForTimeout(3000));
     return popup;
   }
 
@@ -118,16 +119,16 @@ async function dismissBlockingModals(page: Page): Promise<void> {
 
   for (const text of doNotShowTexts) {
     const candidate = page.getByText(text, { exact: false }).first();
-    if (await candidate.isVisible({ timeout: 800 }).catch(() => false)) {
-      await candidate.click({ force: true }).catch(() => {});
+    if (await candidate.isVisible({ timeout: 800 })) {
+      await runOptionalStep(() => candidate.click({ force: true }));
       await page.waitForTimeout(500);
     }
   }
 
   for (const text of closeTexts) {
     const candidate = page.getByText(text, { exact: true }).first();
-    if (await candidate.isVisible({ timeout: 800 }).catch(() => false)) {
-      await candidate.click({ force: true }).catch(() => {});
+    if (await candidate.isVisible({ timeout: 800 })) {
+      await runOptionalStep(() => candidate.click({ force: true }));
       await page.waitForTimeout(500);
     }
   }
@@ -135,8 +136,8 @@ async function dismissBlockingModals(page: Page): Promise<void> {
   const overlay = page
     .locator('.modal-overlay, [class*="overlay"], [class*="modal"]')
     .first();
-  if (await overlay.isVisible({ timeout: 500 }).catch(() => false)) {
-    await page.keyboard.press("Escape").catch(() => {});
+  if (await overlay.isVisible({ timeout: 500 })) {
+    await runOptionalStep(() => page.keyboard.press("Escape"));
     await page.waitForTimeout(500);
   }
 }
@@ -324,7 +325,7 @@ async function waitForAlbumBuddyRedirect(page: Page, timeoutMs: number = 15000):
       return;
     }
 
-    await page.waitForTimeout(1000).catch(() => {});
+    await runOptionalStep(() => page.waitForTimeout(1000));
   }
 }
 
@@ -363,7 +364,7 @@ async function tryBootstrapFromGlobalAuth(
     const seededPage = await seededContext.newPage();
     await gotoWithRetry(seededPage, ALBUMBUDDY_AUTH_URL);
     await waitForAlbumBuddyRedirect(seededPage, 15000);
-    await seededPage.waitForTimeout(3000).catch(() => {});
+    await runOptionalStep(() => seededPage.waitForTimeout(3000));
     await dismissBlockingModals(seededPage);
 
     const seededSnapshot = await getAuthSnapshot(seededPage);
@@ -410,7 +411,7 @@ async function tryBootstrapFromGlobalAuth(
     ) {
       console.log("[bootstrap] Makestar 인증 상태에서 dashboard로 직접 이동 시도");
       await gotoWithRetry(seededPage, ALBUMBUDDY_DASHBOARD_URL);
-      await seededPage.waitForTimeout(3000).catch(() => {});
+      await runOptionalStep(() => seededPage.waitForTimeout(3000));
       await dismissBlockingModals(seededPage);
     }
 
@@ -557,7 +558,7 @@ test("AlbumBuddy 로그인 세션 저장 (수동 로그인)", async ({
       !activeHasAuthPrompt
     ) {
       await gotoWithRetry(activePage, ALBUMBUDDY_DASHBOARD_URL);
-      await activePage.waitForTimeout(2000).catch(() => {});
+      await runOptionalStep(() => activePage.waitForTimeout(2000));
       await dismissBlockingModals(activePage);
       activePage = resolveActivePage(activePage);
 
@@ -578,7 +579,7 @@ test("AlbumBuddy 로그인 세션 저장 (수동 로그인)", async ({
 
       // Dashboard로 이동 시도
       await gotoWithRetry(activePage, ALBUMBUDDY_DASHBOARD_URL);
-      await activePage.waitForTimeout(2000).catch(() => {});
+      await runOptionalStep(() => activePage.waitForTimeout(2000));
       activePage = resolveActivePage(activePage);
 
       if (await isAuthenticatedDashboard(activePage)) {
@@ -589,7 +590,7 @@ test("AlbumBuddy 로그인 세션 저장 (수동 로그인)", async ({
       }
     }
 
-    await activePage.waitForTimeout(checkInterval).catch(() => {});
+    await runOptionalStep(() => activePage.waitForTimeout(checkInterval));
     const elapsed = Math.floor((Date.now() - startTime) / 1000);
     process.stdout.write(
       `\r⏳ 로그인 대기 중... (${elapsed}초/${maxWaitTime / 1000}초)`,

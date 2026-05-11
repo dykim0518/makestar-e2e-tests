@@ -72,8 +72,7 @@ test.describe("POCAAlbum Admin 콘텐츠 테스트", () => {
 
     test("PF-SEARCH-01: FAVE 팩 키워드 검색", async () => {
       const isSearchVisible = await faveListPage.searchInput
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
+        .isVisible({ timeout: 5000 });
 
       if (!isSearchVisible) {
         console.log("ℹ️ FAVE 검색 필드 미발견");
@@ -83,8 +82,7 @@ test.describe("POCAAlbum Admin 콘텐츠 테스트", () => {
       await faveListPage.searchByKeyword("팩");
       const hasData = await faveListPage.hasTableData();
       const hasNoResult = await faveListPage.noResultMessage
-        .isVisible()
-        .catch(() => false);
+        .isVisible();
 
       expect(
         hasData || hasNoResult,
@@ -103,10 +101,9 @@ test.describe("POCAAlbum Admin 콘텐츠 테스트", () => {
       }
 
       const isNextVisible = await faveListPage.nextPageButton
-        .isVisible()
-        .catch(() => false);
+        .isVisible();
       const isNextEnabled = isNextVisible
-        ? await faveListPage.nextPageButton.isEnabled().catch(() => false)
+        ? await faveListPage.nextPageButton.isEnabled()
         : false;
 
       if (!isNextVisible || !isNextEnabled) {
@@ -153,8 +150,7 @@ test.describe("POCAAlbum Admin 콘텐츠 테스트", () => {
       page.once("dialog", (dialog) => dialog.accept());
 
       const isCreateVisible = await faveCreatePage.createButton
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
+        .isVisible({ timeout: 5000 });
 
       expect(
         isCreateVisible,
@@ -181,8 +177,7 @@ test.describe("POCAAlbum Admin 콘텐츠 테스트", () => {
       await waitForPageStable(page);
 
       const isSearchVisible = await faveListPage.searchInput
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
+        .isVisible({ timeout: 5000 });
 
       if (isSearchVisible) {
         await faveListPage.searchByKeyword(sharedFaveTitle);
@@ -213,8 +208,7 @@ test.describe("POCAAlbum Admin 콘텐츠 테스트", () => {
 
     test("PB-PAGE-01: BENEFIT 목록 페이지 로드", async () => {
       const tableVisible = await benefitListPage.table
-        .isVisible({ timeout: ELEMENT_TIMEOUT })
-        .catch(() => false);
+        .isVisible({ timeout: ELEMENT_TIMEOUT });
 
       if (!tableVisible) {
         console.log("ℹ️ BENEFIT 테이블 미표시 - URL 또는 권한 확인 필요");
@@ -228,8 +222,7 @@ test.describe("POCAAlbum Admin 콘텐츠 테스트", () => {
 
     test("PB-SEARCH-01: BENEFIT 키워드 검색", async () => {
       const isSearchVisible = await benefitListPage.searchInput
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
+        .isVisible({ timeout: 5000 });
 
       if (!isSearchVisible) {
         console.log("ℹ️ BENEFIT 검색 필드 미발견");
@@ -239,8 +232,7 @@ test.describe("POCAAlbum Admin 콘텐츠 테스트", () => {
       await benefitListPage.searchByKeyword("혜택");
       const hasData = await benefitListPage.hasTableData();
       const hasNoResult = await benefitListPage.noResultMessage
-        .isVisible()
-        .catch(() => false);
+        .isVisible();
 
       expect(
         hasData || hasNoResult,
@@ -275,8 +267,7 @@ test.describe("POCAAlbum Admin 콘텐츠 테스트", () => {
       });
 
       const isCreateVisible = await benefitCreatePage.createButton
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
+        .isVisible({ timeout: 5000 });
 
       expect(
         isCreateVisible,
@@ -304,8 +295,7 @@ test.describe("POCAAlbum Admin 콘텐츠 테스트", () => {
       await waitForPageStable(page);
 
       const isSearchVisible = await benefitListPage.searchInput
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
+        .isVisible({ timeout: 5000 });
 
       if (isSearchVisible) {
         await benefitListPage.searchByKeyword(sharedBenefitTitle);
@@ -336,8 +326,7 @@ test.describe("POCAAlbum Admin 콘텐츠 테스트", () => {
 
     test("PN-PAGE-01: 알림 공지 목록 페이지 로드", async () => {
       const tableVisible = await notifListPage.table
-        .isVisible({ timeout: ELEMENT_TIMEOUT })
-        .catch(() => false);
+        .isVisible({ timeout: ELEMENT_TIMEOUT });
 
       if (tableVisible) {
         const rowCount = await notifListPage.getRowCount();
@@ -353,15 +342,13 @@ test.describe("POCAAlbum Admin 콘텐츠 테스트", () => {
         )
         .first();
       const hasCreateBtn = await createBtn
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
+        .isVisible({ timeout: 5000 });
       console.log(`  생성 버튼: ${hasCreateBtn ? "있음" : "없음"}`);
     });
 
     test("PN-SEARCH-01: 알림 키워드 검색", async () => {
       const isSearchVisible = await notifListPage.searchInput
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
+        .isVisible({ timeout: 5000 });
 
       if (!isSearchVisible) {
         console.log("ℹ️ 알림 검색 필드 미발견");
@@ -371,8 +358,7 @@ test.describe("POCAAlbum Admin 콘텐츠 테스트", () => {
       await notifListPage.searchByKeyword("공지");
       const hasData = await notifListPage.hasTableData();
       const hasNoResult = await notifListPage.noResultMessage
-        .isVisible()
-        .catch(() => false);
+        .isVisible();
 
       expect(
         hasData || hasNoResult,
@@ -406,8 +392,7 @@ test.describe("POCAAlbum Admin 콘텐츠 테스트", () => {
       });
 
       const isCreateVisible = await notifCreatePage.createButton
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
+        .isVisible({ timeout: 5000 });
 
       expect(
         isCreateVisible,
@@ -435,8 +420,7 @@ test.describe("POCAAlbum Admin 콘텐츠 테스트", () => {
       await waitForPageStable(page);
 
       const isSearchVisible = await notifListPage.searchInput
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
+        .isVisible({ timeout: 5000 });
 
       if (isSearchVisible) {
         await notifListPage.searchByKeyword(sharedNotifTitle);

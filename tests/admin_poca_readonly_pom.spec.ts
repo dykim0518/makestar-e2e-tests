@@ -65,8 +65,7 @@ test.describe("POCAAlbum Admin 읽기 전용 테스트", () => {
 
     test("PW-PAGE-01: 당첨자조회 목록 페이지 로드", async () => {
       const tableVisible = await winnerListPage.table
-        .isVisible({ timeout: ELEMENT_TIMEOUT })
-        .catch(() => false);
+        .isVisible({ timeout: ELEMENT_TIMEOUT });
 
       if (!tableVisible) {
         console.log("ℹ️ 당첨자조회 테이블 미표시 - URL 또는 권한 확인 필요");
@@ -80,8 +79,7 @@ test.describe("POCAAlbum Admin 읽기 전용 테스트", () => {
 
     test("PW-SEARCH-01: 당첨자 키워드 검색", async () => {
       const isSearchVisible = await winnerListPage.searchInput
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
+        .isVisible({ timeout: 5000 });
 
       if (!isSearchVisible) {
         console.log("ℹ️ 당첨자조회 검색 필드 미발견");
@@ -91,8 +89,7 @@ test.describe("POCAAlbum Admin 읽기 전용 테스트", () => {
       await winnerListPage.searchByKeyword("테스트");
       const hasData = await winnerListPage.hasTableData();
       const hasNoResult = await winnerListPage.noResultMessage
-        .isVisible()
-        .catch(() => false);
+        .isVisible();
 
       expect(
         hasData || hasNoResult,
@@ -115,8 +112,7 @@ test.describe("POCAAlbum Admin 읽기 전용 테스트", () => {
 
     test("PR-PAGE-01: 신고내역 목록 페이지 로드", async () => {
       const tableVisible = await reportListPage.table
-        .isVisible({ timeout: ELEMENT_TIMEOUT })
-        .catch(() => false);
+        .isVisible({ timeout: ELEMENT_TIMEOUT });
 
       if (!tableVisible) {
         console.log("ℹ️ 신고내역 테이블 미표시 - URL 또는 권한 확인 필요");
@@ -130,8 +126,7 @@ test.describe("POCAAlbum Admin 읽기 전용 테스트", () => {
 
     test("PR-SEARCH-01: 신고내역 키워드 검색", async () => {
       const isSearchVisible = await reportListPage.searchInput
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
+        .isVisible({ timeout: 5000 });
 
       if (!isSearchVisible) {
         console.log("ℹ️ 신고내역 검색 필드 미발견");
@@ -141,8 +136,7 @@ test.describe("POCAAlbum Admin 읽기 전용 테스트", () => {
       await reportListPage.searchByKeyword("신고");
       const hasData = await reportListPage.hasTableData();
       const hasNoResult = await reportListPage.noResultMessage
-        .isVisible()
-        .catch(() => false);
+        .isVisible();
 
       expect(
         hasData || hasNoResult,
@@ -165,8 +159,7 @@ test.describe("POCAAlbum Admin 읽기 전용 테스트", () => {
 
     test("PC-PAGE-01: 고객관리 목록 페이지 로드", async () => {
       const tableVisible = await customerListPage.table
-        .isVisible({ timeout: ELEMENT_TIMEOUT })
-        .catch(() => false);
+        .isVisible({ timeout: ELEMENT_TIMEOUT });
 
       if (!tableVisible) {
         console.log("ℹ️ 고객관리 테이블 미표시 - URL 또는 권한 확인 필요");
@@ -180,8 +173,7 @@ test.describe("POCAAlbum Admin 읽기 전용 테스트", () => {
 
     test("PC-SEARCH-01: 고객 키워드 검색", async () => {
       const isSearchVisible = await customerListPage.searchInput
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
+        .isVisible({ timeout: 5000 });
 
       if (!isSearchVisible) {
         console.log("ℹ️ 고객관리 검색 필드 미발견");
@@ -191,8 +183,7 @@ test.describe("POCAAlbum Admin 읽기 전용 테스트", () => {
       await customerListPage.searchByKeyword("테스트");
       const hasData = await customerListPage.hasTableData();
       const hasNoResult = await customerListPage.noResultMessage
-        .isVisible()
-        .catch(() => false);
+        .isVisible();
 
       expect(
         hasData || hasNoResult,
@@ -215,8 +206,7 @@ test.describe("POCAAlbum Admin 읽기 전용 테스트", () => {
 
     test("PM-PAGE-01: 시스템관리 목록 페이지 로드", async () => {
       const tableVisible = await systemListPage.table
-        .isVisible({ timeout: ELEMENT_TIMEOUT })
-        .catch(() => false);
+        .isVisible({ timeout: ELEMENT_TIMEOUT });
 
       if (!tableVisible) {
         console.log("ℹ️ 시스템관리 테이블 미표시 - URL 또는 권한 확인 필요");
@@ -230,8 +220,7 @@ test.describe("POCAAlbum Admin 읽기 전용 테스트", () => {
 
     test("PM-SEARCH-01: 시스템 설정 키워드 검색", async () => {
       const isSearchVisible = await systemListPage.searchInput
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
+        .isVisible({ timeout: 5000 });
 
       if (!isSearchVisible) {
         console.log("ℹ️ 시스템관리 검색 필드 미발견");
@@ -241,8 +230,7 @@ test.describe("POCAAlbum Admin 읽기 전용 테스트", () => {
       await systemListPage.searchByKeyword("설정");
       const hasData = await systemListPage.hasTableData();
       const hasNoResult = await systemListPage.noResultMessage
-        .isVisible()
-        .catch(() => false);
+        .isVisible();
 
       expect(
         hasData || hasNoResult,
@@ -329,8 +317,7 @@ test.describe("POCAAlbum Admin 읽기 전용 테스트", () => {
           '[class*="toast"], [class*="alert"], [class*="notification"], [class*="success"], [class*="message"]',
         )
         .first()
-        .isVisible({ timeout: 5000 })
-        .catch(() => false);
+        .isVisible({ timeout: 5000 });
 
       const rowsAfter = await page.locator("table tbody tr").count();
       const rowRemoved = rowsAfter < rowsBefore;

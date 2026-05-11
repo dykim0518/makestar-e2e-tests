@@ -62,11 +62,9 @@ test.describe.serial("주문관리 목록 @feature:admin_makestar.order.list", (
 
     await orderPage.switchTab("project");
     const hasSummary = await orderPage.resultSummary
-      .isVisible({ timeout: ELEMENT_TIMEOUT })
-      .catch(() => false);
+      .isVisible({ timeout: ELEMENT_TIMEOUT });
     const hasNoResult = await orderPage.noResultMessage
-      .isVisible({ timeout: ELEMENT_TIMEOUT })
-      .catch(() => false);
+      .isVisible({ timeout: ELEMENT_TIMEOUT });
     expect(
       hasSummary || hasNoResult,
       "프로젝트별 주문 탭에서 목록 영역이 보이지 않습니다.",
@@ -181,8 +179,7 @@ test.describe.serial("주문관리 목록 @feature:admin_makestar.order.list", (
     await orderPage.searchByProductCode("S634NCTDREAM22");
 
     const hasSummary = await orderPage.resultSummary
-      .isVisible({ timeout: ELEMENT_TIMEOUT })
-      .catch(() => false);
+      .isVisible({ timeout: ELEMENT_TIMEOUT });
     const hasNoResult = await orderPage.hasNoResultOrEmptyTable();
 
     expect(
@@ -197,8 +194,7 @@ test.describe.serial("주문관리 목록 @feature:admin_makestar.order.list", (
     await orderPage.searchByProductName("NCT");
 
     const hasSummary = await orderPage.resultSummary
-      .isVisible({ timeout: ELEMENT_TIMEOUT })
-      .catch(() => false);
+      .isVisible({ timeout: ELEMENT_TIMEOUT });
     const hasNoResult = await orderPage.hasNoResultOrEmptyTable();
 
     expect(
@@ -491,7 +487,7 @@ test.describe
     qa102OrderPage = new OrderListPage(page);
     await page.goto(TARGET_URL);
     await page.waitForLoadState("domcontentloaded");
-    await qa102OrderPage.waitForTableOrNoResult(20000).catch(() => {});
+    await qa102OrderPage.waitForTableOrNoResult(20000);
     // Vue 컴포넌트 mount + form-state 안정화 buffer
     await page.waitForTimeout(1500);
   });

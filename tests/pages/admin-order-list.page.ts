@@ -1705,6 +1705,31 @@ export class OrderListPage extends AdminBasePage {
     return await this.page.evaluate(
       ({ label, maxTextLength, shouldClick }) => {
         const normalize = (value: string) => value.replace(/\s+/g, " ").trim();
+        const isVisible = (element: HTMLElement) => element.offsetParent !== null;
+
+        const selectorItems = Array.from(
+          document.querySelectorAll<HTMLElement>(".selector-item"),
+        ).filter(
+          (item) => isVisible(item) && normalize(item.textContent || "") === label,
+        );
+        const selectorItem =
+          selectorItems.find((item) =>
+            String(item.className).includes("selector-item--child"),
+          ) ?? selectorItems[0];
+
+        if (selectorItem) {
+          const checkbox = selectorItem.querySelector<HTMLElement>(
+            ".selector-checkbox",
+          );
+          const checked =
+            !!checkbox &&
+            String(checkbox.className).includes("selector-checkbox--checked");
+          if (shouldClick && !checked) {
+            selectorItem.click();
+          }
+          return checked;
+        }
+
         const nodes = Array.from(document.querySelectorAll<HTMLElement>("*"));
 
         for (const node of nodes) {

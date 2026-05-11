@@ -109,7 +109,7 @@ test.describe("POCAAlbum Admin 대시보드", () => {
 
     test("PA-PAGE-09: 페이지네이션 컴포넌트 표시", async () => {
       const pagination = pocaPage.paginationNav.first();
-      await pagination.scrollIntoViewIfNeeded().catch(() => {});
+      await pagination.scrollIntoViewIfNeeded();
       await expect(pagination).toBeVisible({ timeout: 10000 });
     });
   });

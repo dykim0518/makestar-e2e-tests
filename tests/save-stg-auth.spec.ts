@@ -162,7 +162,7 @@ test("저장된 STG 세션 확인", async ({ page, context }) => {
     const logoutBtn = page
       .locator("text=로그아웃, text=Logout, text=Log out")
       .first();
-    if (await logoutBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+    if (await logoutBtn.isVisible({ timeout: 3000 })) {
       console.log("✅ 로그아웃 버튼 발견 - 로그인 확인됨");
     }
   } else {
