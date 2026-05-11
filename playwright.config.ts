@@ -43,6 +43,7 @@ const authFile =
   authFileCandidates.find((candidate): candidate is string => !!candidate) ??
   "./auth.json";
 let hasValidAuthFile = false;
+const includeCmrPayment = process.env.INCLUDE_CMR_PAYMENT === "true";
 const excludeAuthTests = process.env.EXCLUDE_AUTH_TESTS === "true";
 const manualAuthSpecPatterns = [
   "**/save-auth.spec.ts",
@@ -203,11 +204,20 @@ export default defineConfig({
         viewport: { width: 1920, height: 1080 },
       },
     },
-    // CMR 묶음 — monitoring + payment 등 cmr_*_pom.spec.ts 모두 포함 (Desktop Chrome 기준)
-    // QA Hub Trigger에서 `--project=cmr` 로 일괄 실행에 사용.
+    // CMR prod monitoring 묶음. 결제 회귀는 stage 전용 project로 분리한다.
     {
       name: "cmr",
       testMatch: ["**/cmr_*_pom.spec.ts"],
+      testIgnore: ["**/cmr_payment_pom.spec.ts"],
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 1920, height: 1080 },
+      },
+    },
+    // CMR STG 결제 회귀 전용. spec 내부 stage 가드와 함께 이중으로 보호한다.
+    {
+      name: "cmr-payment-stg",
+      testMatch: includeCmrPayment ? ["**/cmr_payment_pom.spec.ts"] : [],
       use: {
         ...devices["Desktop Chrome"],
         viewport: { width: 1920, height: 1080 },

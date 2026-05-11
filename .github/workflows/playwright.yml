@@ -17,6 +17,7 @@ on:
         type: choice
         options:
           - cmr
+          - cmr-payment
           - albumbuddy
           - admin
           - all
@@ -31,7 +32,7 @@ on:
         required: false
         default: prod
       project:
-        description: "Playwright project override (예: cmr-monitoring)"
+        description: "Playwright project override (예: cmr-monitoring, cmr-payment-stg)"
         required: false
         default: ""
       spec:
@@ -175,6 +176,10 @@ jobs:
             echo "🔧 PROD 환경: MAKESTAR_BASE_URL=${MAKESTAR_BASE_URL}"
           fi
 
+          if [[ "${SUITE_INPUT}" == "cmr-payment" || "${PROJECT_INPUT}" == *cmr-payment* ]]; then
+            export INCLUDE_CMR_PAYMENT=true
+          fi
+
           if ! [[ "${RETRIES_INPUT}" =~ ^[0-5]$ ]]; then
             echo "retries 입력값은 0~5 정수만 허용됩니다: ${RETRIES_INPUT}"
             exit 1
@@ -219,12 +224,23 @@ jobs:
               echo "::error::AB_AUTH_JSON secret이 없거나 비어 있어 albumbuddy project를 실행할 수 없습니다."
               exit 1
             fi
+            if [[ "${PROJECT_INPUT}" == *cmr-payment* ]] && [ "${ENV_INPUT}" != "stg" ]; then
+              echo "::error::cmr-payment project는 STG 전용입니다. environment=stg로 실행해주세요."
+              exit 1
+            fi
             CMD+=("--project=${PROJECT_INPUT}")
             EFFECTIVE_TARGETS+=("${PROJECT_INPUT}")
           else
             case "${SUITE_INPUT}" in
               cmr)
                 add_project "cmr-monitoring"
+                ;;
+              cmr-payment)
+                if [ "${ENV_INPUT}" != "stg" ]; then
+                  echo "::error::cmr-payment suite는 STG 전용입니다. environment=stg로 실행해주세요."
+                  exit 1
+                fi
+                add_project "cmr-payment-stg"
                 ;;
               albumbuddy)
                 if [ "${HAS_AB_AUTH}" -ne 1 ]; then
