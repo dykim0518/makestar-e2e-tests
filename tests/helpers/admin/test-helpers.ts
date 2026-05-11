@@ -23,6 +23,13 @@ export const AUTH_FAIL_FILE = path.join(
   ".auth-failed",
 );
 
+const AUTH_FILE =
+  process.env.AUTH_FILE_PATH ||
+  path.join(__dirname, "..", "..", "..", "auth.json");
+const ADMIN_TOKENS_FILE =
+  process.env.ADMIN_TOKENS_FILE_PATH ||
+  path.join(__dirname, "..", "..", "..", "admin-tokens.json");
+
 /**
  * 인증 실패 상태 확인 (파일 기반)
  */
@@ -82,20 +89,12 @@ export function clearAuthFailed(): void {
 // 토큰 유효성 검사 함수
 // ============================================================================
 export function isTokenValidSync(): boolean {
-  const authFile = path.join(__dirname, "..", "..", "..", "auth.json");
-  const tokensFile = path.join(
-    __dirname,
-    "..",
-    "..",
-    "..",
-    "admin-tokens.json",
-  );
   const bufferTime = 60 * 1000; // 1분 여유
   const now = Date.now();
 
   // 1. admin-tokens.json 확인
   try {
-    const tokens = JSON.parse(fs.readFileSync(tokensFile, "utf-8"));
+    const tokens = JSON.parse(fs.readFileSync(ADMIN_TOKENS_FILE, "utf-8"));
     const expiresAt = new Date(tokens.expiresAt).getTime();
     if (expiresAt - bufferTime > now) {
       return true;
@@ -108,7 +107,7 @@ export function isTokenValidSync(): boolean {
 
   // 2. auth.json의 refresh_token 쿠키 확인
   try {
-    const auth = JSON.parse(fs.readFileSync(authFile, "utf-8"));
+    const auth = JSON.parse(fs.readFileSync(AUTH_FILE, "utf-8"));
     const rtCookie = auth.cookies?.find(
       (c: StoredCookie) => c.name === "refresh_token",
     );
@@ -134,19 +133,11 @@ export function isTokenValidSync(): boolean {
  * 토큰 남은 시간 반환 (시간, 분)
  */
 export function getTokenRemaining(): { hours: number; minutes: number } {
-  const authFile = path.join(__dirname, "..", "..", "..", "auth.json");
-  const tokensFile = path.join(
-    __dirname,
-    "..",
-    "..",
-    "..",
-    "admin-tokens.json",
-  );
   const now = Date.now();
   let expiresAt = 0;
 
   try {
-    const tokens = JSON.parse(fs.readFileSync(tokensFile, "utf-8"));
+    const tokens = JSON.parse(fs.readFileSync(ADMIN_TOKENS_FILE, "utf-8"));
     expiresAt = new Date(tokens.expiresAt).getTime();
   } catch (err) {
     console.warn(
@@ -155,7 +146,7 @@ export function getTokenRemaining(): { hours: number; minutes: number } {
   }
 
   try {
-    const auth = JSON.parse(fs.readFileSync(authFile, "utf-8"));
+    const auth = JSON.parse(fs.readFileSync(AUTH_FILE, "utf-8"));
     const rtCookie = auth.cookies?.find(
       (c: StoredCookie) => c.name === "refresh_token",
     );

@@ -173,8 +173,8 @@ test.describe("POCAAlbum Admin 앨범 테스트", () => {
   // Section 3: 앨범 CRUD (serial)
   // ========================================================================
   test.describe
-    .serial("앨범 CRUD @feature:admin_pocaalbum.album.create", () => {
-    test("PA-CREATE-01: 앨범 생성 폼 입력 및 등록", async ({ page }) => {
+    .serial("앨범 CRUD @suite:ops @feature:admin_pocaalbum.album.create", () => {
+    test("PA-CREATE-01: 앨범 생성 폼 입력 및 등록 @suite:ops", async ({ page }) => {
       const albumListPage = new PocaAlbumListPage(page);
       const albumCreatePage = new PocaAlbumCreatePage(page);
 
@@ -319,7 +319,7 @@ test.describe("POCAAlbum Admin 앨범 테스트", () => {
       console.log(`✅ 수정 페이지에서 앨범 제목 확인: ${sharedAlbumTitle}`);
     });
 
-    test("PA-CREATE-03: 유튜브 앨범 생성 (QA-75 커버)", async ({ page }) => {
+    test("PA-CREATE-03: 유튜브 앨범 생성 (QA-75 커버) @suite:ops", async ({ page }) => {
       const albumCreatePage = new PocaAlbumCreatePage(page);
 
       await test.step("생성 페이지 이동", async () => {
@@ -431,7 +431,7 @@ test.describe("POCAAlbum Admin 앨범 테스트", () => {
       });
     });
 
-    test("PA-UPDATE-01: 앨범 상세 진입 후 제목 수정", async ({ page }) => {
+    test("PA-UPDATE-01: 앨범 상세 진입 후 제목 수정 @suite:ops", async ({ page }) => {
       expect(
         sharedAlbumCreated,
         "❌ PA-CREATE-01에서 앨범이 생성되지 않음",

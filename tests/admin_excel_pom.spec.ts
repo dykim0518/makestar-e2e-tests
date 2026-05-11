@@ -200,9 +200,6 @@ test.describe("Admin 엑셀 다운로드 검증", () => {
       resetAuthCache();
       await setupAuthCookies(page);
       await page.goto(t.url, { waitUntil: "domcontentloaded" });
-      await page
-        .waitForLoadState("networkidle", { timeout: 15000 })
-        .catch(() => {});
 
       if (t.preAction) await runPreAction(page, t.preAction);
 

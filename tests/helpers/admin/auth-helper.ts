@@ -7,6 +7,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import type { BrowserContext, Page } from "@playwright/test";
+import { getCookieExpiresMs } from "../auth-utils";
 
 // ============================================================================
 // 상수
@@ -17,6 +18,7 @@ export const AUTH_DOMAIN = "stage-auth.makeuni2026.com";
 export const ROOT_DOMAIN = ".makeuni2026.com";
 
 const AUTH_FILE = path.join(__dirname, "..", "..", "..", "auth.json");
+const AUTH_FILE_PATH = process.env.AUTH_FILE_PATH || AUTH_FILE;
 const TOKEN_BUFFER_MS = 1 * 60 * 1000; // 1분
 
 // ============================================================================
@@ -58,15 +60,13 @@ let authSetupCacheByContext = new WeakMap<BrowserContext, AuthSetupCache>();
  * 토큰 만료 여부 확인
  */
 export function isTokenExpired(bufferMs: number = TOKEN_BUFFER_MS): boolean {
-  if (!fs.existsSync(AUTH_FILE)) return true;
+  if (!fs.existsSync(AUTH_FILE_PATH)) return true;
   try {
-    const auth: AuthData = JSON.parse(fs.readFileSync(AUTH_FILE, "utf-8"));
+    const auth: AuthData = JSON.parse(fs.readFileSync(AUTH_FILE_PATH, "utf-8"));
     const rtCookie = auth.cookies?.find((c) => c.name === "refresh_token");
     if (!rtCookie?.value) return true;
-    const payload = JSON.parse(
-      Buffer.from(rtCookie.value.split(".")[1], "base64").toString(),
-    );
-    const expiresAt = new Date(payload.exp * 1000).getTime();
+    const expiresAt = getCookieExpiresMs(rtCookie);
+    if (!expiresAt) return true;
     return expiresAt - bufferMs <= Date.now();
   } catch {
     return true;
@@ -77,15 +77,13 @@ export function isTokenExpired(bufferMs: number = TOKEN_BUFFER_MS): boolean {
  * 토큰 남은 시간 (분 단위)
  */
 export function getTokenRemainingMinutes(): number {
-  if (!fs.existsSync(AUTH_FILE)) return 0;
+  if (!fs.existsSync(AUTH_FILE_PATH)) return 0;
   try {
-    const auth: AuthData = JSON.parse(fs.readFileSync(AUTH_FILE, "utf-8"));
+    const auth: AuthData = JSON.parse(fs.readFileSync(AUTH_FILE_PATH, "utf-8"));
     const rtCookie = auth.cookies?.find((c) => c.name === "refresh_token");
     if (!rtCookie?.value) return 0;
-    const payload = JSON.parse(
-      Buffer.from(rtCookie.value.split(".")[1], "base64").toString(),
-    );
-    const expiresAt = new Date(payload.exp * 1000).getTime();
+    const expiresAt = getCookieExpiresMs(rtCookie);
+    if (!expiresAt) return 0;
     const remaining = expiresAt - Date.now();
     return Math.max(0, Math.floor(remaining / (1000 * 60)));
   } catch {
@@ -95,16 +93,19 @@ export function getTokenRemainingMinutes(): number {
 
 /**
  * 인증된 URL 생성
+ *
+ * @deprecated refresh_token을 URL query로 전달하지 마세요. 기본값은 토큰을
+ *   붙이지 않으며, 인증은 setupAuthCookies 또는 storageState로 주입합니다.
  */
 export function getAuthenticatedUrl(
   targetPath: string,
-  includeToken: boolean = true,
+  includeToken: boolean = false,
 ): string {
   if (!includeToken) return BASE_URL + targetPath;
   try {
-    if (fs.existsSync(AUTH_FILE)) {
+    if (fs.existsSync(AUTH_FILE_PATH)) {
       const authData: AuthData = JSON.parse(
-        fs.readFileSync(AUTH_FILE, "utf-8"),
+        fs.readFileSync(AUTH_FILE_PATH, "utf-8"),
       );
       const rtCookie = authData.cookies?.find(
         (c) => c.name === "refresh_token",
@@ -130,7 +131,7 @@ export function getAuthenticatedUrl(
  * 토큰 유효성 확인
  */
 export async function ensureValidToken(): Promise<boolean> {
-  if (!fs.existsSync(AUTH_FILE)) {
+  if (!fs.existsSync(AUTH_FILE_PATH)) {
     console.error("❌ auth.json이 없습니다.");
     console.log("   node token-manager.js --setup 명령으로 로그인하세요.");
     return false;
@@ -183,13 +184,15 @@ export async function setupAuthCookies(page: Page): Promise<boolean> {
     return true;
   }
 
-  if (!fs.existsSync(AUTH_FILE)) {
+  if (!fs.existsSync(AUTH_FILE_PATH)) {
     console.warn("⚠️ auth.json이 없습니다.");
     return false;
   }
 
   try {
-    const authData: AuthData = JSON.parse(fs.readFileSync(AUTH_FILE, "utf-8"));
+    const authData: AuthData = JSON.parse(
+      fs.readFileSync(AUTH_FILE_PATH, "utf-8"),
+    );
 
     if (authData.cookies && authData.cookies.length > 0) {
       const targetDomains = [adminDomain, AUTH_DOMAIN, ROOT_DOMAIN];
@@ -299,6 +302,8 @@ const ADMIN_TOKENS_FILE = path.join(
   "..",
   "admin-tokens.json",
 );
+const ADMIN_TOKENS_FILE_PATH =
+  process.env.ADMIN_TOKENS_FILE_PATH || ADMIN_TOKENS_FILE;
 
 type AdminTokens = {
   accessToken: string;
@@ -316,13 +321,13 @@ export function getSystemToken(): string | null {
   if (cachedSystemToken) return cachedSystemToken;
 
   try {
-    if (!fs.existsSync(ADMIN_TOKENS_FILE)) {
+    if (!fs.existsSync(ADMIN_TOKENS_FILE_PATH)) {
       console.warn("⚠️ admin-tokens.json이 없습니다.");
       return null;
     }
 
     const tokens: AdminTokens = JSON.parse(
-      fs.readFileSync(ADMIN_TOKENS_FILE, "utf-8"),
+      fs.readFileSync(ADMIN_TOKENS_FILE_PATH, "utf-8"),
     );
     if (tokens.accessToken) {
       cachedSystemToken = tokens.accessToken;

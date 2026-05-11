@@ -19,77 +19,37 @@
 
 const fs = require("fs");
 const path = require("path");
+const {
+  domainMatches,
+  findRefreshTokens,
+  formatRemaining,
+  getRefreshTokenStatuses,
+  readStorageState,
+  resolveTargetDomain,
+} = require("./auth-state");
 
 const AUTH_FILE =
   process.env.AUTH_FILE_PATH || path.join(process.cwd(), "auth.json");
+const AUTH_FILE_LABEL = path.basename(AUTH_FILE);
 const WARN_HOURS = Number(process.env.AUTH_WARN_HOURS) || 6;
 const WARN_THRESHOLD_MS = WARN_HOURS * 60 * 60 * 1000;
-const IS_STG =
-  process.env.AUTH_TARGET_DOMAIN?.includes("makeuni2026") ||
-  process.env.MAKESTAR_BASE_URL?.includes("stage") ||
-  process.env.ENVIRONMENT_INPUT === "stg";
-const TARGET_DOMAIN =
-  process.env.AUTH_TARGET_DOMAIN ||
-  (IS_STG ? ".makeuni2026.com" : ".makestar.com");
-
-function findRefreshTokens(cookies) {
-  return cookies.filter((c) => c.name === "refresh_token");
-}
-
-function getJwtExp(token) {
-  try {
-    const payload = JSON.parse(
-      Buffer.from(token.split(".")[1], "base64").toString(),
-    );
-    return payload.exp ? payload.exp * 1000 : null;
-  } catch {
-    return null;
-  }
-}
-
-function getExpiresMs(cookie) {
-  const jwtExp = getJwtExp(cookie.value);
-  if (jwtExp) return jwtExp;
-  if (cookie.expires && cookie.expires > 0) return cookie.expires * 1000;
-  return null;
-}
-
-function domainMatches(cookieDomain, targetDomain) {
-  if (!cookieDomain) return false;
-  const normalizedCookieDomain = cookieDomain.startsWith(".")
-    ? cookieDomain
-    : `.${cookieDomain}`;
-  const normalizedTargetDomain = targetDomain.startsWith(".")
-    ? targetDomain
-    : `.${targetDomain}`;
-  return normalizedCookieDomain === normalizedTargetDomain;
-}
-
-function formatRemaining(ms) {
-  const hours = Math.floor(ms / (1000 * 60 * 60));
-  const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
-  if (hours > 24) return `${Math.floor(hours / 24)}일 ${hours % 24}시간`;
-  return `${hours}시간 ${minutes}분`;
-}
+const TARGET_DOMAIN = resolveTargetDomain();
 
 function main() {
-  if (!fs.existsSync(AUTH_FILE)) {
-    console.log("::error::auth.json 파일이 없습니다.");
+  const authState = readStorageState(AUTH_FILE);
+  if (!authState.ok) {
+    const message =
+      authState.code === "missing"
+        ? `${AUTH_FILE_LABEL} 파일이 없습니다.`
+        : `${AUTH_FILE_LABEL} 파싱 실패: ${authState.message}`;
+    console.log(`::error::${message}`);
     process.exit(1);
   }
 
-  let auth;
-  try {
-    auth = JSON.parse(fs.readFileSync(AUTH_FILE, "utf-8"));
-  } catch (e) {
-    console.log(`::error::auth.json 파싱 실패: ${e.message}`);
-    process.exit(1);
-  }
-
-  const cookies = auth.cookies || [];
+  const cookies = authState.cookies;
   if (cookies.length === 0) {
     console.log(
-      "::error::auth.json에 쿠키가 없습니다 (빈 상태). AUTH_JSON secret을 갱신하세요.",
+      `::error::${AUTH_FILE_LABEL}에 쿠키가 없습니다 (빈 상태). AUTH_JSON secret을 갱신하세요.`,
     );
     outputRefreshGuide("쿠키 없음");
     process.exit(1);
@@ -118,32 +78,17 @@ function main() {
   const now = Date.now();
   let hasValid = false;
   let minRemaining = Infinity;
-  const results = [];
+  const results = getRefreshTokenStatuses(cookies, TARGET_DOMAIN, now);
 
-  for (const rt of refreshTokens) {
-    const expiresMs = getExpiresMs(rt);
-    const domain = rt.domain || "unknown";
-    const isTarget = domainMatches(domain, TARGET_DOMAIN);
-
-    if (!expiresMs) {
-      results.push({ domain, status: "unknown", remaining: null, isTarget });
-      continue;
-    }
-
-    const remaining = expiresMs - now;
-    if (remaining <= 0) {
-      results.push({ domain, status: "expired", remaining, isTarget });
-    } else {
-      if (isTarget) {
-        hasValid = true;
-        minRemaining = Math.min(minRemaining, remaining);
-      }
-      results.push({ domain, status: "valid", remaining, isTarget });
+  for (const result of results) {
+    if (result.isTarget && result.status === "valid" && result.remaining) {
+      hasValid = true;
+      minRemaining = Math.min(minRemaining, result.remaining);
     }
   }
 
   // 결과 출력
-  console.log("=== auth.json 토큰 검증 ===");
+  console.log(`=== ${AUTH_FILE_LABEL} 토큰 검증 ===`);
   console.log(`검증 대상 도메인: ${TARGET_DOMAIN}`);
   for (const r of results) {
     const icon =

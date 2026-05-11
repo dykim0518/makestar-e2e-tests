@@ -13,6 +13,12 @@
 const { chromium } = require("@playwright/test");
 const fs = require("fs");
 const path = require("path");
+const {
+  getLatestRefreshTokenExpiry,
+  getRemainingParts,
+  readStorageState,
+  resolveTargetDomain,
+} = require("./scripts/auth-state");
 
 // 환경별 파일 경로: STG → stg-auth.json, Prod → auth.json
 const isSTG = process.env.MAKESTAR_BASE_URL?.includes("stage");
@@ -20,6 +26,38 @@ const SESSION_FILE = path.join(__dirname, "playwright-session.json");
 const ADMIN_TOKENS_FILE = path.join(__dirname, "admin-tokens.json");
 const AUTH_FILE = path.join(__dirname, isSTG ? "stg-auth.json" : "auth.json");
 const BASE_URL = "https://stage-new-admin.makeuni2026.com";
+const TARGET_REFRESH_DOMAIN = resolveTargetDomain({
+  ...process.env,
+  ENVIRONMENT_INPUT: process.env.ENVIRONMENT_INPUT || (isSTG ? "stg" : "prod"),
+});
+
+function getAdminTokenExpiryMs() {
+  try {
+    if (!fs.existsSync(ADMIN_TOKENS_FILE)) return null;
+    const tokens = JSON.parse(fs.readFileSync(ADMIN_TOKENS_FILE, "utf-8"));
+    const expiresAt = new Date(tokens.expiresAt).getTime();
+    return Number.isFinite(expiresAt) ? expiresAt : null;
+  } catch {
+    return null;
+  }
+}
+
+function getBestTokenExpiryMs() {
+  const candidates = [];
+  const adminTokenExpiry = getAdminTokenExpiryMs();
+  if (adminTokenExpiry) candidates.push(adminTokenExpiry);
+
+  const authState = readStorageState(AUTH_FILE);
+  if (authState.ok) {
+    const refreshTokenExpiry = getLatestRefreshTokenExpiry(
+      authState.cookies,
+      TARGET_REFRESH_DOMAIN,
+    );
+    if (refreshTokenExpiry) candidates.push(refreshTokenExpiry);
+  }
+
+  return candidates.length > 0 ? Math.max(...candidates) : null;
+}
 
 /**
  * 토큰 유효성 확인
@@ -29,89 +67,17 @@ const BASE_URL = "https://stage-new-admin.makeuni2026.com";
  */
 function isTokenValid() {
   const bufferTime = 1 * 60 * 1000; // 1분 여유
-  const now = Date.now();
-  // STG/Prod 쿠키가 한 파일에 혼재할 수 있어 환경별 도메인으로 필터한다.
-  // (playwright.config.ts의 같은 검증 로직과 정렬 — 그쪽엔 commit 1301150에서 추가됨.)
-  const targetDomain = isSTG ? ".makeuni2026.com" : ".makestar.com";
-
-  // 1. admin-tokens.json 확인
-  try {
-    if (fs.existsSync(ADMIN_TOKENS_FILE)) {
-      const tokens = JSON.parse(fs.readFileSync(ADMIN_TOKENS_FILE, "utf-8"));
-      const expiresAt = new Date(tokens.expiresAt).getTime();
-      if (expiresAt - bufferTime > now) {
-        return true;
-      }
-    }
-  } catch (e) {
-    // 파싱 실패 시 다음 확인으로
-  }
-
-  // 2. auth.json의 refresh_token 쿠키 확인
-  try {
-    if (fs.existsSync(AUTH_FILE)) {
-      const auth = JSON.parse(fs.readFileSync(AUTH_FILE, "utf-8"));
-      const rtCookie = auth.cookies?.find(
-        (c) => c.name === "refresh_token" && c.domain === targetDomain,
-      );
-      if (rtCookie?.value) {
-        const payload = JSON.parse(
-          Buffer.from(rtCookie.value.split(".")[1], "base64").toString(),
-        );
-        const expiresAt = payload.exp * 1000;
-        if (expiresAt - bufferTime > now) {
-          return true;
-        }
-      }
-    }
-  } catch (e) {
-    // 파싱 실패
-  }
-
-  return false;
+  const expiresAt = getBestTokenExpiryMs();
+  return expiresAt !== null && expiresAt - bufferTime > Date.now();
 }
 
 /**
  * 토큰 남은 시간 가져오기 (시간, 분 반환)
  */
 function getTokenRemaining() {
-  const now = Date.now();
-  let expiresAt = 0;
-  const targetDomain = isSTG ? ".makeuni2026.com" : ".makestar.com";
-
-  // 1. admin-tokens.json 확인
-  try {
-    if (fs.existsSync(ADMIN_TOKENS_FILE)) {
-      const tokens = JSON.parse(fs.readFileSync(ADMIN_TOKENS_FILE, "utf-8"));
-      expiresAt = new Date(tokens.expiresAt).getTime();
-    }
-  } catch (e) {}
-
-  // 2. auth.json의 refresh_token 쿠키 확인 (더 최신일 수 있음)
-  try {
-    if (fs.existsSync(AUTH_FILE)) {
-      const auth = JSON.parse(fs.readFileSync(AUTH_FILE, "utf-8"));
-      const rtCookie = auth.cookies?.find(
-        (c) => c.name === "refresh_token" && c.domain === targetDomain,
-      );
-      if (rtCookie?.value) {
-        const payload = JSON.parse(
-          Buffer.from(rtCookie.value.split(".")[1], "base64").toString(),
-        );
-        const rtExpires = payload.exp * 1000;
-        if (rtExpires > expiresAt) {
-          expiresAt = rtExpires;
-        }
-      }
-    }
-  } catch (e) {}
-
-  const remaining = expiresAt - now;
-  if (remaining <= 0) return { hours: 0, minutes: 0 };
-
-  const hours = Math.floor(remaining / (1000 * 60 * 60));
-  const minutes = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
-  return { hours, minutes };
+  const expiresAt = getBestTokenExpiryMs();
+  if (!expiresAt) return { hours: 0, minutes: 0 };
+  return getRemainingParts(expiresAt);
 }
 
 /**
@@ -317,23 +283,16 @@ async function setupGoogleSession() {
       console.log(`💾 auth.json 업데이트됨 (쿠키 ${cookies.length}개)`);
 
       // 저장된 auth.json에서 refresh_token 쿠키가 유효한지 확인
-      const rtCookie = cookies.find((c) => c.name === "refresh_token");
-      if (rtCookie?.value) {
-        try {
-          const payload = JSON.parse(
-            Buffer.from(rtCookie.value.split(".")[1], "base64").toString(),
-          );
-          const expiresAt = payload.exp * 1000;
-          if (expiresAt > Date.now()) {
-            console.log(
-              `✅ 쿠키에서 유효한 refresh_token 발견! (만료: ${new Date(expiresAt).toISOString()})`,
-            );
-            await browser.close();
-            return true; // 쿠키 기반 인증 가능
-          }
-        } catch (e) {
-          // JWT 파싱 실패
-        }
+      const refreshTokenExpiry = getLatestRefreshTokenExpiry(
+        cookies,
+        TARGET_REFRESH_DOMAIN,
+      );
+      if (refreshTokenExpiry && refreshTokenExpiry > Date.now()) {
+        console.log(
+          `✅ 쿠키에서 유효한 refresh_token 발견! (만료: ${new Date(refreshTokenExpiry).toISOString()})`,
+        );
+        await browser.close();
+        return true; // 쿠키 기반 인증 가능
       }
       console.log("⚠️ 유효한 refresh_token을 찾을 수 없습니다.");
     } catch {}
@@ -697,10 +656,7 @@ async function main() {
     // 기본 모드: 토큰이 유효하면 스킵, 아니면 갱신
     if (isTokenValid()) {
       console.log("✅ 토큰이 아직 유효합니다.");
-      const tokens = JSON.parse(fs.readFileSync(ADMIN_TOKENS_FILE, "utf-8"));
-      const remaining = new Date(tokens.expiresAt) - new Date();
-      const hours = Math.floor(remaining / (1000 * 60 * 60));
-      const minutes = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
+      const { hours, minutes } = getTokenRemaining();
       console.log(`   남은 시간: ${hours}시간 ${minutes}분`);
     } else {
       console.log("⚠️ 토큰이 만료되었거나 곧 만료됩니다.");

@@ -337,8 +337,8 @@ test.describe("대분류 목록 @feature:admin_makestar.product.list", () => {
 // 1. 대분류 (CAT) - 신규 생성
 // ##############################################################################
 test.describe
-  .serial("대분류 생성 @feature:admin_makestar.product.create", () => {
-  test("CAT-CREATE-01: 대분류 신규 생성 및 검증", async ({ page }) => {
+  .serial("대분류 생성 @suite:ops @feature:admin_makestar.product.create", () => {
+  test("CAT-CREATE-01: 대분류 신규 생성 및 검증 @suite:ops", async ({ page }) => {
     const categoryListPage = new CategoryListPage(page);
     const categoryCreatePage = new CategoryCreatePage(page);
 
@@ -724,8 +724,8 @@ test.describe.serial("SKU 목록 @feature:admin_makestar.sku.list", () => {
 // ##############################################################################
 // 2. SKU - 신규 생성
 // ##############################################################################
-test.describe.serial("SKU 생성 @feature:admin_makestar.sku.create", () => {
-  test("SKU-CREATE-01: SKU 신규 생성 및 검증", async ({ page }) => {
+test.describe.serial("SKU 생성 @suite:ops @feature:admin_makestar.sku.create", () => {
+  test("SKU-CREATE-01: SKU 신규 생성 및 검증 @suite:ops", async ({ page }) => {
     const skuListPage = new SKUListPage(page);
     const skuCreatePage = new SkuCreatePage(page);
 
@@ -993,8 +993,8 @@ test.describe("상품 목록 @feature:admin_makestar.event.list", () => {
 // ##############################################################################
 // 3. 상품 (PRD) - 신규 등록
 // ##############################################################################
-test.describe.serial("상품 등록 @feature:admin_makestar.event.create", () => {
-  test("PRD-CREATE-01: 상품 신규 등록 및 검증", async ({ page }, testInfo) => {
+test.describe.serial("상품 등록 @suite:ops @feature:admin_makestar.event.create", () => {
+  test("PRD-CREATE-01: 상품 신규 등록 및 검증 @suite:ops", async ({ page }, testInfo) => {
     // 다단계 테스트 (대분류 확인/생성 → 상품등록 → 폼입력 → 저장) — 타임아웃 확장
     test.setTimeout(300_000);
     const eventListPage = new EventListPage(page);
@@ -1287,7 +1287,7 @@ test.describe.serial("상품 등록 @feature:admin_makestar.event.create", () =>
       await displayCategoryPage.assertCreateModalFieldsVisible();
     });
 
-    test("QA84-CREATE-02: 카테고리 생성 후 목록 반영 확인", async () => {
+    test("QA84-CREATE-02: 카테고리 생성 후 목록 반영 확인 @suite:ops", async () => {
       await displayCategoryPage.createCategory(DC_CATEGORY);
     });
   });
