@@ -3,6 +3,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 const AUTH_STORAGE_STATE = process.env.AUTH_FILE_PATH || "./auth.json";
 const AB_AUTH_STORAGE_STATE = process.env.AB_AUTH_FILE_PATH || "./ab-auth.json";
+const INCLUDE_CMR_PAYMENT = process.env.INCLUDE_CMR_PAYMENT === "true";
 
 /**
  * CI gate 전용 Playwright 설정
@@ -46,12 +47,23 @@ export default defineConfig({
 
   projects: [
     {
-      // Monitoring + Payment(cmr_*_pom.spec.ts) 일괄 실행.
-      // CMR 결제 스펙은 상단 `test.skip(!IS_STAGE_ENV)` 가드가 있어 prod에서는 자동 skip되고
-      // stage 환경(`environment: stg`)에서만 실제 실행됨.
+      // CMR prod monitoring 전용. 결제 스펙은 실제 결제/주문 데이터를 만들 수 있어
+      // `cmr-payment-stg` project로 분리한다.
       // 네이밍 `cmr-monitoring`은 워크플로/히스토리 호환을 위해 유지.
       name: "cmr-monitoring",
       testMatch: ["**/cmr_*_pom.spec.ts"],
+      testIgnore: ["**/cmr_payment_pom.spec.ts"],
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 1920, height: 1080 },
+        storageState: AUTH_STORAGE_STATE,
+      },
+    },
+    {
+      // STG 결제 회귀 전용. spec 내부에도 stage 가드가 있어 prod 오작동 시 skip된다.
+      // 전체 CI 실행에 섞이지 않도록 명시적으로 opt-in 될 때만 수집한다.
+      name: "cmr-payment-stg",
+      testMatch: INCLUDE_CMR_PAYMENT ? ["**/cmr_payment_pom.spec.ts"] : [],
       use: {
         ...devices["Desktop Chrome"],
         viewport: { width: 1920, height: 1080 },

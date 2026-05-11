@@ -54,6 +54,9 @@ npx playwright test tests/ab-save-auth.spec.ts --headed --project=chromium
 # CMR 모니터링
 npm run test:cmr
 
+# CMR STG 결제 회귀
+npm run test:cmr:payment
+
 # Admin 테스트 (인증 Setup 포함)
 npm run test:admin
 
@@ -117,7 +120,9 @@ npm run auth:validate:ab
 
 Actions 탭 > Playwright Tests > Run workflow
 
-- `suite`: `cmr | albumbuddy | admin | all`
+- `suite`: `cmr | cmr-payment | albumbuddy | admin | all`
+  - `cmr`: prod CMR 모니터링 전용, 결제 spec 제외
+  - `cmr-payment`: STG 결제 회귀 전용 (`environment=stg` 필수)
   - `admin`: GitHub Hosted Runner에서는 실행 불가 (사내 VPN/IP allowlist 필요)
   - `all`: `cmr + albumbuddy` 실행, `admin`은 자동 제외
 - `project`: Playwright 프로젝트 직접 지정(선택)
@@ -130,7 +135,8 @@ Actions 탭 > Playwright Tests > Run workflow
 - headless 고정
 - chromium만 사용
 - 프로젝트별 실행:
-  - `cmr-monitoring`: `cmr_*_pom.spec.ts`
+  - `cmr-monitoring`: `cmr_*_pom.spec.ts` 중 `cmr_payment_pom.spec.ts` 제외
+  - `cmr-payment-stg`: `cmr_payment_pom.spec.ts` (STG 전용, `INCLUDE_CMR_PAYMENT=true`일 때만 수집)
   - `albumbuddy-monitoring`: `ab_monitoring_pom.spec.ts`
 - `admin-setup` + `admin-pc`: Admin 시나리오
 - globalSetup 비활성 (CI에서 수동 로그인 불가)

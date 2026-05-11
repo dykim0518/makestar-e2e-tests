@@ -9,6 +9,7 @@
     "typecheck": "npx tsc --noEmit -p tsconfig.json",
     "test:gate": "npm run typecheck && node scripts/check-false-green.js && npx playwright test --config=playwright.ci.config.js",
     "test:cmr": "npx playwright test --project=cmr",
+    "test:cmr:payment": "INCLUDE_CMR_PAYMENT=true MAKESTAR_BASE_URL=https://stage-new.makeuni2026.com npx playwright test --project=cmr-payment-stg",
     "test:admin": "npx playwright test --project=admin-setup --project=admin-pc",
     "test:admin:full": "npm run typecheck && node scripts/check-false-green.js && npx playwright test --config=playwright.ci.config.js --project=admin-full",
     "test:admin:gate": "npm run typecheck && node scripts/check-false-green.js && npx playwright test --config=playwright.ci.config.js --project=admin-gate",
