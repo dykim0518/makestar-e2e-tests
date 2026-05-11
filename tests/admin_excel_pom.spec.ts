@@ -37,8 +37,6 @@ type Target = {
   };
 };
 
-const USER_LIST_API_PATTERN = /\/admin\/user\/list_new_commerce_user\/?\?/;
-
 const TARGETS: Target[] = [
   // === 상품 ===
   {
@@ -164,16 +162,12 @@ async function runPreAction(page: Page, action: PreAction) {
   if (action === "user-b2b-tab") {
     const tab = page.locator('div:text-is("B2B 회원 관리")').first();
     await tab.waitFor({ state: "visible", timeout: 10000 });
-    const responsePromise = page.waitForResponse(
-      (response) => USER_LIST_API_PATTERN.test(response.url()),
-      { timeout: 20000 },
-    );
     await tab.click();
-    const response = await responsePromise;
-    expect(
-      response.status(),
-      `B2B 회원 관리 API 응답 실패: ${response.status()} ${response.url()}`,
-    ).toBeLessThan(400);
+    // B2B 페이지 진입 확인 — API URL이 환경별로 다르므로 UI 상태로 검증
+    await expect(
+      page.locator(':text-is("B2B 회원 목록")').first(),
+      "B2B 회원 관리 탭 전환 실패",
+    ).toBeVisible({ timeout: 15000 });
   } else if (action === "event-winner-menu") {
     // "엑셀다운로드" 트리거 먼저 열기
     const trigger = page
@@ -200,6 +194,11 @@ test.describe("Admin 엑셀 다운로드 검증", () => {
       resetAuthCache();
       await setupAuthCookies(page);
       await page.goto(t.url, { waitUntil: "domcontentloaded" });
+      // STG는 비동기 export(job 생성→polling→GCS presigned) 방식이라
+      // 표 데이터 fetch 진행 중 클릭하면 job 큐 적체로 다운로드 이벤트가 지연됨.
+      await page
+        .waitForLoadState("networkidle", { timeout: 15_000 })
+        .catch(() => {});
 
       if (t.preAction) await runPreAction(page, t.preAction);
 
@@ -209,7 +208,7 @@ test.describe("Admin 엑셀 다운로드 검증", () => {
       });
 
       const result = await clickAndDownloadExcel(page, button, {
-        timeoutMs: 90_000,
+        timeoutMs: 120_000,
       });
 
       // === 1) 다운로드 가능 여부 ===
