@@ -64,8 +64,7 @@ async function fetchOrderSearchRows(
         intervals: [1_000, 2_000, 3_000],
       },
     )
-    .toBeTruthy()
-    .catch(() => {});
+    .toBeTruthy();
 
   return { status: latestStatus, rows: latestRows };
 }
@@ -185,9 +184,6 @@ test.describe("Admin 엑셀 키 컬럼 교집합 (API → Excel) @feature:admin_
       resetAuthCache();
       await setupAuthCookies(page);
       await page.goto(t.url, { waitUntil: "domcontentloaded" });
-      await page
-        .waitForLoadState("networkidle", { timeout: 15000 })
-        .catch(() => {});
       await waitForCapturedApi(capture, 1, `${t.id} 목록`);
 
       if (t.preAction === "user-b2b-tab") {
@@ -297,9 +293,6 @@ test.describe("Admin 주문 엑셀 → API 역검증 @feature:admin_makestar.ord
         "주문 목록",
       );
       await page.goto(`${BASE}/order/list`, { waitUntil: "domcontentloaded" });
-      await page
-        .waitForLoadState("networkidle", { timeout: 15000 })
-        .catch(() => {});
       await listResponsePromise;
 
       const button = await findButton(page, t.buttonText, true);

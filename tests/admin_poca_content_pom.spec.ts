@@ -129,11 +129,11 @@ test.describe("POCAAlbum Admin 콘텐츠 테스트", () => {
   // ========================================================================
   // FAVE 팩 생성/삭제 (serial)
   // ========================================================================
-  test.describe.serial("FAVE 팩 생성/삭제 @feature:admin_pocaalbum.fave.create", () => {
+  test.describe.serial("FAVE 팩 생성/삭제 @suite:ops @feature:admin_pocaalbum.fave.create", () => {
     let sharedFaveTitle = "";
     let sharedFaveCreated = false;
 
-    test("PF-CREATE-01: FAVE 팩 생성 폼 입력 및 등록", async ({ page }) => {
+    test("PF-CREATE-01: FAVE 팩 생성 폼 입력 및 등록 @suite:ops", async ({ page }) => {
       const faveCreatePage = new PocaFaveCreatePage(page);
       await faveCreatePage.navigate();
       await waitForPageStable(page);
@@ -252,11 +252,11 @@ test.describe("POCAAlbum Admin 콘텐츠 테스트", () => {
   // ========================================================================
   // BENEFIT 생성/삭제 (serial)
   // ========================================================================
-  test.describe.serial("BENEFIT 생성/삭제 @feature:admin_pocaalbum.benefit.create", () => {
+  test.describe.serial("BENEFIT 생성/삭제 @suite:ops @feature:admin_pocaalbum.benefit.create", () => {
     let sharedBenefitTitle = "";
     let sharedBenefitCreated = false;
 
-    test("PB-CREATE-01: BENEFIT 생성 폼 입력 및 등록", async ({ page }) => {
+    test("PB-CREATE-01: BENEFIT 생성 폼 입력 및 등록 @suite:ops", async ({ page }) => {
       test.setTimeout(180000); // BENEFIT 이벤트 폼은 복잡하여 3분 필요
       const benefitCreatePage = new PocaBenefitCreatePage(page);
       await benefitCreatePage.navigate();
@@ -384,11 +384,11 @@ test.describe("POCAAlbum Admin 콘텐츠 테스트", () => {
   // ========================================================================
   // 알림 생성/삭제 (serial)
   // ========================================================================
-  test.describe.serial("알림 생성/삭제 @feature:admin_pocaalbum.notice.create", () => {
+  test.describe.serial("알림 생성/삭제 @suite:ops @feature:admin_pocaalbum.notice.create", () => {
     let sharedNotifTitle = "";
     let sharedNotifCreated = false;
 
-    test("PN-CREATE-01: 알림 생성 폼 입력 및 등록", async ({ page }) => {
+    test("PN-CREATE-01: 알림 생성 폼 입력 및 등록 @suite:ops", async ({ page }) => {
       const notifCreatePage = new PocaNotificationCreatePage(page);
       await notifCreatePage.navigate();
       await waitForPageStable(page);

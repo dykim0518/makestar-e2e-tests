@@ -10,7 +10,9 @@ import * as path from "path";
 let cachedToken: string | null = null;
 function getAccessToken(): string | null {
   if (cachedToken) return cachedToken;
-  const p = path.resolve(__dirname, "../../../admin-tokens.json");
+  const p =
+    process.env.ADMIN_TOKENS_FILE_PATH ||
+    path.resolve(__dirname, "../../../admin-tokens.json");
   try {
     const raw = JSON.parse(fs.readFileSync(p, "utf-8")) as {
       accessToken?: unknown;

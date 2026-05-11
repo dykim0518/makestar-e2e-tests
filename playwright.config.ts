@@ -34,11 +34,14 @@ function getRefreshTokenExpiresAt(cookie: StoredCookie): Date | null {
 // - Prod는 auth.json만 사용
 const isSTG = process.env.MAKESTAR_BASE_URL?.includes("stage");
 const authFileCandidates = isSTG
-  ? ["./stg-auth.json", "./auth.json"]
-  : ["./auth.json"];
+  ? [process.env.AUTH_FILE_PATH, "./stg-auth.json", "./auth.json"]
+  : [process.env.AUTH_FILE_PATH, "./auth.json"];
 const authFile =
-  authFileCandidates.find((candidate) => fs.existsSync(candidate)) ??
-  authFileCandidates[0];
+  authFileCandidates.find(
+    (candidate): candidate is string => !!candidate && fs.existsSync(candidate),
+  ) ??
+  authFileCandidates.find((candidate): candidate is string => !!candidate) ??
+  "./auth.json";
 let hasValidAuthFile = false;
 const excludeAuthTests = process.env.EXCLUDE_AUTH_TESTS === "true";
 const manualAuthSpecPatterns = [

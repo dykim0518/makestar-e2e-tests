@@ -22,9 +22,15 @@
 const { chromium } = require("@playwright/test");
 const fs = require("fs");
 const path = require("path");
+const {
+  getLatestRefreshTokenExpiry,
+  readStorageState,
+  resolveTargetDomain,
+} = require("./auth-state");
 
 const AUTH_FILE =
   process.env.AUTH_FILE_PATH || path.join(process.cwd(), "auth.json");
+const AUTH_FILE_LABEL = path.basename(AUTH_FILE);
 const FORCE = process.argv.includes("--force");
 const REFRESH_THRESHOLD_MS = 2 * 60 * 60 * 1000; // 2시간 이내면 갱신 시도
 
@@ -42,7 +48,10 @@ const LOGIN_PATTERNS = isSTG
 const SUCCESS_HOSTNAME = isSTG
   ? "stage-new.makeuni2026.com"
   : "www.makestar.com";
-const TARGET_REFRESH_DOMAIN = isSTG ? ".makeuni2026.com" : ".makestar.com";
+const TARGET_REFRESH_DOMAIN = resolveTargetDomain({
+  ...process.env,
+  ENVIRONMENT_INPUT: process.env.ENVIRONMENT_INPUT || (isSTG ? "stg" : "prod"),
+});
 
 function isSuccessUrl(url) {
   try {
@@ -90,32 +99,8 @@ function redactUrlForLog(rawUrl) {
   }
 }
 
-function domainMatches(cookieDomain, targetDomain) {
-  if (!cookieDomain) return false;
-  const normalizedCookieDomain = cookieDomain.startsWith(".")
-    ? cookieDomain
-    : `.${cookieDomain}`;
-  const normalizedTargetDomain = targetDomain.startsWith(".")
-    ? targetDomain
-    : `.${targetDomain}`;
-  return normalizedCookieDomain === normalizedTargetDomain;
-}
-
 function getRefreshTokenExp(cookies) {
-  const rt = cookies.find(
-    (c) =>
-      c.name === "refresh_token" &&
-      domainMatches(c.domain, TARGET_REFRESH_DOMAIN),
-  );
-  if (!rt?.value) return null;
-  try {
-    const payload = JSON.parse(
-      Buffer.from(rt.value.split(".")[1], "base64").toString(),
-    );
-    return payload.exp ? payload.exp * 1000 : null;
-  } catch {
-    return rt.expires > 0 ? rt.expires * 1000 : null;
-  }
+  return getLatestRefreshTokenExpiry(cookies, TARGET_REFRESH_DOMAIN);
 }
 
 function needsRefresh(cookies) {
@@ -160,22 +145,20 @@ function mergeCookies(existingCookies, newCookies) {
 
 async function refreshAuth() {
   // 1. auth.json 로드
-  if (!fs.existsSync(AUTH_FILE)) {
-    log("auth.json 없음 — 갱신 불가");
+  const authState = readStorageState(AUTH_FILE);
+  if (!authState.ok && authState.code === "missing") {
+    log(`${AUTH_FILE_LABEL} 없음 — 갱신 불가`);
+    return false;
+  }
+  if (!authState.ok) {
+    log(`${AUTH_FILE_LABEL} 파싱 실패: ${authState.message}`);
     return false;
   }
 
-  let auth;
-  try {
-    auth = JSON.parse(fs.readFileSync(AUTH_FILE, "utf-8"));
-  } catch (e) {
-    log(`auth.json 파싱 실패: ${e.message}`);
-    return false;
-  }
-
-  const cookies = auth.cookies || [];
+  const auth = authState.state;
+  const cookies = authState.cookies;
   if (cookies.length === 0) {
-    log("auth.json에 쿠키 없음 — 갱신 불가");
+    log(`${AUTH_FILE_LABEL}에 쿠키 없음 — 갱신 불가`);
     return false;
   }
 
@@ -354,9 +337,9 @@ async function saveRefreshedAuth(originalAuth, newCookies) {
   const exp = getRefreshTokenExp(merged);
   if (exp) {
     const hours = ((exp - Date.now()) / 3600000).toFixed(1);
-    log(`auth.json 저장 완료 — 새 refresh_token 잔여: ${hours}시간`);
+    log(`${AUTH_FILE_LABEL} 저장 완료 — 새 refresh_token 잔여: ${hours}시간`);
   } else {
-    log("auth.json 저장 완료 (refresh_token exp 확인 불가)");
+    log(`${AUTH_FILE_LABEL} 저장 완료 (refresh_token exp 확인 불가)`);
   }
 }
 

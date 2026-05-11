@@ -1,6 +1,9 @@
 // @ts-check
 import { defineConfig, devices } from "@playwright/test";
 
+const AUTH_STORAGE_STATE = process.env.AUTH_FILE_PATH || "./auth.json";
+const AB_AUTH_STORAGE_STATE = process.env.AB_AUTH_FILE_PATH || "./ab-auth.json";
+
 /**
  * CI gate 전용 Playwright 설정
  *
@@ -52,7 +55,7 @@ export default defineConfig({
       use: {
         ...devices["Desktop Chrome"],
         viewport: { width: 1920, height: 1080 },
-        storageState: "./auth.json",
+        storageState: AUTH_STORAGE_STATE,
       },
     },
     {
@@ -61,7 +64,7 @@ export default defineConfig({
       use: {
         ...devices["Desktop Chrome"],
         viewport: { width: 1920, height: 1080 },
-        storageState: "./ab-auth.json",
+        storageState: AB_AUTH_STORAGE_STATE,
       },
     },
     {
@@ -71,7 +74,7 @@ export default defineConfig({
       use: {
         ...devices["Desktop Chrome"],
         viewport: { width: 1920, height: 1080 },
-        storageState: "./auth.json",
+        storageState: AUTH_STORAGE_STATE,
       },
     },
     {
@@ -82,7 +85,7 @@ export default defineConfig({
       use: {
         ...devices["Desktop Chrome"],
         viewport: { width: 1920, height: 1080 },
-        storageState: "./auth.json",
+        storageState: AUTH_STORAGE_STATE,
       },
     },
     {
@@ -102,7 +105,7 @@ export default defineConfig({
       use: {
         ...devices["Desktop Chrome"],
         viewport: { width: 1920, height: 1080 },
-        storageState: "./auth.json",
+        storageState: AUTH_STORAGE_STATE,
       },
     },
   ],

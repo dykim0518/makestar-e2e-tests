@@ -104,16 +104,25 @@ export class OrderListPage extends AdminBasePage {
     return ["주문/배송", "주문관리"];
   }
 
+  private async dismissOpenDropdowns(): Promise<void> {
+    await this.page.keyboard.press("Escape");
+    await this.page.keyboard.press("Escape");
+  }
+
   async clickSearchAndWait(): Promise<void> {
-    await this.page.keyboard.press("Escape").catch(() => {});
-    await this.page.keyboard.press("Escape").catch(() => {});
-    await this.submitSearchButton.click({ force: true });
+    await this.dismissOpenDropdowns();
+    await expect(this.submitSearchButton).toBeVisible({
+      timeout: this.timeouts.medium,
+    });
+    await expect(this.submitSearchButton).toBeEnabled({
+      timeout: this.timeouts.medium,
+    });
+    await this.submitSearchButton.click({ timeout: this.timeouts.medium });
     await this.waitForTableOrNoResult();
   }
 
   async clickResetButton(): Promise<void> {
-    await this.page.keyboard.press("Escape").catch(() => {});
-    await this.page.keyboard.press("Escape").catch(() => {});
+    await this.dismissOpenDropdowns();
 
     if (
       await this.searchResetButton
@@ -124,7 +133,7 @@ export class OrderListPage extends AdminBasePage {
         .isEnabled()
         .catch(() => false);
       if (enabled) {
-        await this.searchResetButton.click({ force: true });
+        await this.searchResetButton.click({ timeout: this.timeouts.medium });
       }
     }
     await this.waitForTableOrNoResult();
@@ -756,7 +765,7 @@ export class OrderListPage extends AdminBasePage {
   }
 
   /**
-   * 다음 페이지로 이동합니다. (짧은 timeout + 강제 클릭)
+   * 다음 페이지로 이동합니다.
    */
   async goToNextPageSafely(): Promise<boolean> {
     const canMove = await this.canGoToNextPage();
@@ -764,16 +773,13 @@ export class OrderListPage extends AdminBasePage {
       return false;
     }
 
-    await this.nextPageButton.click({
-      force: true,
-      timeout: this.timeouts.medium,
-    });
+    await this.nextPageButton.click({ timeout: this.timeouts.medium });
     await this.waitForTableOrNoResult(15000);
     return true;
   }
 
   /**
-   * 이전 페이지로 이동합니다. (짧은 timeout + 강제 클릭)
+   * 이전 페이지로 이동합니다.
    */
   async goToPreviousPageSafely(): Promise<boolean> {
     const visible = await this.previousPageButton
@@ -789,10 +795,7 @@ export class OrderListPage extends AdminBasePage {
       return false;
     }
 
-    await this.previousPageButton.click({
-      force: true,
-      timeout: this.timeouts.medium,
-    });
+    await this.previousPageButton.click({ timeout: this.timeouts.medium });
     await this.waitForTableOrNoResult(15000);
     return true;
   }
@@ -1847,19 +1850,19 @@ export class OrderListPage extends AdminBasePage {
     await this.waitForPaymentMethodSelected(method);
 
     // 3) 페이지 heading 클릭 → dropdown blur + form-state commit
-    await this.page
-      .getByRole("heading", { name: "주문관리" })
-      .first()
-      .click({ force: true });
+    const heading = this.page.getByRole("heading", { name: "주문관리" }).first();
+    await expect(heading).toBeVisible({ timeout: this.timeouts.medium });
+    await heading.click({ timeout: this.timeouts.medium });
     await this.waitForPaymentMethodDropdownClosed(method);
 
-    // 4) [조회하기] 클릭. actionability check 우선, 실패 시 force fallback
+    // 4) [조회하기] 클릭
     const responsePromise = this.waitForOrderListResponse(
       `결제수단 '${method}' 필터 조회`,
     );
-    await this.submitSearchButton.click().catch(async () => {
-      await this.submitSearchButton.click({ force: true });
+    await expect(this.submitSearchButton).toBeEnabled({
+      timeout: this.timeouts.medium,
     });
+    await this.submitSearchButton.click({ timeout: this.timeouts.medium });
     await responsePromise;
 
     // 5) 결과 안정화 대기

@@ -6,6 +6,13 @@
 
 import * as fs from "fs";
 
+export type StoredCookie = {
+  name?: string;
+  value?: string;
+  domain?: string;
+  expires?: number;
+};
+
 type AuthFileStatus = {
   available: boolean;
   reason: string;
@@ -25,6 +32,25 @@ type AuthFileOptions = {
   requiredCookies?: readonly CookieRequirement[];
   requiredLocalStorage?: readonly LocalStorageRequirement[];
 };
+
+export function getJwtExpMs(token?: string): number | null {
+  if (!token) return null;
+  try {
+    const payload = JSON.parse(
+      Buffer.from(token.split(".")[1], "base64url").toString(),
+    ) as { exp?: number };
+    return payload.exp ? payload.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
+export function getCookieExpiresMs(cookie?: StoredCookie): number | null {
+  const jwtExp = getJwtExpMs(cookie?.value);
+  if (jwtExp) return jwtExp;
+  if (cookie?.expires && cookie.expires > 0) return cookie.expires * 1000;
+  return null;
+}
 
 /**
  * 인증 파일의 존재 여부와 쿠키 유효성을 확인합니다.
