@@ -129,6 +129,7 @@ test.describe("상품/장바구니 기능 @feature:cmr.cart @feature:cmr.product
     // GNB Shop 버튼 클릭 (유저 시나리오)
     await makestar.navigateToShop();
     await makestar.waitForPageContent();
+    await makestar.waitForShopProductsLoaded();
 
     const productCards = makestar.shopProductCard;
     const cardCount = await productCards.count();
