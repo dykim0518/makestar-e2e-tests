@@ -14,8 +14,14 @@ const { chromium } = require("@playwright/test");
 const fs = require("fs");
 const path = require("path");
 const {
+  buildAdminTokenData,
+  extractTokenPairFromCookies,
+  extractTokenPairFromLocalStorage,
+  extractTokenPairFromUrl,
+  getAdminTokenExpiryMs,
   getLatestRefreshTokenExpiry,
   getRemainingParts,
+  mergeTokenPairs,
   readStorageState,
   resolveTargetDomain,
 } = require("./scripts/auth-state");
@@ -23,28 +29,21 @@ const {
 // 환경별 파일 경로: STG → stg-auth.json, Prod → auth.json
 const isSTG = process.env.MAKESTAR_BASE_URL?.includes("stage");
 const SESSION_FILE = path.join(__dirname, "playwright-session.json");
-const ADMIN_TOKENS_FILE = path.join(__dirname, "admin-tokens.json");
-const AUTH_FILE = path.join(__dirname, isSTG ? "stg-auth.json" : "auth.json");
+const ADMIN_TOKENS_FILE =
+  process.env.ADMIN_TOKENS_FILE_PATH ||
+  path.join(__dirname, "admin-tokens.json");
+const AUTH_FILE =
+  process.env.AUTH_FILE_PATH ||
+  path.join(__dirname, isSTG ? "stg-auth.json" : "auth.json");
 const BASE_URL = "https://stage-new-admin.makeuni2026.com";
 const TARGET_REFRESH_DOMAIN = resolveTargetDomain({
   ...process.env,
   ENVIRONMENT_INPUT: process.env.ENVIRONMENT_INPUT || (isSTG ? "stg" : "prod"),
 });
 
-function getAdminTokenExpiryMs() {
-  try {
-    if (!fs.existsSync(ADMIN_TOKENS_FILE)) return null;
-    const tokens = JSON.parse(fs.readFileSync(ADMIN_TOKENS_FILE, "utf-8"));
-    const expiresAt = new Date(tokens.expiresAt).getTime();
-    return Number.isFinite(expiresAt) ? expiresAt : null;
-  } catch {
-    return null;
-  }
-}
-
 function getBestTokenExpiryMs() {
   const candidates = [];
-  const adminTokenExpiry = getAdminTokenExpiryMs();
+  const adminTokenExpiry = getAdminTokenExpiryMs(ADMIN_TOKENS_FILE);
   if (adminTokenExpiry) candidates.push(adminTokenExpiry);
 
   const authState = readStorageState(AUTH_FILE);
@@ -57,6 +56,64 @@ function getBestTokenExpiryMs() {
   }
 
   return candidates.length > 0 ? Math.max(...candidates) : null;
+}
+
+async function readPageLocalStorage(page) {
+  return page.evaluate(() => {
+    const items = {};
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const key = window.localStorage.key(i);
+      if (key) items[key] = window.localStorage.getItem(key);
+    }
+    return items;
+  });
+}
+
+async function collectTokenPair(page, context, currentUrl) {
+  const localStorage = await readPageLocalStorage(page);
+  const cookies = await context.cookies();
+  const tokens = mergeTokenPairs(
+    extractTokenPairFromUrl(currentUrl),
+    extractTokenPairFromLocalStorage(localStorage),
+    extractTokenPairFromCookies(cookies),
+  );
+  return { ...tokens, cookies, localStorage };
+}
+
+function saveAdminTokens(tokens, userInfoOverride = null) {
+  if (!tokens.accessToken || !tokens.refreshToken) return null;
+  const tokenData = buildAdminTokenData({
+    accessToken: tokens.accessToken,
+    refreshToken: tokens.refreshToken,
+    userInfo: userInfoOverride || tokens.userInfo,
+    expiresAt: tokens.expiresAt,
+  });
+  fs.writeFileSync(ADMIN_TOKENS_FILE, JSON.stringify(tokenData, null, 2));
+  return tokenData;
+}
+
+async function saveCurrentAuthState(context, page) {
+  await context.storageState({ path: SESSION_FILE });
+  const cookies = await context.cookies();
+  const localStorage = await readPageLocalStorage(page);
+  const authData = {
+    cookies,
+    localStorage,
+    savedAt: new Date().toISOString(),
+  };
+  fs.writeFileSync(AUTH_FILE, JSON.stringify(authData, null, 2));
+  console.log(`💾 auth.json 업데이트됨 (쿠키 ${cookies.length}개)`);
+  return { cookies, localStorage };
+}
+
+function logTokenSaved(tokenData) {
+  const expiresAtMs = new Date(tokenData.expiresAt).getTime();
+  if (!Number.isFinite(expiresAtMs)) {
+    console.log("💾 토큰 갱신 완료 (만료 시간 확인 불가)");
+    return;
+  }
+  const { hours, minutes } = getRemainingParts(expiresAtMs);
+  console.log(`💾 토큰 갱신 완료 (남은 시간: ${hours}시간 ${minutes}분)`);
 }
 
 /**
@@ -123,137 +180,12 @@ async function setupGoogleSession() {
     const currentUrl = page.url();
     console.log("✅ 로그인 리다이렉트 감지:", currentUrl);
 
-    // 1) URL 쿼리에서 토큰 시도
-    const urlParams = new URLSearchParams(currentUrl.split("?")[1] || "");
-    let accessToken = urlParams.get("access_token");
-    let refreshToken = urlParams.get("refresh_token");
-
-    // 2) 로컬스토리지에서 토큰 시도
-    if (!accessToken || !refreshToken) {
-      const lsTokens = await page.evaluate(() => ({
-        accessToken: window.localStorage?.getItem("access_token") || null,
-        refreshToken: window.localStorage?.getItem("refresh_token") || null,
-        userInfo: (() => {
-          try {
-            return JSON.parse(
-              window.localStorage?.getItem("user_info") || "null",
-            );
-          } catch {
-            return null;
-          }
-        })(),
-        expiresAt: window.localStorage?.getItem("token_expires_at") || null,
-      }));
-      accessToken = accessToken || lsTokens.accessToken;
-      refreshToken = refreshToken || lsTokens.refreshToken;
-
-      if (accessToken && refreshToken) {
-        // JWT 또는 로컬스토리지 만료값에서 만료 추정
-        let expiresAtIso = lsTokens.expiresAt || undefined;
-        try {
-          const payload = JSON.parse(
-            Buffer.from(accessToken.split(".")[1], "base64").toString(),
-          );
-          expiresAtIso = new Date(payload.exp * 1000).toISOString();
-        } catch {}
-
-        const tokenData = {
-          accessToken,
-          refreshToken,
-          email: lsTokens.userInfo?.email || "unknown",
-          userName:
-            lsTokens.userInfo?.userName || lsTokens.userInfo?.name || "unknown",
-          isAdmin: !!lsTokens.userInfo?.isAdmin,
-          expiresAt:
-            expiresAtIso ||
-            new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(),
-          userId: lsTokens.userInfo?.userId || 0,
-          savedAt: new Date().toISOString(),
-        };
-
-        fs.writeFileSync(ADMIN_TOKENS_FILE, JSON.stringify(tokenData, null, 2));
-        console.log(`💾 토큰 저장됨 (만료: ${tokenData.expiresAt})`);
-
-        // storageState 및 auth.json 저장
-        await page.waitForLoadState("networkidle");
-        await context.storageState({ path: SESSION_FILE });
-        const cookies = await context.cookies();
-        const localStorage = await page.evaluate(() => {
-          const items = {};
-          for (let i = 0; i < window.localStorage.length; i++) {
-            const key = window.localStorage.key(i);
-            items[key] = window.localStorage.getItem(key);
-          }
-          return items;
-        });
-        const authData = {
-          cookies,
-          localStorage,
-          savedAt: new Date().toISOString(),
-        };
-        fs.writeFileSync(AUTH_FILE, JSON.stringify(authData, null, 2));
-        console.log(`💾 auth.json 업데이트됨 (쿠키 ${cookies.length}개)`);
-
-        await browser.close();
-        return true;
-      }
-    }
-
-    // 3) 쿠키에서 토큰 시도
-    if (!accessToken || !refreshToken) {
-      const cookies = await context.cookies();
-      const accessCookie = cookies.find((c) => c.name === "access_token");
-      const refreshCookie = cookies.find((c) => c.name === "refresh_token");
-      if (accessCookie && refreshCookie) {
-        accessToken = accessCookie.value;
-        refreshToken = refreshCookie.value;
-      }
-    }
-
-    if (accessToken && refreshToken) {
-      // JWT에서 만료 추출 시도
-      let expiresAtIso;
-      try {
-        const payload = JSON.parse(
-          Buffer.from(accessToken.split(".")[1], "base64").toString(),
-        );
-        expiresAtIso = new Date(payload.exp * 1000).toISOString();
-      } catch {}
-
-      const tokenData = {
-        accessToken,
-        refreshToken,
-        email: "unknown",
-        userName: "unknown",
-        isAdmin: false,
-        expiresAt:
-          expiresAtIso ||
-          new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(),
-        userId: 0,
-        savedAt: new Date().toISOString(),
-      };
-      fs.writeFileSync(ADMIN_TOKENS_FILE, JSON.stringify(tokenData, null, 2));
+    const tokenSource = await collectTokenPair(page, context, currentUrl);
+    const tokenData = saveAdminTokens(tokenSource);
+    if (tokenData) {
       console.log(`💾 토큰 저장됨 (만료: ${tokenData.expiresAt})`);
-
       await page.waitForLoadState("networkidle");
-      await context.storageState({ path: SESSION_FILE });
-      const cookies = await context.cookies();
-      const localStorage = await page.evaluate(() => {
-        const items = {};
-        for (let i = 0; i < window.localStorage.length; i++) {
-          const key = window.localStorage.key(i);
-          items[key] = window.localStorage.getItem(key);
-        }
-        return items;
-      });
-      const authData = {
-        cookies,
-        localStorage,
-        savedAt: new Date().toISOString(),
-      };
-      fs.writeFileSync(AUTH_FILE, JSON.stringify(authData, null, 2));
-      console.log(`💾 auth.json 업데이트됨 (쿠키 ${cookies.length}개)`);
-
+      await saveCurrentAuthState(context, page);
       await browser.close();
       return true;
     }
@@ -264,23 +196,7 @@ async function setupGoogleSession() {
     // 그래도 현재 세션 쿠키/스토리지는 저장하여 쿠키 기반 실행을 가능하게 함
     try {
       await page.waitForLoadState("networkidle");
-      await context.storageState({ path: SESSION_FILE });
-      const cookies = await context.cookies();
-      const localStorage = await page.evaluate(() => {
-        const items = {};
-        for (let i = 0; i < window.localStorage.length; i++) {
-          const key = window.localStorage.key(i);
-          items[key] = window.localStorage.getItem(key);
-        }
-        return items;
-      });
-      const authData = {
-        cookies,
-        localStorage,
-        savedAt: new Date().toISOString(),
-      };
-      fs.writeFileSync(AUTH_FILE, JSON.stringify(authData, null, 2));
-      console.log(`💾 auth.json 업데이트됨 (쿠키 ${cookies.length}개)`);
+      const { cookies } = await saveCurrentAuthState(context, page);
 
       // 저장된 auth.json에서 refresh_token 쿠키가 유효한지 확인
       const refreshTokenExpiry = getLatestRefreshTokenExpiry(
@@ -323,21 +239,8 @@ async function autoRefreshToken() {
   const page = await context.newPage();
 
   try {
-    // 기존 토큰 정보 로드
-    let currentTokens = {};
-    if (fs.existsSync(ADMIN_TOKENS_FILE)) {
-      currentTokens = JSON.parse(fs.readFileSync(ADMIN_TOKENS_FILE, "utf-8"));
-    }
-
-    // refresh_token을 사용하여 새 토큰 요청
-    // 먼저 토큰이 포함된 URL로 직접 접근 시도
-    let targetUrl = `${BASE_URL}/dashboard`;
-    if (currentTokens.refreshToken) {
-      targetUrl += `?refresh_token=${encodeURIComponent(currentTokens.refreshToken)}`;
-    }
-
     console.log("   → 대시보드 접속 시도 (최대 30초)");
-    await page.goto(targetUrl, {
+    await page.goto(`${BASE_URL}/dashboard`, {
       waitUntil: "domcontentloaded",
       timeout: 30000,
     });
@@ -368,137 +271,13 @@ async function autoRefreshToken() {
       }
     }
 
-    // access_token이 URL에 있는 경우 우선 사용, 없으면 로컬스토리지/쿠키에서 시도
-    {
-      const urlParams = new URLSearchParams(currentUrl.split("?")[1] || "");
-      let accessToken = urlParams.get("access_token");
-      let refreshToken = urlParams.get("refresh_token");
-
-      if (!accessToken || !refreshToken) {
-        const lsTokens = await page.evaluate(() => ({
-          accessToken: window.localStorage?.getItem("access_token") || null,
-          refreshToken: window.localStorage?.getItem("refresh_token") || null,
-          userInfo: (() => {
-            try {
-              return JSON.parse(
-                window.localStorage?.getItem("user_info") || "null",
-              );
-            } catch {
-              return null;
-            }
-          })(),
-          expiresAt: window.localStorage?.getItem("token_expires_at") || null,
-        }));
-        accessToken = accessToken || lsTokens.accessToken;
-        refreshToken = refreshToken || lsTokens.refreshToken;
-
-        if (accessToken && refreshToken) {
-          let expiresAtIso = lsTokens.expiresAt || undefined;
-          try {
-            const payload = JSON.parse(
-              Buffer.from(accessToken.split(".")[1], "base64").toString(),
-            );
-            expiresAtIso = new Date(payload.exp * 1000).toISOString();
-          } catch {}
-
-          const tokenData = {
-            accessToken,
-            refreshToken,
-            email: lsTokens.userInfo?.email || "unknown",
-            userName:
-              lsTokens.userInfo?.userName ||
-              lsTokens.userInfo?.name ||
-              "unknown",
-            isAdmin: !!lsTokens.userInfo?.isAdmin,
-            expiresAt:
-              expiresAtIso ||
-              new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(),
-            userId: lsTokens.userInfo?.userId || 0,
-            savedAt: new Date().toISOString(),
-          };
-          fs.writeFileSync(
-            ADMIN_TOKENS_FILE,
-            JSON.stringify(tokenData, null, 2),
-          );
-
-          const remaining = new Date(tokenData.expiresAt) - new Date();
-          const hours = Math.floor(remaining / (1000 * 60 * 60));
-          const minutes = Math.floor(
-            (remaining % (1000 * 60 * 60)) / (1000 * 60),
-          );
-          console.log(
-            `💾 토큰 갱신 완료 (남은 시간: ${hours}시간 ${minutes}분)`,
-          );
-
-          await context.storageState({ path: SESSION_FILE });
-          const cookies = await context.cookies();
-          const localStorage = await page.evaluate(() => {
-            const items = {};
-            for (let i = 0; i < window.localStorage.length; i++) {
-              const key = window.localStorage.key(i);
-              items[key] = window.localStorage.getItem(key);
-            }
-            return items;
-          });
-          const authData = {
-            cookies,
-            localStorage,
-            savedAt: new Date().toISOString(),
-          };
-          fs.writeFileSync(AUTH_FILE, JSON.stringify(authData, null, 2));
-
-          await browser.close();
-          return true;
-        }
-      }
-
-      if (accessToken && refreshToken) {
-        try {
-          const payload = JSON.parse(
-            Buffer.from(accessToken.split(".")[1], "base64").toString(),
-          );
-          const tokenData = {
-            accessToken,
-            refreshToken,
-            email: payload.info?.nickname || "unknown",
-            userName: payload.info?.name || "unknown",
-            isAdmin: payload.is_admin || false,
-            expiresAt: new Date(payload.exp * 1000).toISOString(),
-            userId: payload.user_id,
-            savedAt: new Date().toISOString(),
-          };
-          fs.writeFileSync(
-            ADMIN_TOKENS_FILE,
-            JSON.stringify(tokenData, null, 2),
-          );
-          const remaining = new Date(tokenData.expiresAt) - new Date();
-          const hours = Math.floor(remaining / (1000 * 60 * 60));
-          const minutes = Math.floor(
-            (remaining % (1000 * 60 * 60)) / (1000 * 60),
-          );
-          console.log(
-            `💾 토큰 갱신 완료 (남은 시간: ${hours}시간 ${minutes}분)`,
-          );
-          await context.storageState({ path: SESSION_FILE });
-          const cookies = await context.cookies();
-          const localStorage = await page.evaluate(() => {
-            const items = {};
-            for (let i = 0; i < window.localStorage.length; i++) {
-              const key = window.localStorage.key(i);
-              items[key] = window.localStorage.getItem(key);
-            }
-            return items;
-          });
-          const authData = {
-            cookies,
-            localStorage,
-            savedAt: new Date().toISOString(),
-          };
-          fs.writeFileSync(AUTH_FILE, JSON.stringify(authData, null, 2));
-          await browser.close();
-          return true;
-        } catch {}
-      }
+    const tokenSource = await collectTokenPair(page, context, currentUrl);
+    const tokenData = saveAdminTokens(tokenSource);
+    if (tokenData) {
+      logTokenSaved(tokenData);
+      await saveCurrentAuthState(context, page);
+      await browser.close();
+      return true;
     }
 
     // dashboard에 정상 접근했지만 URL에 토큰이 없는 경우
@@ -536,65 +315,15 @@ async function autoRefreshToken() {
           await page.waitForURL("**makeuni2026.com/**", { timeout: 30000 });
           currentUrl = page.url();
 
-          // URL/로컬스토리지/쿠키에서 토큰 추출 재시도
-          const urlParams2 = new URLSearchParams(
-            currentUrl.split("?")[1] || "",
+          const retryTokenSource = await collectTokenPair(
+            page,
+            context,
+            currentUrl,
           );
-          let at2 = urlParams2.get("access_token");
-          let rt2 = urlParams2.get("refresh_token");
-          if (!at2 || !rt2) {
-            const ls2 = await page.evaluate(() => ({
-              accessToken: window.localStorage?.getItem("access_token") || null,
-              refreshToken:
-                window.localStorage?.getItem("refresh_token") || null,
-              expiresAt:
-                window.localStorage?.getItem("token_expires_at") || null,
-            }));
-            at2 = at2 || ls2.accessToken;
-            rt2 = rt2 || ls2.refreshToken;
-          }
-          if (!at2 || !rt2) {
-            const cookies2 = await context.cookies();
-            const cA = cookies2.find((c) => c.name === "access_token");
-            const cR = cookies2.find((c) => c.name === "refresh_token");
-            if (cA && cR) {
-              at2 = cA.value;
-              rt2 = cR.value;
-            }
-          }
-          if (at2 && rt2) {
-            let expIso;
-            try {
-              const p = JSON.parse(
-                Buffer.from(at2.split(".")[1], "base64").toString(),
-              );
-              expIso = new Date(p.exp * 1000).toISOString();
-            } catch {}
-            const tokenData = {
-              accessToken: at2,
-              refreshToken: rt2,
-              email: "unknown",
-              userName: "unknown",
-              isAdmin: false,
-              expiresAt:
-                expIso ||
-                new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString(),
-              userId: 0,
-              savedAt: new Date().toISOString(),
-            };
-            fs.writeFileSync(
-              ADMIN_TOKENS_FILE,
-              JSON.stringify(tokenData, null, 2),
-            );
-            const remaining = new Date(tokenData.expiresAt) - new Date();
-            const hours = Math.floor(remaining / (1000 * 60 * 60));
-            const minutes = Math.floor(
-              (remaining % (1000 * 60 * 60)) / (1000 * 60),
-            );
-            console.log(
-              `💾 토큰 갱신 완료 (남은 시간: ${hours}시간 ${minutes}분)`,
-            );
-            await context.storageState({ path: SESSION_FILE });
+          const retryTokenData = saveAdminTokens(retryTokenSource);
+          if (retryTokenData) {
+            logTokenSaved(retryTokenData);
+            await saveCurrentAuthState(context, page);
             await browser.close();
             return true;
           }

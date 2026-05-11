@@ -155,6 +155,36 @@
 - `AUTH_FILE_PATH=ab-auth.json node scripts/validate-auth.js`가 의도한 결과를 내는지 확인
 - Admin auth spec 단위 실행 또는 `--list`
 
+### Phase 4 진행 결과
+
+완료:
+
+- `scripts/auth-state.js`에 JWT payload/만료, Admin token 만료, URL/localStorage/cookie token pair 추출, admin token data 생성, cookie merge 공통 함수를 추가했다.
+- `scripts/ci-refresh-auth.js`와 `auto-refresh-token.js`가 refresh token 파싱과 token data 생성을 공통 유틸 기준으로 사용하도록 정리했다.
+- `auto-refresh-token.js`의 대시보드 접근에서 `refresh_token`을 URL query로 붙이는 흐름을 제거했다.
+- `tests/helpers/admin/auth-helper.ts`의 `getAuthenticatedUrl(includeToken=true)`는 더 이상 query token을 만들지 않고 경고만 남긴다.
+- `AUTH_FILE_PATH=ab-auth.json` 검증을 쉽게 실행할 수 있도록 `npm run auth:validate:ab`를 추가했다.
+- GitHub Actions에서 `ab-auth.json`에 쿠키가 있으면 AlbumBuddy 인증 토큰을 별도 검증하도록 추가했다.
+- Admin 인증 setup spec이 단순 도메인 접근을 넘어 SKU 권한 화면, Admin API 200 응답, 런타임 사용자 식별 신호를 확인하도록 강화했다.
+
+검증:
+
+- `npm run typecheck`: 통과
+- `npm run check:false-green`: 통과
+- `node scripts/check-false-green.js --strict-patterns`: 통과
+- `node -c scripts/auth-state.js`: 통과
+- `node -c scripts/validate-auth.js`: 통과
+- `node -c scripts/ci-refresh-auth.js`: 통과
+- `node -c auto-refresh-token.js`: 통과
+- GitHub Actions workflow YAML parse: 통과
+- 임시 storageState 기반 `AUTH_FILE_PATH=/tmp/... node scripts/validate-auth.js`: auth/ab 경로 모두 통과
+- `npx playwright test tests/admin_auth_pom.spec.ts --project=admin-setup --list`: 1개 테스트 확인
+- `npx playwright test --config=playwright.ci.config.js --project=admin-setup --list`: 1개 테스트 확인
+
+남은 리스크:
+
+- 이 worktree에는 민감 인증 파일을 두지 않았기 때문에 Admin 실제 UI smoke는 실행하지 않았다. 실제 실행 검증은 인증 state가 주입되는 로컬 기본 저장소, self-hosted runner, 또는 QA Hub 경로에서 확인해야 한다.
+
 ## Phase 5: 구조 리팩터링
 
 목표: 큰 파일의 탐색 비용을 낮춘다.

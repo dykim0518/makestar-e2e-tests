@@ -101,28 +101,10 @@ export function getAuthenticatedUrl(
   targetPath: string,
   includeToken: boolean = false,
 ): string {
-  if (!includeToken) return BASE_URL + targetPath;
-  try {
-    if (fs.existsSync(AUTH_FILE_PATH)) {
-      const authData: AuthData = JSON.parse(
-        fs.readFileSync(AUTH_FILE_PATH, "utf-8"),
-      );
-      const rtCookie = authData.cookies?.find(
-        (c) => c.name === "refresh_token",
-      );
-      if (rtCookie?.value) {
-        const separator = targetPath.indexOf("?") !== -1 ? "&" : "?";
-        return (
-          BASE_URL +
-          targetPath +
-          separator +
-          "refresh_token=" +
-          encodeURIComponent(rtCookie.value)
-        );
-      }
-    }
-  } catch {
-    // ignore
+  if (includeToken) {
+    console.warn(
+      "⚠️ getAuthenticatedUrl(includeToken=true)는 더 이상 refresh_token query를 붙이지 않습니다.",
+    );
   }
   return BASE_URL + targetPath;
 }

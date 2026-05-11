@@ -20,7 +20,8 @@
     "test:ci": "npm run typecheck && node scripts/check-false-green.js && npx playwright test --config=playwright.ci.config.js",
     "auth:refresh": "bash scripts/refresh-and-sync.sh",
     "auth:refresh:ci": "node scripts/ci-refresh-auth.js",
-    "auth:validate": "node scripts/validate-auth.js"
+    "auth:validate": "node scripts/validate-auth.js",
+    "auth:validate:ab": "AUTH_FILE_PATH=ab-auth.json node scripts/validate-auth.js"
   },
   "keywords": [],
   "author": "",

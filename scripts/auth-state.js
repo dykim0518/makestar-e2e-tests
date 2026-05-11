@@ -19,12 +19,16 @@ function domainMatches(cookieDomain, targetDomain) {
 }
 
 function getJwtExpMs(token) {
+  const payload = getJwtPayload(token);
+  return payload?.exp ? payload.exp * 1000 : null;
+}
+
+function getJwtPayload(token) {
   if (!token) return null;
   try {
-    const payload = JSON.parse(
+    return JSON.parse(
       Buffer.from(token.split(".")[1], "base64url").toString(),
     );
-    return payload.exp ? payload.exp * 1000 : null;
   } catch {
     return null;
   }
@@ -110,14 +114,148 @@ function getRemainingParts(expiresAtMs, now = Date.now()) {
   return { hours, minutes };
 }
 
+function getAdminTokenExpiryMs(filePath) {
+  try {
+    if (!fs.existsSync(filePath)) return null;
+    const tokens = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+    const expiresAt = new Date(tokens.expiresAt).getTime();
+    return Number.isFinite(expiresAt) ? expiresAt : null;
+  } catch {
+    return null;
+  }
+}
+
+function getTokenExpiryIso(token, fallbackMs = 3 * 60 * 60 * 1000) {
+  const jwtExp = getJwtExpMs(token);
+  if (jwtExp) return new Date(jwtExp).toISOString();
+  return new Date(Date.now() + fallbackMs).toISOString();
+}
+
+function extractTokenPairFromUrl(rawUrl) {
+  try {
+    const parsed = new URL(rawUrl);
+    return {
+      accessToken: parsed.searchParams.get("access_token"),
+      refreshToken: parsed.searchParams.get("refresh_token"),
+    };
+  } catch {
+    const query = String(rawUrl).split("?")[1] || "";
+    const params = new URLSearchParams(query);
+    return {
+      accessToken: params.get("access_token"),
+      refreshToken: params.get("refresh_token"),
+    };
+  }
+}
+
+function extractTokenPairFromLocalStorage(localStorage = {}) {
+  return {
+    accessToken: localStorage.access_token || null,
+    refreshToken: localStorage.refresh_token || null,
+    expiresAt: localStorage.token_expires_at || null,
+    userInfo: parseJson(localStorage.user_info),
+  };
+}
+
+function extractTokenPairFromCookies(cookies = []) {
+  const accessCookie = cookies.find((cookie) => cookie.name === "access_token");
+  const refreshCookie = cookies.find(
+    (cookie) => cookie.name === "refresh_token",
+  );
+  return {
+    accessToken: accessCookie?.value || null,
+    refreshToken: refreshCookie?.value || null,
+  };
+}
+
+function mergeTokenPairs(...pairs) {
+  return pairs.reduce(
+    (merged, pair) => ({
+      accessToken: merged.accessToken || pair?.accessToken || null,
+      refreshToken: merged.refreshToken || pair?.refreshToken || null,
+      expiresAt: merged.expiresAt || pair?.expiresAt || null,
+      userInfo: merged.userInfo || pair?.userInfo || null,
+    }),
+    {
+      accessToken: null,
+      refreshToken: null,
+      expiresAt: null,
+      userInfo: null,
+    },
+  );
+}
+
+function buildAdminTokenData({
+  accessToken,
+  refreshToken,
+  userInfo,
+  expiresAt,
+  fallbackExpiresInMs,
+}) {
+  const jwtPayload = getJwtPayload(accessToken) || {};
+  const jwtInfo = jwtPayload.info || {};
+  const fallbackInfo = userInfo || {};
+  return {
+    accessToken,
+    refreshToken,
+    email:
+      jwtInfo.email ||
+      jwtInfo.nickname ||
+      fallbackInfo.email ||
+      fallbackInfo.nickname ||
+      "unknown",
+    userName:
+      jwtInfo.userName ||
+      jwtInfo.name ||
+      fallbackInfo.userName ||
+      fallbackInfo.name ||
+      "unknown",
+    isAdmin: Boolean(
+      fallbackInfo.isAdmin || jwtInfo.isAdmin || jwtPayload.is_admin,
+    ),
+    expiresAt: expiresAt || getTokenExpiryIso(accessToken, fallbackExpiresInMs),
+    userId: jwtInfo.userId || fallbackInfo.userId || jwtPayload.user_id || 0,
+    savedAt: new Date().toISOString(),
+  };
+}
+
+function mergeCookies(existingCookies, newCookies) {
+  const map = new Map();
+  for (const cookie of existingCookies || []) {
+    map.set(`${cookie.name}@@${cookie.domain}`, cookie);
+  }
+  for (const cookie of newCookies || []) {
+    map.set(`${cookie.name}@@${cookie.domain}`, cookie);
+  }
+  return [...map.values()];
+}
+
+function parseJson(value) {
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
 module.exports = {
+  buildAdminTokenData,
   domainMatches,
+  extractTokenPairFromCookies,
+  extractTokenPairFromLocalStorage,
+  extractTokenPairFromUrl,
   findRefreshTokens,
   formatRemaining,
+  getAdminTokenExpiryMs,
   getCookieExpiresMs,
+  getJwtPayload,
   getLatestRefreshTokenExpiry,
   getRefreshTokenStatuses,
   getRemainingParts,
+  getTokenExpiryIso,
+  mergeCookies,
+  mergeTokenPairs,
   readStorageState,
   resolveTargetDomain,
 };
