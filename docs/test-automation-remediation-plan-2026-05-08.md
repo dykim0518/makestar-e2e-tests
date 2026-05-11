@@ -73,7 +73,7 @@
 - `tests/admin_poca_readonly_pom.spec.ts`
 - `tests/admin_poca_content_pom.spec.ts`
 - `tests/admin_poca_album_pom.spec.ts`
-- `tests/cmr_monitoring_pom.spec.ts`
+- `tests/cmr_*_pom.spec.ts`
 - `tests/ab_monitoring_pom.spec.ts`
 
 검증:
@@ -206,6 +206,26 @@
 주의:
 
 - Phase 5는 Phase 0~3 후 진행한다. 지금 바로 큰 분할부터 하면 회귀 원인 분석 비용이 커진다.
+
+### Phase 5 진행 결과
+
+완료:
+
+- `tests/cmr_monitoring_pom.spec.ts`를 목적별 CMR spec으로 분할했다.
+  - `tests/cmr_home_pages_pom.spec.ts`
+  - `tests/cmr_nav_pom.spec.ts`
+  - `tests/cmr_search_pom.spec.ts`
+  - `tests/cmr_mypage_auth_pom.spec.ts`
+  - `tests/cmr_cart_product_pom.spec.ts`
+  - `tests/cmr_artist_content_pom.spec.ts`
+  - `tests/cmr_performance_pom.spec.ts`
+- CMR 공통 설정은 `tests/helpers/cmr-monitoring-config.ts`로 분리했다.
+- 상품 옵션 가격 검증 helper는 `tests/helpers/cmr-product-option.ts`로 분리했다.
+- `cmr_*_pom.spec.ts` 파일명 규칙을 유지해 기존 `cmr-monitoring`/`cmr` project의 `testMatch`와 호환되게 했다.
+
+남은 리스크:
+
+- `tests/pages/makestar.page.ts`는 private helper 의존성이 많아 이번 PR에서 무리하게 분할하지 않았다. 다음 Phase 5 후속 PR에서 facade export를 유지한 채 `types`, `checkout/cart`, `shop`, `mypage` 순서로 나누는 것이 안전하다.
 
 ## Phase 6: 커버리지 보강
 

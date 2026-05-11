@@ -12,7 +12,7 @@ Makestar.com 서비스 E2E 모니터링 테스트 (Playwright + Page Object Mode
 ├── .github/workflows/
 │   └── playwright.yml            # GitHub Actions CI 워크플로우
 └── tests/
-    ├── cmr_monitoring_pom.spec.ts      # CMR 모니터링 (29개 TC)
+    ├── cmr_*_pom.spec.ts               # CMR 모니터링 (도메인별 분할)
     ├── ab_monitoring_pom.spec.ts       # AlbumBuddy 모니터링
     ├── admin_auth_pom.spec.ts          # Admin 인증 Setup
     ├── admin_product_pom.spec.ts       # Admin 상품 관리
@@ -130,7 +130,7 @@ Actions 탭 > Playwright Tests > Run workflow
 - headless 고정
 - chromium만 사용
 - 프로젝트별 실행:
-  - `cmr-monitoring`: `cmr_monitoring_pom.spec.ts`
+  - `cmr-monitoring`: `cmr_*_pom.spec.ts`
   - `albumbuddy-monitoring`: `ab_monitoring_pom.spec.ts`
 - `admin-setup` + `admin-pc`: Admin 시나리오
 - globalSetup 비활성 (CI에서 수동 로그인 불가)
