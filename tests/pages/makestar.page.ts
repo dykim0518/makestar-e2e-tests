@@ -2096,6 +2096,15 @@ export class MakestarPage extends BasePage {
 
   /** 장바구니 아이템 개수 반환 */
   async getCartItemCount(): Promise<number> {
+    const isCartEmpty = await this.page
+      .getByText(/Your cart is empty|cart is empty|장바구니.*비어/i)
+      .first()
+      .isVisible({ timeout: this.timeouts.short })
+      .catch(() => false);
+    if (isCartEmpty) {
+      return 0;
+    }
+
     const imageCount = await this.cartItem
       .evaluateAll((images) => {
         return images.filter((image) => {
@@ -2133,6 +2142,69 @@ export class MakestarPage extends BasePage {
       .catch(() => 0);
 
     return Math.max(0, visibleCheckboxCount - 1);
+  }
+
+  private async clickFirstCartRowDeleteButton(): Promise<boolean> {
+    const firstItem = this.cartItem.first();
+    if (
+      !(await firstItem
+        .isVisible({ timeout: this.timeouts.short })
+        .catch(() => false))
+    ) {
+      return false;
+    }
+
+    const itemRow = firstItem.locator(
+      'xpath=ancestor::*[.//input[@type="checkbox"] and .//input[@aria-label="Quantity"]][1]',
+    );
+    const rowButtons = itemRow.locator("button");
+    const buttonCount = await rowButtons.count().catch(() => 0);
+
+    for (let i = buttonCount - 1; i >= 0; i--) {
+      const button = rowButtons.nth(i);
+      const visible = await button
+        .isVisible({ timeout: this.timeouts.short })
+        .catch(() => false);
+      const enabled = await button.isEnabled().catch(() => false);
+      if (!visible || !enabled) continue;
+
+      await button.click();
+      return true;
+    }
+
+    return false;
+  }
+
+  private async confirmCartDeleteIfNeeded(): Promise<void> {
+    await this.page
+      .getByText(/Are you sure you want to delete|delete this item|삭제.*하시겠/i)
+      .first()
+      .waitFor({ state: "visible", timeout: this.timeouts.short })
+      .catch(() => {});
+
+    const confirmButtons = this.page
+      .getByRole("button", { name: /Delete|삭제|Remove|Confirm|확인/i })
+      .or(this.cartDeleteButton);
+    const confirmCount = await confirmButtons.count().catch(() => 0);
+
+    for (let i = confirmCount - 1; i >= 0; i--) {
+      const button = confirmButtons.nth(i);
+      const visible = await button
+        .isVisible({ timeout: this.timeouts.short })
+        .catch(() => false);
+      const enabled = await button.isEnabled().catch(() => false);
+      if (!visible || !enabled) continue;
+
+      await button.click().catch(() => {});
+      await this.waitForNetworkStable(3000).catch(() => {});
+      await this.waitForContentStable(500).catch(() => {});
+      await this.page
+        .getByText(/Your cart is empty|cart is empty|장바구니.*비어/i)
+        .first()
+        .waitFor({ state: "visible", timeout: this.timeouts.medium })
+        .catch(() => {});
+      break;
+    }
   }
 
   /** 장바구니 수량 입력값 반환 (EN/KO 다국어 지원) */
@@ -2258,41 +2330,28 @@ export class MakestarPage extends BasePage {
         break;
       }
 
-      const deleteButtonCount = await this.cartDeleteButton.count();
-      let deleteClicked = false;
-      for (let i = 0; i < deleteButtonCount; i++) {
-        const button = this.cartDeleteButton.nth(i);
-        const visible = await button
-          .isVisible({ timeout: this.timeouts.short })
-          .catch(() => false);
-        const enabled = await button.isEnabled().catch(() => false);
-        if (!visible || !enabled) continue;
+      let deleteClicked = await this.clickFirstCartRowDeleteButton();
 
-        await button.click();
-        deleteClicked = true;
-        await this.waitForNetworkStable(3000).catch(() => {});
-        await this.waitForContentStable(500).catch(() => {});
-        break;
-      }
-
-      if (deleteClicked) {
-        const confirmButtons = this.page
-          .getByRole("button", { name: /Delete|삭제|Remove|Confirm|확인/i })
-          .or(this.cartDeleteButton);
-        const confirmCount = await confirmButtons.count().catch(() => 0);
-        for (let i = confirmCount - 1; i >= 0; i--) {
-          const button = confirmButtons.nth(i);
+      if (!deleteClicked) {
+        const deleteButtonCount = await this.cartDeleteButton.count();
+        for (let i = 0; i < deleteButtonCount; i++) {
+          const button = this.cartDeleteButton.nth(i);
           const visible = await button
             .isVisible({ timeout: this.timeouts.short })
             .catch(() => false);
           const enabled = await button.isEnabled().catch(() => false);
           if (!visible || !enabled) continue;
 
-          await button.click().catch(() => {});
+          await button.click();
+          deleteClicked = true;
           await this.waitForNetworkStable(3000).catch(() => {});
           await this.waitForContentStable(500).catch(() => {});
           break;
         }
+      }
+
+      if (deleteClicked) {
+        await this.confirmCartDeleteIfNeeded();
       }
 
       await this.reload();
