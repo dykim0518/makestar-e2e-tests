@@ -35,9 +35,9 @@ function getJwtPayload(token) {
 }
 
 function getCookieExpiresMs(cookie) {
+  if (cookie?.expires && cookie.expires > 0) return cookie.expires * 1000;
   const jwtExp = getJwtExpMs(cookie?.value);
   if (jwtExp) return jwtExp;
-  if (cookie?.expires && cookie.expires > 0) return cookie.expires * 1000;
   return null;
 }
 

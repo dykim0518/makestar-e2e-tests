@@ -46,9 +46,9 @@ export function getJwtExpMs(token?: string): number | null {
 }
 
 export function getCookieExpiresMs(cookie?: StoredCookie): number | null {
+  if (cookie?.expires && cookie.expires > 0) return cookie.expires * 1000;
   const jwtExp = getJwtExpMs(cookie?.value);
   if (jwtExp) return jwtExp;
-  if (cookie?.expires && cookie.expires > 0) return cookie.expires * 1000;
   return null;
 }
 
