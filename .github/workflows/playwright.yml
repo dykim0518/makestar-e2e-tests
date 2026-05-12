@@ -133,6 +133,17 @@ jobs:
         run: |
           SUITE_INPUT="${{ github.event.inputs.suite || 'cmr' }}"
           PROJECT_INPUT="${{ github.event.inputs.project || '' }}"
+          ALBUMBUDDY_REQUESTED=0
+
+          if [[ "${SUITE_INPUT}" == "albumbuddy" || "${SUITE_INPUT}" == "all" || "${PROJECT_INPUT}" == *albumbuddy* ]]; then
+            ALBUMBUDDY_REQUESTED=1
+          fi
+
+          if [ "${ALBUMBUDDY_REQUESTED}" -ne 1 ]; then
+            echo "AB_AUTH_VALID=0" >> "$GITHUB_ENV"
+            echo "ℹ️ AlbumBuddy suite 미요청: ab-auth.json live 검증을 건너뜁니다."
+            exit 0
+          fi
 
           if node - <<'NODE'
           const { readStorageState } = require("./scripts/auth-state");
@@ -140,18 +151,22 @@ jobs:
           process.exit(state.ok && state.cookies.length > 0 ? 0 : 1);
           NODE
           then
-            if AUTH_FILE_PATH=ab-auth.json AUTH_TARGET_DOMAIN=.makestar.com node scripts/validate-auth.js; then
+            if AUTH_FILE_PATH=ab-auth.json AUTH_TARGET_DOMAIN=.makestar.com AUTH_PAGE_CHECK=true node scripts/validate-auth.js; then
               echo "AB_AUTH_VALID=1" >> "$GITHUB_ENV"
             else
               echo "AB_AUTH_VALID=0" >> "$GITHUB_ENV"
-              if [[ "${SUITE_INPUT}" == "albumbuddy" || "${SUITE_INPUT}" == "all" || "${PROJECT_INPUT}" == *albumbuddy* ]]; then
+              if [[ "${SUITE_INPUT}" == "albumbuddy" || "${PROJECT_INPUT}" == *albumbuddy* ]]; then
                 exit 1
               fi
-              echo "::warning::ab-auth.json refresh_token이 만료되어 AlbumBuddy suite는 제외됩니다."
+              echo "::warning::ab-auth.json live 검증에 실패하여 AlbumBuddy suite는 제외됩니다."
             fi
           else
             echo "AB_AUTH_VALID=0" >> "$GITHUB_ENV"
-            echo "ℹ️ ab-auth.json이 비어 있어 AlbumBuddy 인증 검증을 건너뜁니다. AlbumBuddy suite 요청 시 실행 단계에서 차단됩니다."
+            if [[ "${SUITE_INPUT}" == "albumbuddy" || "${PROJECT_INPUT}" == *albumbuddy* ]]; then
+              echo "::error::AB_AUTH_JSON secret이 없거나 비어 있어 AlbumBuddy suite를 실행할 수 없습니다."
+              exit 1
+            fi
+            echo "::warning::ab-auth.json이 비어 있어 AlbumBuddy suite는 제외됩니다."
           fi
         env:
           AUTH_WARN_HOURS: "2"

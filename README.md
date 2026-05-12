@@ -116,7 +116,7 @@ npm run auth:validate:ab
 
 - `auth:validate`: `auth.json`의 Makestar/Admin `refresh_token` 유효성 확인
 - `auth:validate:page`: `refresh_token` + auth API + 실제 `/my-page` 브라우저 진입 확인
-- `auth:validate:ab`: `ab-auth.json`의 AlbumBuddy `refresh_token` 유효성 확인
+- `auth:validate:ab`: `ab-auth.json`의 Makestar `refresh_token`, auth API, 실제 `/my-page` 브라우저 진입 확인
 
 ### 수동 실행
 
@@ -125,8 +125,9 @@ Actions 탭 > Playwright Tests > Run workflow
 - `suite`: `cmr | cmr-payment | albumbuddy | admin | all`
   - `cmr`: prod CMR 모니터링 전용, 결제 spec 제외
   - `cmr-payment`: STG 결제 회귀 전용 (`environment=stg` 필수)
+  - `albumbuddy`: AlbumBuddy 모니터링 전용 (`AB_AUTH_JSON` 필수)
   - `admin`: GitHub Hosted Runner에서는 실행 불가 (사내 VPN/IP allowlist 필요)
-  - `all`: `cmr + albumbuddy` 실행, `admin`은 자동 제외
+  - `all`: `cmr + albumbuddy` 실행, `admin`은 자동 제외. `AB_AUTH_JSON`이 없거나 live 검증에 실패하면 AlbumBuddy는 제외
 - `project`: Playwright 프로젝트 직접 지정(선택)
 - `spec`: 특정 스펙 파일 경로(선택)
 - `grep`: 특정 테스트 패턴 (예: `TC-HOME`, `TC-SEARCH`)
