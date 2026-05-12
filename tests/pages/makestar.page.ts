@@ -2184,13 +2184,24 @@ export class MakestarPage extends BasePage {
     }
 
     const itemRow = firstItem.locator(
-      'xpath=ancestor::*[.//input[@type="checkbox"] and .//input[@aria-label="Quantity"]][1]',
+      'xpath=ancestor::*[.//input[@type="checkbox"] and .//button and (.//input[@aria-label="Quantity"] or .//input[contains(@class, "number-input")] or .//input[@role="spinbutton"] or .//input[@type="text"])][1]',
     );
-    const rowButtons = itemRow.locator("button");
-    const buttonCount = await rowButtons.count().catch(() => 0);
+    const deleteButtons = itemRow.locator(
+      [
+        'button:has(use[href*="cancel" i])',
+        'button:has(use[href*="delete" i])',
+        'button:has(use[href*="remove" i])',
+        'button:has(use[href*="trash" i])',
+        'button[aria-label*="delete" i]',
+        'button[aria-label*="remove" i]',
+        'button[title*="delete" i]',
+        'button[title*="remove" i]',
+      ].join(", "),
+    );
+    const buttonCount = await deleteButtons.count().catch(() => 0);
 
     for (let i = buttonCount - 1; i >= 0; i--) {
-      const button = rowButtons.nth(i);
+      const button = deleteButtons.nth(i);
       const visible = await button
         .isVisible({ timeout: this.timeouts.short })
         .catch(() => false);
@@ -2205,15 +2216,21 @@ export class MakestarPage extends BasePage {
   }
 
   private async confirmCartDeleteIfNeeded(): Promise<void> {
-    await this.page
+    const hasConfirmDialog = await this.page
       .getByText(/Are you sure you want to delete|delete this item|삭제.*하시겠/i)
       .first()
       .waitFor({ state: "visible", timeout: this.timeouts.short })
-      .catch(() => {});
+      .then(() => true)
+      .catch(() => false);
+    if (!hasConfirmDialog) {
+      return;
+    }
 
     const confirmButtons = this.page
-      .getByRole("button", { name: /Delete|삭제|Remove|Confirm|확인/i })
-      .or(this.cartDeleteButton);
+      .getByRole("button", {
+        name: /^(Delete|삭제|Remove|Confirm|확인)$/i,
+      })
+      .or(this.page.locator("button.background-negative"));
     const confirmCount = await confirmButtons.count().catch(() => 0);
 
     for (let i = confirmCount - 1; i >= 0; i--) {
