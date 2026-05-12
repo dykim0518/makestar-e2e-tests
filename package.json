@@ -22,6 +22,7 @@
     "auth:refresh": "bash scripts/refresh-and-sync.sh",
     "auth:refresh:ci": "node scripts/ci-refresh-auth.js",
     "auth:validate": "node scripts/validate-auth.js",
+    "auth:validate:page": "AUTH_PAGE_CHECK=true node scripts/validate-auth.js",
     "auth:validate:ab": "AUTH_FILE_PATH=ab-auth.json node scripts/validate-auth.js"
   },
   "keywords": [],

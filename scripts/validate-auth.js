@@ -5,6 +5,7 @@
  *   - refresh_token 쿠키 존재 여부
  *   - refresh_token 만료 시간 (JWT exp 또는 cookie expires)
  *   - 실제 auth API 응답(profile/me) 기준 세션 유효성
+ *   - AUTH_PAGE_CHECK=true일 때 실제 /my-page 브라우저 진입 가능 여부
  *
  * 종료 코드:
  *   0 = 유효 (잔여 > WARN_THRESHOLD)
@@ -16,6 +17,7 @@
  *   AUTH_FILE_PATH   — auth.json 경로 (기본: ./auth.json)
  *   AUTH_TARGET_DOMAIN — 검증할 refresh_token 도메인 직접 지정
  *   AUTH_LIVE_CHECK=false — live auth API 검증 비활성화
+ *   AUTH_PAGE_CHECK=true — Playwright로 /my-page 진입 검증 활성화
  *   ENVIRONMENT_INPUT / MAKESTAR_BASE_URL — stg/prod 환경 판별
  */
 
@@ -29,7 +31,7 @@ const {
   readStorageState,
   resolveTargetDomain,
 } = require("./auth-state");
-const { checkLiveAuth } = require("./live-auth-check");
+const { checkLiveAuth, checkLivePageAuth } = require("./live-auth-check");
 
 const AUTH_FILE =
   process.env.AUTH_FILE_PATH || path.join(process.cwd(), "auth.json");
@@ -128,6 +130,51 @@ async function main() {
     process.exit(1);
   }
 
+  const shouldCheckLivePage = process.env.AUTH_PAGE_CHECK === "true";
+  let liveAuthFailed = false;
+  const liveAuth = await checkLiveAuth(authState.state);
+  if (liveAuth.skipped) {
+    console.log(`\nℹ️ live auth 검증 건너뜀 (${liveAuth.message})`);
+  } else if (!liveAuth.ok) {
+    console.log(liveAuth.message);
+    liveAuthFailed = true;
+
+    if (!shouldCheckLivePage) {
+      console.log("");
+      console.log(
+        `::error::${AUTH_FILE_LABEL} refresh_token 만료 시간은 유효하지만 실제 auth API 검증에 실패했습니다.`,
+      );
+      outputRefreshGuide("live auth API 검증 실패");
+      process.exit(1);
+    }
+
+    console.log(
+      "::warning::live auth API 검증 실패. AUTH_PAGE_CHECK=true이므로 /my-page 브라우저 진입 결과로 최종 판정합니다.",
+    );
+  } else {
+    console.log(`✅ live auth 검증 통과 (${liveAuth.status})`);
+  }
+
+  const livePageAuth = await checkLivePageAuth(authState.state);
+  if (livePageAuth.skipped) {
+    console.log(`ℹ️ live page auth 검증 건너뜀 (${livePageAuth.message})`);
+  } else if (!livePageAuth.ok) {
+    console.log("");
+    console.log(
+      `::error::${AUTH_FILE_LABEL} token은 API 기준으로 유효하지만 실제 /my-page 진입 검증에 실패했습니다.`,
+    );
+    console.log(livePageAuth.message);
+    outputRefreshGuide("live /my-page 진입 검증 실패");
+    process.exit(1);
+  } else {
+    console.log(`✅ live page auth 검증 통과 (${livePageAuth.status})`);
+    if (liveAuthFailed) {
+      console.log(
+        "ℹ️ auth API 검증은 실패했지만 실제 /my-page 진입이 성공하여 인증 baseline을 통과로 처리합니다.",
+      );
+    }
+  }
+
   if (minRemaining < WARN_THRESHOLD_MS) {
     console.log("");
     console.log(
@@ -136,21 +183,6 @@ async function main() {
     outputRefreshGuide("만료 임박");
     // 경고만 하고 테스트는 계속 진행
     process.exit(0);
-  }
-
-  const liveAuth = await checkLiveAuth(authState.state);
-  if (liveAuth.skipped) {
-    console.log(`\nℹ️ live auth 검증 건너뜀 (${liveAuth.message})`);
-  } else if (!liveAuth.ok) {
-    console.log("");
-    console.log(
-      `::error::${AUTH_FILE_LABEL} refresh_token 만료 시간은 유효하지만 실제 auth API 검증에 실패했습니다.`,
-    );
-    console.log(liveAuth.message);
-    outputRefreshGuide("live auth API 검증 실패");
-    process.exit(1);
-  } else {
-    console.log(`✅ live auth 검증 통과 (${liveAuth.status})`);
   }
 
   console.log(`\n✅ 토큰 유효 (최소 잔여: ${formatRemaining(minRemaining)})`);

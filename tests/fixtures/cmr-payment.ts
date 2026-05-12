@@ -3,10 +3,7 @@
  *
  * 출처:
  *  - Toss 테스트 카드: Makestar Notion "결제 테스트" 문서
- *  - 상품 ID: scripts/inspect-cmr-payment-scan.ts 로 확보 (2026-04-20)
- *
- * 상품 ID 갱신 절차:
- *  AUTH_FILE=./auth.json npx tsx scripts/inspect-cmr-payment-scan.ts
+ *  - 상품 ID: Stage 결제 테스트 전용 fixture로 수동 검증 후 관리
  */
 
 export type TestCard = {
