@@ -23,7 +23,7 @@
     "auth:refresh:ci": "node scripts/ci-refresh-auth.js",
     "auth:validate": "node scripts/validate-auth.js",
     "auth:validate:page": "AUTH_PAGE_CHECK=true node scripts/validate-auth.js",
-    "auth:validate:ab": "AUTH_FILE_PATH=ab-auth.json node scripts/validate-auth.js"
+    "auth:validate:ab": "AUTH_FILE_PATH=ab-auth.json AUTH_TARGET_DOMAIN=.makestar.com AUTH_PAGE_CHECK=true node scripts/validate-auth.js"
   },
   "keywords": [],
   "author": "",

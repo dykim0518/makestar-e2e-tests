@@ -1450,6 +1450,8 @@ export class MakestarPage extends BasePage {
 
   /** 카테고리 탭 표시 확인 */
   async verifyCategoryTabs(): Promise<boolean> {
+    await this.waitForShopProductsLoaded().catch(() => {});
+
     const categoryTab = this.page
       .locator("text=/전체|앨범|MD|DVD|추천/i")
       .first();
@@ -1460,6 +1462,7 @@ export class MakestarPage extends BasePage {
 
   /** 상품 카드 개수 반환 */
   async getProductCardCount(): Promise<number> {
+    await this.waitForShopProductsLoaded().catch(() => {});
     return await this.shopProductCard.count();
   }
 
@@ -2520,6 +2523,10 @@ export class MakestarPage extends BasePage {
   /** 펀딩 프로젝트 카드 개수 반환 */
   async getFundingCardCount(): Promise<number> {
     const cards = this.page.locator('a[href*="/product/"] img');
+    await cards
+      .first()
+      .waitFor({ state: "visible", timeout: this.timeouts.long })
+      .catch(() => {});
     return await cards.count();
   }
 
