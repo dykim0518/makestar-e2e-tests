@@ -4,6 +4,7 @@
  * 검증 대상:
  *   - refresh_token 쿠키 존재 여부
  *   - refresh_token 만료 시간 (JWT exp 또는 cookie expires)
+ *   - 실제 auth API 응답(profile/me) 기준 세션 유효성
  *
  * 종료 코드:
  *   0 = 유효 (잔여 > WARN_THRESHOLD)
@@ -14,6 +15,7 @@
  *   AUTH_WARN_HOURS  — 경고 임계치 (기본: 6시간)
  *   AUTH_FILE_PATH   — auth.json 경로 (기본: ./auth.json)
  *   AUTH_TARGET_DOMAIN — 검증할 refresh_token 도메인 직접 지정
+ *   AUTH_LIVE_CHECK=false — live auth API 검증 비활성화
  *   ENVIRONMENT_INPUT / MAKESTAR_BASE_URL — stg/prod 환경 판별
  */
 
@@ -27,6 +29,7 @@ const {
   readStorageState,
   resolveTargetDomain,
 } = require("./auth-state");
+const { checkLiveAuth } = require("./live-auth-check");
 
 const AUTH_FILE =
   process.env.AUTH_FILE_PATH || path.join(process.cwd(), "auth.json");
@@ -35,7 +38,7 @@ const WARN_HOURS = Number(process.env.AUTH_WARN_HOURS) || 6;
 const WARN_THRESHOLD_MS = WARN_HOURS * 60 * 60 * 1000;
 const TARGET_DOMAIN = resolveTargetDomain();
 
-function main() {
+async function main() {
   const authState = readStorageState(AUTH_FILE);
   if (!authState.ok) {
     const message =
@@ -135,6 +138,21 @@ function main() {
     process.exit(0);
   }
 
+  const liveAuth = await checkLiveAuth(authState.state);
+  if (liveAuth.skipped) {
+    console.log(`\nℹ️ live auth 검증 건너뜀 (${liveAuth.message})`);
+  } else if (!liveAuth.ok) {
+    console.log("");
+    console.log(
+      `::error::${AUTH_FILE_LABEL} refresh_token 만료 시간은 유효하지만 실제 auth API 검증에 실패했습니다.`,
+    );
+    console.log(liveAuth.message);
+    outputRefreshGuide("live auth API 검증 실패");
+    process.exit(1);
+  } else {
+    console.log(`✅ live auth 검증 통과 (${liveAuth.status})`);
+  }
+
   console.log(`\n✅ 토큰 유효 (최소 잔여: ${formatRemaining(minRemaining)})`);
 }
 
@@ -185,4 +203,11 @@ function getRefreshCommand() {
   return "npm run auth:refresh";
 }
 
-main();
+main().catch((error) => {
+  console.log(
+    `::error::auth 검증 중 예외 발생: ${
+      error instanceof Error ? error.message : String(error)
+    }`,
+  );
+  process.exit(1);
+});
