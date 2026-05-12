@@ -483,28 +483,57 @@ export class MakestarPage extends BasePage {
 
   /** Shop 페이지로 이동 (GNB 링크 클릭) */
   async navigateToShop(): Promise<void> {
-    await this.prepareForGlobalNavigation();
-    try {
-      await this.shopButton.click({ timeout: 5000 });
-    } catch {
-      await this.prepareForGlobalNavigation();
-      await this.shopButton.click({ timeout: 5000 });
-    }
-    await this.waitForLoadState("domcontentloaded");
-    await this.handleModal();
+    await this.clickGlobalNavigationLink(
+      this.shopButton,
+      /\/shop(?:[/?#]|$)/,
+      "Shop",
+    );
   }
 
   /** Funding 페이지로 이동 (GNB 링크 클릭) */
   async navigateToFunding(): Promise<void> {
-    await this.prepareForGlobalNavigation();
-    try {
-      await this.fundingButton.click({ timeout: 5000 });
-    } catch {
-      await this.prepareForGlobalNavigation();
-      await this.fundingButton.click({ timeout: 5000 });
+    await this.clickGlobalNavigationLink(
+      this.fundingButton,
+      /\/funding(?:[/?#]|$)/,
+      "Funding",
+    );
+  }
+
+  private async clickGlobalNavigationLink(
+    link: Locator,
+    expectedUrl: RegExp,
+    label: string,
+  ): Promise<void> {
+    let lastUrl = this.currentUrl;
+    let lastError: unknown = null;
+
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        await this.prepareForGlobalNavigation();
+        await expect(link, `${label} GNB 링크가 표시되어야 합니다`).toBeVisible({
+          timeout: this.timeouts.medium,
+        });
+
+        await Promise.all([
+          this.page
+            .waitForURL(expectedUrl, { timeout: this.timeouts.long })
+            .catch(() => null),
+          link.click({ timeout: this.timeouts.medium }),
+        ]);
+        await this.waitForLoadState("domcontentloaded");
+        await this.handleModal();
+
+        lastUrl = this.currentUrl;
+        if (expectedUrl.test(lastUrl)) return;
+      } catch (error) {
+        lastError = error;
+        lastUrl = this.currentUrl;
+      }
     }
-    await this.waitForLoadState("domcontentloaded");
-    await this.handleModal();
+
+    const reason =
+      lastError instanceof Error ? `, 마지막 오류: ${lastError.message}` : "";
+    throw new Error(`${label} GNB 이동 실패: 현재 URL ${lastUrl}${reason}`);
   }
 
   // --------------------------------------------------------------------------

@@ -23,11 +23,13 @@ const { chromium } = require("@playwright/test");
 const fs = require("fs");
 const path = require("path");
 const {
+  extractTokenPairFromUrl,
   getLatestRefreshTokenExpiry,
   mergeCookies,
   readStorageState,
   resolveTargetDomain,
 } = require("./auth-state");
+const { checkLiveAuth } = require("./live-auth-check");
 
 const AUTH_FILE =
   process.env.AUTH_FILE_PATH || path.join(process.cwd(), "auth.json");
@@ -126,6 +128,17 @@ function needsRefresh(cookies) {
   return false;
 }
 
+function mergeOrigins(existingOrigins = [], newOrigins = []) {
+  const map = new Map();
+  for (const origin of existingOrigins) {
+    if (origin?.origin) map.set(origin.origin, origin);
+  }
+  for (const origin of newOrigins) {
+    if (origin?.origin) map.set(origin.origin, origin);
+  }
+  return [...map.values()];
+}
+
 function isAuthPageUrl(url) {
   return LOGIN_PATTERNS[0].test(url);
 }
@@ -151,7 +164,12 @@ async function refreshAuth() {
 
   // 2. 갱신 필요 여부 확인
   if (!needsRefresh(cookies)) {
-    return true; // 갱신 불필요 = 성공
+    const liveAuth = await checkLiveAuth(auth);
+    if (liveAuth.skipped || liveAuth.ok) {
+      if (liveAuth.ok) log(`live auth 검증 통과 (${liveAuth.status})`);
+      return true; // 갱신 불필요 = 성공
+    }
+    log(`${liveAuth.message} — refresh_token 재발급 시도`);
   }
 
   // 3. Google 세션 쿠키 존재 확인
@@ -200,8 +218,7 @@ async function refreshAuth() {
     // 6. 이미 로그인된 상태 (my-page로 바로 리다이렉트)
     if (isSuccessUrl(currentUrl)) {
       log("이미 로그인 상태 — 세션 유효");
-      const newCookies = await context.cookies();
-      await saveRefreshedAuth(auth, newCookies);
+      await saveRefreshedAuth(auth, context, page, currentUrl);
       await browser.close();
       return true;
     }
@@ -245,8 +262,7 @@ async function refreshAuth() {
         currentUrl = page.url();
         if (isSuccessUrl(currentUrl)) {
           log("자동 리다이렉트로 로그인 성공");
-          const newCookies = await context.cookies();
-          await saveRefreshedAuth(auth, newCookies);
+          await saveRefreshedAuth(auth, context, page, currentUrl);
           await browser.close();
           return true;
         }
@@ -281,8 +297,7 @@ async function refreshAuth() {
     // 9. 최종 확인
     if (isSuccessUrl(currentUrl)) {
       log("로그인 성공!");
-      const newCookies = await context.cookies();
-      await saveRefreshedAuth(auth, newCookies);
+      await saveRefreshedAuth(auth, context, page, currentUrl);
       await browser.close();
       return true;
     }
@@ -295,8 +310,7 @@ async function refreshAuth() {
 
     if (isSuccessUrl(currentUrl)) {
       log("지연 리다이렉트로 로그인 성공");
-      const newCookies = await context.cookies();
-      await saveRefreshedAuth(auth, newCookies);
+      await saveRefreshedAuth(auth, context, page, currentUrl);
       await browser.close();
       return true;
     }
@@ -311,11 +325,28 @@ async function refreshAuth() {
   }
 }
 
-async function saveRefreshedAuth(originalAuth, newCookies) {
-  const merged = mergeCookies(originalAuth.cookies || [], newCookies);
+async function saveRefreshedAuth(originalAuth, context, page, currentUrl) {
+  const tokens = extractTokenPairFromUrl(currentUrl || page.url());
+  if (tokens.accessToken || tokens.refreshToken) {
+    await page.evaluate(({ accessToken, refreshToken }) => {
+      if (accessToken) window.localStorage.setItem("access_token", accessToken);
+      if (refreshToken) {
+        window.localStorage.setItem("refresh_token", refreshToken);
+      }
+    }, tokens);
+  }
+
+  const storageState = await context.storageState();
+  const merged = mergeCookies(
+    originalAuth.cookies || [],
+    storageState.cookies || [],
+  );
   const updated = {
     cookies: merged,
-    origins: originalAuth.origins || [],
+    origins: mergeOrigins(
+      originalAuth.origins || [],
+      storageState.origins || [],
+    ),
   };
 
   fs.writeFileSync(AUTH_FILE, JSON.stringify(updated, null, 2));
