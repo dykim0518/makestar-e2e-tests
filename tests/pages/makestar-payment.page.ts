@@ -7,7 +7,7 @@
  *  - Toss Payment Widget iframe 접근 및 결제수단 선택 (Phase 1.5+)
  *  - make_order 네트워크 응답 캡처
  *
- * 조사 결과 기반: scripts/inspect-cmr-payment{-deep,-card}.ts (2026-04-20)
+ * 조사 결과 기반: Stage 결제 테스트 전용 fixture와 Toss sandbox 플로우
  */
 
 import { Page, Frame, Locator, Response } from "@playwright/test";

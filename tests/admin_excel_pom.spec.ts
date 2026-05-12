@@ -196,9 +196,14 @@ test.describe("Admin 엑셀 다운로드 검증", () => {
       await page.goto(t.url, { waitUntil: "domcontentloaded" });
       // STG는 비동기 export(job 생성→polling→GCS presigned) 방식이라
       // 표 데이터 fetch 진행 중 클릭하면 job 큐 적체로 다운로드 이벤트가 지연됨.
-      await page
-        .waitForLoadState("networkidle", { timeout: 15_000 })
-        .catch(() => {});
+      try {
+        await page.waitForLoadState("networkidle", { timeout: 15_000 });
+      } catch (error) {
+        test.info().annotations.push({
+          type: "networkidle-timeout",
+          description: error instanceof Error ? error.message : String(error),
+        });
+      }
 
       if (t.preAction) await runPreAction(page, t.preAction);
 

@@ -478,17 +478,13 @@ export function applyAdminTestConfig(testName?: string) {
   const isCi = process.env.CI === "true";
   const tokenValid = isCi ? true : isTokenValidSync();
 
-  if (!tokenValid && !isCi) {
-    test("토큰 유효성 검증", () => {
-      expect(
-        tokenValid,
-        "⚠️ 토큰이 만료되었습니다! npx playwright test --project=admin-setup --project=admin-pc",
-      ).toBe(true);
-    });
-  }
-
   test.beforeAll(async () => {
     resetAuthCache();
+    expect(
+      tokenValid || isCi,
+      "⚠️ 토큰이 만료되었습니다! npx playwright test --project=admin-setup --project=admin-pc",
+    ).toBe(true);
+
     if (tokenValid && !isCi) {
       const { hours, minutes } = getTokenRemaining();
       const label = testName ? `Admin ${testName}` : "Admin";

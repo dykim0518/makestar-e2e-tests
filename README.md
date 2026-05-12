@@ -110,10 +110,12 @@ Settings > Secrets and variables > Actions > New repository secret
 
 ```bash
 npm run auth:validate
+npm run auth:validate:page
 npm run auth:validate:ab
 ```
 
 - `auth:validate`: `auth.json`의 Makestar/Admin `refresh_token` 유효성 확인
+- `auth:validate:page`: `refresh_token` + auth API + 실제 `/my-page` 브라우저 진입 확인
 - `auth:validate:ab`: `ab-auth.json`의 AlbumBuddy `refresh_token` 유효성 확인
 
 ### 수동 실행

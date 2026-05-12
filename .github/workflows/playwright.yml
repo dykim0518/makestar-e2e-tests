@@ -125,6 +125,7 @@ jobs:
         run: node scripts/validate-auth.js
         env:
           AUTH_WARN_HOURS: "2"
+          AUTH_PAGE_CHECK: "true"
           ENVIRONMENT_INPUT: ${{ github.event.inputs.environment || 'prod' }}
 
       - name: Validate AlbumBuddy auth tokens

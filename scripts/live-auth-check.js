@@ -86,14 +86,6 @@ async function checkLiveAuth(authInput, options = {}) {
     getLiveAuthConfig(env);
   const state = getStorageState(authInput);
   const accessToken = getAccessTokenFromStorage(authInput, appOrigin);
-  if (!accessToken) {
-    return {
-      ok: false,
-      status: 0,
-      message: `${appOrigin} storageState에 access_token이 없습니다.`,
-    };
-  }
-
   const cookieHeader = buildCookieHeader(state.cookies, authHost, targetDomain);
   if (!cookieHeader) {
     return {
@@ -110,15 +102,17 @@ async function checkLiveAuth(authInput, options = {}) {
   );
 
   try {
+    const headers = {
+      accept: "application/json",
+      cookie: cookieHeader,
+      origin: appOrigin,
+      referer: `${appOrigin}/`,
+    };
+    if (accessToken) headers.authorization = `Bearer ${accessToken}`;
+
     const response = await fetch(profileUrl, {
       method: "GET",
-      headers: {
-        accept: "application/json",
-        authorization: `Bearer ${accessToken}`,
-        cookie: cookieHeader,
-        origin: appOrigin,
-        referer: `${appOrigin}/`,
-      },
+      headers,
       signal: controller.signal,
     });
 
@@ -136,6 +130,7 @@ async function checkLiveAuth(authInput, options = {}) {
       status: response.status,
       message: [
         `live auth 실패: ${profileUrl} -> HTTP ${response.status}`,
+        accessToken ? "" : " (access_token 없이 cookie-only 요청)",
         body ? ` (${body.slice(0, 200)})` : "",
       ].join(""),
     };
@@ -152,8 +147,122 @@ async function checkLiveAuth(authInput, options = {}) {
   }
 }
 
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isLoginUrl(url, authHost) {
+  return url.hostname === authHost || url.href.includes("/login");
+}
+
+async function waitForUrlToSettle(page, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  let previousUrl = page.url();
+  let stableCount = 0;
+
+  while (Date.now() < deadline) {
+    await wait(250);
+    const currentUrl = page.url();
+    if (currentUrl === previousUrl) {
+      stableCount += 1;
+      if (stableCount >= 4) return currentUrl;
+    } else {
+      previousUrl = currentUrl;
+      stableCount = 0;
+    }
+  }
+
+  return page.url();
+}
+
+async function checkLivePageAuth(authInput, options = {}) {
+  const env = options.env || process.env;
+  if (env.AUTH_PAGE_CHECK !== "true") {
+    return {
+      ok: true,
+      skipped: true,
+      message: "live page auth check disabled",
+    };
+  }
+
+  let chromium;
+  try {
+    chromium = require("@playwright/test").chromium;
+  } catch (error) {
+    return {
+      ok: false,
+      status: 0,
+      message: `Playwright 브라우저 로드 실패: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    };
+  }
+
+  const { authHost, appOrigin } = getLiveAuthConfig(env);
+  const targetUrl = `${appOrigin}/my-page`;
+  const timeoutMs = Number(env.AUTH_PAGE_CHECK_TIMEOUT_MS) || 30000;
+  const settleMs = Number(env.AUTH_PAGE_CHECK_SETTLE_MS) || 5000;
+  const state = getStorageState(authInput);
+  let browser;
+
+  try {
+    browser = await chromium.launch({ headless: true });
+    const context = await browser.newContext({
+      storageState: state,
+      viewport: { width: 1280, height: 720 },
+    });
+    const page = await context.newPage();
+    const response = await page.goto(targetUrl, {
+      waitUntil: "domcontentloaded",
+      timeout: timeoutMs,
+    });
+    const finalUrl = new URL(await waitForUrlToSettle(page, settleMs));
+
+    if (isLoginUrl(finalUrl, authHost)) {
+      return {
+        ok: false,
+        status: response?.status() || 0,
+        message: `/my-page 진입이 로그인 페이지로 리다이렉트되었습니다: ${finalUrl.href}`,
+      };
+    }
+
+    if (finalUrl.origin !== appOrigin) {
+      return {
+        ok: false,
+        status: response?.status() || 0,
+        message: `/my-page 진입 후 예상 origin이 아닙니다: ${finalUrl.href}`,
+      };
+    }
+
+    if (!finalUrl.pathname.startsWith("/my-page")) {
+      return {
+        ok: false,
+        status: response?.status() || 0,
+        message: `/my-page 진입 후 인증 UI가 아닌 경로로 이동했습니다: ${finalUrl.href}`,
+      };
+    }
+
+    return {
+      ok: true,
+      status: response?.status() || 200,
+      message: `live page auth OK (${finalUrl.href})`,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: 0,
+      message: `live page auth 요청 실패: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    };
+  } finally {
+    if (browser) await browser.close();
+  }
+}
+
 module.exports = {
   buildCookieHeader,
   checkLiveAuth,
+  checkLivePageAuth,
   getLiveAuthConfig,
 };
