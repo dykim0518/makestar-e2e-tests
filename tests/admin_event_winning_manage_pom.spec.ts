@@ -351,17 +351,19 @@ test.describe("Admin 이벤트 당첨 관리 @feature:admin_event_winning_manage
     test("EWN-PAGIN-01: 다음 페이지 이동 → 첫 행 변경", async () => {
       const metrics = await pageObj.getResultMetrics();
       if (metrics.noResultState) {
-        expect(metrics.hasNoResultMessage, "❌ 목록 데이터 없음 메시지가 없습니다.").toBe(
-          true,
-        );
+        expect(
+          metrics.hasNoResultMessage,
+          "❌ 목록 데이터 없음 메시지가 없습니다.",
+        ).toBe(true);
         return;
       }
 
       const canGoNext = await pageObj.canGoToNextPage();
       if (!canGoNext) {
-        expect(metrics.rowCount, "❌ 단일 페이지 행 수가 기본 페이지 크기를 초과합니다.").toBeLessThanOrEqual(
-          10,
-        );
+        expect(
+          metrics.rowCount,
+          "❌ 단일 페이지 행 수가 기본 페이지 크기를 초과합니다.",
+        ).toBeLessThanOrEqual(10);
         return;
       }
 
@@ -382,17 +384,19 @@ test.describe("Admin 이벤트 당첨 관리 @feature:admin_event_winning_manage
     test("EWN-PAGIN-02: 이전 페이지 복귀", async () => {
       const metrics = await pageObj.getResultMetrics();
       if (metrics.noResultState) {
-        expect(metrics.hasNoResultMessage, "❌ 목록 데이터 없음 메시지가 없습니다.").toBe(
-          true,
-        );
+        expect(
+          metrics.hasNoResultMessage,
+          "❌ 목록 데이터 없음 메시지가 없습니다.",
+        ).toBe(true);
         return;
       }
 
       const canGoNext = await pageObj.canGoToNextPage();
       if (!canGoNext) {
-        expect(metrics.rowCount, "❌ 단일 페이지 행 수가 기본 페이지 크기를 초과합니다.").toBeLessThanOrEqual(
-          10,
-        );
+        expect(
+          metrics.rowCount,
+          "❌ 단일 페이지 행 수가 기본 페이지 크기를 초과합니다.",
+        ).toBeLessThanOrEqual(10);
         return;
       }
 
@@ -422,9 +426,10 @@ test.describe("Admin 이벤트 당첨 관리 @feature:admin_event_winning_manage
 
       const metrics = await pageObj.getResultMetrics();
       if (metrics.noResultState) {
-        expect(metrics.hasNoResultMessage, "❌ 목록 데이터 없음 메시지가 없습니다.").toBe(
-          true,
-        );
+        expect(
+          metrics.hasNoResultMessage,
+          "❌ 목록 데이터 없음 메시지가 없습니다.",
+        ).toBe(true);
         return;
       }
 
@@ -480,24 +485,83 @@ test.describe("Admin 이벤트 당첨 관리 @feature:admin_event_winning_manage
 
       expect(ids.length, "❌ 첫 페이지에 행이 없습니다.").toBeGreaterThan(0);
 
-      const idMismatches = ids.filter((t) => !/^\d+$/.test(t));
+      // ────────────────────────────────────────────────────────────────────────
+      // 진단성 강화: 위반 발견 시 행 번호 + 값을 콘솔에 즉시 노출
+      // (assertion은 그대로 — 위반이 있으면 여전히 실패하지만 어느 행/값인지 추적 가능)
+      // 행 번호는 1-based (테이블 UI와 동일하게 보이도록)
+      // ────────────────────────────────────────────────────────────────────────
+      const ID_REGEX = /^\d+$/;
+      const EVENT_CODE_REGEX = /^[A-Za-z0-9_\-]+$/;
+
+      type Violation = { row: number; value: string };
+      const idMismatches: Violation[] = ids
+        .map((value, i) => ({ row: i + 1, value }))
+        .filter(({ value }) => !ID_REGEX.test(value));
+      const codeMismatches: Violation[] = codes
+        .map((value, i) => ({ row: i + 1, value }))
+        .filter(({ value }) => !EVENT_CODE_REGEX.test(value));
+      const durationMismatches: Violation[] = durations
+        .map((value, i) => ({ row: i + 1, value }))
+        .filter(({ value }) => !SALE_DURATION_REGEX.test(value));
+
+      // 위반 통합 리포트 — 행 단위로 어느 컬럼이 깨졌는지 한눈에 보이도록 출력
+      const totalViolations =
+        idMismatches.length + codeMismatches.length + durationMismatches.length;
+      if (totalViolations > 0) {
+        const rowSet = new Set<number>([
+          ...idMismatches.map((v) => v.row),
+          ...codeMismatches.map((v) => v.row),
+          ...durationMismatches.map((v) => v.row),
+        ]);
+        const sortedRows = Array.from(rowSet).sort((a, b) => a - b);
+
+        // eslint-disable-next-line no-console
+        console.log(
+          `[EWN-DATA-02] 형식 위반 감지 — 총 ${totalViolations}건 (대상 행 ${sortedRows.length}개) / 페이지 총 ${ids.length}행`,
+        );
+        for (const row of sortedRows) {
+          const idVal = ids[row - 1] ?? "<missing>";
+          const codeVal = codes[row - 1] ?? "<missing>";
+          const durVal = durations[row - 1] ?? "<missing>";
+          const broken: string[] = [];
+          if (!ID_REGEX.test(idVal)) broken.push("id");
+          if (!EVENT_CODE_REGEX.test(codeVal)) broken.push("eventCode");
+          if (!SALE_DURATION_REGEX.test(durVal)) broken.push("saleDuration");
+          // eslint-disable-next-line no-console
+          console.log(
+            `  [row ${row}] 위반 필드=[${broken.join(", ")}] | id="${idVal}" eventCode="${codeVal}" saleDuration="${durVal}"`,
+          );
+        }
+
+        // Playwright HTML 리포트에도 첨부 — CI에서 데이터팀 공유 시 캡처 용이
+        test.info().annotations.push({
+          type: "EWN-DATA-02 violations",
+          description: JSON.stringify(
+            {
+              total: totalViolations,
+              idMismatches,
+              codeMismatches,
+              durationMismatches,
+            },
+            null,
+            2,
+          ),
+        });
+      }
+
       expect(
         idMismatches,
-        `❌ ID 형식 위반 행: ${JSON.stringify(idMismatches)}`,
+        `❌ ID 형식 위반 — 숫자만 허용. 위반 행: ${JSON.stringify(idMismatches)}`,
       ).toHaveLength(0);
 
-      const codeMismatches = codes.filter((t) => !/^[A-Za-z0-9_\-]+$/.test(t));
       expect(
         codeMismatches,
-        `❌ 이벤트 코드 형식 위반 행: ${JSON.stringify(codeMismatches)}`,
+        `❌ 이벤트 코드 형식 위반 — 영숫자/언더스코어/하이픈만 허용. 위반 행: ${JSON.stringify(codeMismatches)}`,
       ).toHaveLength(0);
 
-      const durationMismatches = durations.filter(
-        (t) => !SALE_DURATION_REGEX.test(t),
-      );
       expect(
         durationMismatches,
-        `❌ 판매 기간 형식 위반 행: ${JSON.stringify(durationMismatches)}`,
+        `❌ 판매 기간 형식 위반 — "YYYY-MM-DD ~ (YYYY-MM-DD | - | 미정)" 기대. 위반 행: ${JSON.stringify(durationMismatches)}`,
       ).toHaveLength(0);
     });
   });
@@ -555,7 +619,9 @@ test.describe("Admin 이벤트 당첨 관리 @feature:admin_event_winning_manage
         pageObj.saleDurationPopover,
         "❌ 이벤트 판매 기간 클릭 후 정렬 옵션 popover가 노출되지 않습니다.",
       ).toBeVisible({ timeout: ELEMENT_TIMEOUT });
-      await expect(pageObj.getSortPopoverOption("이벤트 판매 종료")).toBeVisible({
+      await expect(
+        pageObj.getSortPopoverOption("이벤트 판매 종료"),
+      ).toBeVisible({
         timeout: ELEMENT_TIMEOUT,
       });
 

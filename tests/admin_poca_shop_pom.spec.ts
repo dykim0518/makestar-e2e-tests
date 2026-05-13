@@ -55,8 +55,9 @@ test.describe("POCAAlbum Admin Shop 테스트", () => {
         timeout: ELEMENT_TIMEOUT,
       });
 
-      const isSearchVisible = await shopListPage.searchInput
-        .isVisible({ timeout: 5000 });
+      const isSearchVisible = await shopListPage.searchInput.isVisible({
+        timeout: 5000,
+      });
 
       if (!isSearchVisible) {
         console.log("ℹ️ Shop 검색 필드 미발견 - 검색 기능 없을 수 있음");
@@ -65,8 +66,7 @@ test.describe("POCAAlbum Admin Shop 테스트", () => {
 
       await shopListPage.searchByKeyword("앨범");
       const hasData = await shopListPage.hasTableData();
-      const hasNoResult = await shopListPage.noResultMessage
-        .isVisible();
+      const hasNoResult = await shopListPage.noResultMessage.isVisible();
 
       expect(
         hasData || hasNoResult,
@@ -103,11 +103,14 @@ test.describe("POCAAlbum Admin Shop 테스트", () => {
   // ========================================================================
   // Shop 포인트상품 생성/삭제 (serial)
   // ========================================================================
-  test.describe.serial("Shop 포인트상품 생성/삭제 @suite:ops @feature:admin_pocaalbum.shop.create", () => {
+  test.describe
+    .serial("Shop 포인트상품 생성/삭제 @suite:ops @feature:admin_pocaalbum.shop.create", () => {
     let sharedShopTitle = "";
     let sharedShopCreated = false;
 
-    test("PS-CREATE-01: 포인트상품 생성 폼 입력 및 등록 @suite:ops", async ({ page }) => {
+    test("PS-CREATE-01: 포인트상품 생성 폼 입력 및 등록 @suite:ops", async ({
+      page,
+    }) => {
       const shopCreatePage = new PocaShopCreatePage(page);
       await shopCreatePage.navigate();
       await waitForPageStable(page);
@@ -126,8 +129,9 @@ test.describe("POCAAlbum Admin Shop 테스트", () => {
         imagePath: "fixtures/ta_sample.png",
       });
 
-      const isCreateVisible = await shopCreatePage.createButton
-        .isVisible({ timeout: 5000 });
+      const isCreateVisible = await shopCreatePage.createButton.isVisible({
+        timeout: 5000,
+      });
 
       expect(
         isCreateVisible,
@@ -154,8 +158,9 @@ test.describe("POCAAlbum Admin Shop 테스트", () => {
       await shopListPage.navigate();
       await waitForPageStable(page);
 
-      const isSearchVisible = await shopListPage.searchInput
-        .isVisible({ timeout: 5000 });
+      const isSearchVisible = await shopListPage.searchInput.isVisible({
+        timeout: 5000,
+      });
 
       if (isSearchVisible) {
         await shopListPage.searchByKeyword(sharedShopTitle);
@@ -175,20 +180,39 @@ test.describe("POCAAlbum Admin Shop 테스트", () => {
       await shopListPage.navigate();
       await waitForPageStable(page);
 
-      const isSearchVisible = await shopListPage.searchInput
-        .isVisible({ timeout: 5000 });
+      const isSearchVisible = await shopListPage.searchInput.isVisible({
+        timeout: 5000,
+      });
 
       if (isSearchVisible) {
         await shopListPage.searchByKeyword(sharedShopTitle);
       }
 
-      // 첫 번째 행 클릭 → 상세 진입
-      const rowCount = await shopListPage.getRowCount();
-      expect(
-        rowCount,
-        `❌ 삭제할 테스트 상품을 찾을 수 없습니다: ${sharedShopTitle}`,
-      ).toBeGreaterThan(0);
+      // 검색 결과 인덱싱 지연 대응 — 행이 1개 이상 나타날 때까지 polling
+      // 중간에 한 번 재검색을 시도하여 인덱싱이 늦는 경우 갱신 유도
+      let researchTried = false;
+      await expect
+        .poll(
+          async () => {
+            const count = await shopListPage.getRowCount();
+            if (count === 0 && !researchTried && isSearchVisible) {
+              researchTried = true;
+              await shopListPage
+                .searchByKeyword(sharedShopTitle)
+                .catch(() => {});
+              return await shopListPage.getRowCount();
+            }
+            return count;
+          },
+          {
+            message: `❌ 삭제할 테스트 상품을 찾을 수 없습니다: ${sharedShopTitle}`,
+            intervals: [500, 1000, 2000, 3000, 3000, 3000],
+            timeout: 20_000,
+          },
+        )
+        .toBeGreaterThan(0);
 
+      // 첫 번째 행 클릭 → 상세 진입
       await shopListPage.clickFirstRow(1);
       await waitForPageStable(page);
 
