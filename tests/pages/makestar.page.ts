@@ -2084,8 +2084,35 @@ export class MakestarPage extends BasePage {
         const enabled = await btn.isEnabled().catch(() => false);
         if (!enabled) continue;
 
+        const cartMutationResponse = this.page
+          .waitForResponse(
+            (response) => {
+              const request = response.request();
+              return (
+                request.method() === "PUT" &&
+                response.url().includes("/v1/commerce/order/put_in_cart/")
+              );
+            },
+            { timeout: this.timeouts.long },
+          )
+          .catch(() => null);
+
         await btn.click();
         console.log(`✅ 장바구니 담기 버튼 클릭: ${sel}`);
+
+        const response = await cartMutationResponse;
+        if (!response) {
+          console.warn("   ⚠️ 장바구니 담기 API 응답을 확인하지 못했습니다.");
+          return false;
+        }
+
+        const status = response.status();
+        if (status >= 400) {
+          console.warn(`   ⚠️ 장바구니 담기 API 실패 (${status})`);
+          return false;
+        }
+
+        console.log(`   ✅ 장바구니 담기 API 응답 확인 (${status})`);
         return true;
       }
       return false;
@@ -2172,8 +2199,35 @@ export class MakestarPage extends BasePage {
         }).length;
       })
       .catch(() => 0);
-
     return Math.max(0, visibleCheckboxCount - 1);
+  }
+
+  async waitForCartItemCountAtLeast(
+    minCount: number = 1,
+    timeout: number = this.timeouts.long,
+  ): Promise<number> {
+    const deadline = Date.now() + timeout;
+    let lastItemCount = 0;
+
+    while (Date.now() < deadline) {
+      await this.waitForNetworkStable(2000).catch(() => {});
+      await this.waitForContentStable(300).catch(() => {});
+
+      lastItemCount = await this.getCartItemCount();
+      if (lastItemCount >= minCount) {
+        return lastItemCount;
+      }
+
+      if (this.currentUrl.includes("/cart")) {
+        await this.reload().catch(() => {});
+      } else {
+        await this.gotoCart().catch(() => {});
+      }
+    }
+
+    throw new Error(
+      `장바구니 아이템 수가 ${timeout}ms 안에 ${minCount}개 이상이 되지 않았습니다. 마지막 확인: ${lastItemCount}개`,
+    );
   }
 
   private async clickFirstCartRowDeleteButton(): Promise<boolean> {

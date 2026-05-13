@@ -197,7 +197,7 @@ test.describe("상품/장바구니 기능 @feature:cmr.cart @feature:cmr.product
       await makestar.gotoCart();
       await makestar.waitForContentStable();
 
-      const itemCount = await makestar.getCartItemCount();
+      const itemCount = await makestar.waitForCartItemCountAtLeast();
       expect(
         itemCount,
         "장바구니에 상품이 실제로 담겨야 합니다",
@@ -310,7 +310,9 @@ test.describe("상품/장바구니 기능 @feature:cmr.cart @feature:cmr.product
           // 장바구니에 실제 담겼는지 확인
           await makestar.gotoCart();
           await makestar.waitForContentStable();
-          const itemCount = await makestar.getCartItemCount();
+          const itemCount = await makestar
+            .waitForCartItemCountAtLeast()
+            .catch(() => 0);
           if (itemCount > 0) {
             confirmed = true;
             console.log(
