@@ -51,20 +51,52 @@ test.describe.serial("주문관리 목록 @feature:admin_makestar.order.list", (
   });
 
   test("ORD-TAB-01: 전체/B2C/B2B/프로젝트별 주문 탭 전환 검증", async () => {
+    // 탭 전환 직후 결과 영역(체크박스/no-result)이 안정화되기 전에
+    // getRowCount()를 호출하면 0이 잡히는 회귀가 STG에서 반복 관측됨.
+    // expect.poll로 "rowCount>0" 또는 "no-result 확정" 중 하나에 도달할 때까지
+    // 대기 후 메트릭을 수집해 타이밍 의존을 제거한다.
+    const collectStableRowCount = async (tabLabel: string): Promise<number> => {
+      let lastRowCount = 0;
+      await expect
+        .poll(
+          async () => {
+            const metrics = await orderPage.getResultMetrics();
+            lastRowCount = metrics.rowCount;
+            // 결과가 1건 이상 렌더되었거나, no-result가 확정된 경우 안정 상태로 본다.
+            if (metrics.rowCount > 0) {
+              return "rows";
+            }
+            if (metrics.noResultState) {
+              return "empty";
+            }
+            return "pending";
+          },
+          {
+            message: `${tabLabel} 탭 결과 영역 안정화 대기 실패`,
+            timeout: 10_000,
+            intervals: [250, 500, 1000],
+          },
+        )
+        .not.toBe("pending");
+      return lastRowCount;
+    };
+
     await orderPage.switchTab("all");
-    const allCount = await orderPage.getRowCount();
+    const allCount = await collectStableRowCount("전체");
 
     await orderPage.switchTab("b2c");
-    const b2cCount = await orderPage.getRowCount();
+    const b2cCount = await collectStableRowCount("B2C");
 
     await orderPage.switchTab("b2b");
-    const b2bCount = await orderPage.getRowCount();
+    const b2bCount = await collectStableRowCount("B2B");
 
     await orderPage.switchTab("project");
-    const hasSummary = await orderPage.resultSummary
-      .isVisible({ timeout: ELEMENT_TIMEOUT });
-    const hasNoResult = await orderPage.noResultMessage
-      .isVisible({ timeout: ELEMENT_TIMEOUT });
+    const hasSummary = await orderPage.resultSummary.isVisible({
+      timeout: ELEMENT_TIMEOUT,
+    });
+    const hasNoResult = await orderPage.noResultMessage.isVisible({
+      timeout: ELEMENT_TIMEOUT,
+    });
     expect(
       hasSummary || hasNoResult,
       "프로젝트별 주문 탭에서 목록 영역이 보이지 않습니다.",
@@ -178,8 +210,9 @@ test.describe.serial("주문관리 목록 @feature:admin_makestar.order.list", (
     await orderPage.resetFiltersAndWait();
     await orderPage.searchByProductCode("S634NCTDREAM22");
 
-    const hasSummary = await orderPage.resultSummary
-      .isVisible({ timeout: ELEMENT_TIMEOUT });
+    const hasSummary = await orderPage.resultSummary.isVisible({
+      timeout: ELEMENT_TIMEOUT,
+    });
     const hasNoResult = await orderPage.hasNoResultOrEmptyTable();
 
     expect(
@@ -193,8 +226,9 @@ test.describe.serial("주문관리 목록 @feature:admin_makestar.order.list", (
     await orderPage.resetFiltersAndWait();
     await orderPage.searchByProductName("NCT");
 
-    const hasSummary = await orderPage.resultSummary
-      .isVisible({ timeout: ELEMENT_TIMEOUT });
+    const hasSummary = await orderPage.resultSummary.isVisible({
+      timeout: ELEMENT_TIMEOUT,
+    });
     const hasNoResult = await orderPage.hasNoResultOrEmptyTable();
 
     expect(
