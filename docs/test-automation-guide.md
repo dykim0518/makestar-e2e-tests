@@ -59,7 +59,7 @@
 → /generate-e2e Admin 위너관리
   (Planner가 계획 생성 → 확인 → Generator가 코드 생성)
 
-→ /test-run admin_pocaalbum_winner_pom.spec.ts
+→ /test-run admin_poca_readonly_pom.spec.ts
   (실행 → 실패 시 자동 수정)
 ```
 
@@ -250,7 +250,7 @@
 | --------------------------------------- | ------------------------ |
 | `/test-run cmr`                         | CMR 모니터링 테스트 실행 |
 | `/test-run admin`                       | Admin 전체 (setup → pc)  |
-| `/test-run admin_pocaalbum_pom.spec.ts` | 단일 파일 실행           |
+| `/test-run admin_poca_album_pom.spec.ts` | 단일 파일 실행           |
 | `/generate-e2e Admin 앨범관리`          | 앨범관리 E2E 생성        |
 | `/analyze-flaky admin`                  | Admin flaky 분석         |
 | `/review-coverage pocaalbum`            | POCAAlbum 커버리지 점검  |
