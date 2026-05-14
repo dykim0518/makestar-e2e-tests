@@ -105,6 +105,19 @@ test.describe.serial("주문관리 목록 @feature:admin_makestar.order.list", (
     const hasDataInAnyTab = [allCount, b2cCount, b2bCount].some(
       (count) => count > 0,
     );
+    if (!hasDataInAnyTab) {
+      test.info().annotations.push({
+        type: "STG seed required",
+        description: JSON.stringify({
+          allCount,
+          b2cCount,
+          b2bCount,
+          projectTab: { hasSummary, hasNoResult },
+          reason:
+            "전체/B2C/B2B 주문 탭 모두 데이터가 없어 주문관리 탭 검증을 완료할 수 없습니다.",
+        }),
+      });
+    }
     expect(
       hasDataInAnyTab,
       "전체/B2C/B2B 탭 모두 데이터가 없습니다.",

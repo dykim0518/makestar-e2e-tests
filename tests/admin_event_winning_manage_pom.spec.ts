@@ -70,6 +70,9 @@ function buildEventNameSearchToken(eventName: string): string {
 // 판매 기간 형식: "YYYY-MM-DD ~ YYYY-MM-DD" 또는 종료일 미정("-" / "미정") 허용
 const SALE_DURATION_REGEX =
   /^\d{4}-\d{2}-\d{2}\s*~\s*(\d{4}-\d{2}-\d{2}|-|미정)$/;
+const EVENT_CODE_REGEX = /^[A-Za-z0-9_&-]+$/;
+const EVENT_CODE_FORMAT_MESSAGE =
+  "영숫자/언더스코어/하이픈/앰퍼샌드(&)만 허용";
 
 /**
  * 상태 필터 적용 후 정밀 매칭 검증
@@ -466,8 +469,8 @@ test.describe("Admin 이벤트 당첨 관리 @feature:admin_event_winning_manage
       expect(id, `❌ ID는 숫자여야 합니다. (실제: "${id}")`).toMatch(/^\d+$/);
       expect(
         eventCode,
-        `❌ 이벤트 코드 형식 위반 — 영숫자/언더스코어/하이픈만 허용. (실제: "${eventCode}")`,
-      ).toMatch(/^[A-Za-z0-9_\-]+$/);
+        `❌ 이벤트 코드 형식 위반 — ${EVENT_CODE_FORMAT_MESSAGE}. (실제: "${eventCode}")`,
+      ).toMatch(EVENT_CODE_REGEX);
       expect(
         saleDuration,
         `❌ 이벤트 판매 기간 형식 위반 — "YYYY-MM-DD ~ (YYYY-MM-DD | - | 미정)" 기대. (실제: "${saleDuration}")`,
@@ -491,8 +494,6 @@ test.describe("Admin 이벤트 당첨 관리 @feature:admin_event_winning_manage
       // 행 번호는 1-based (테이블 UI와 동일하게 보이도록)
       // ────────────────────────────────────────────────────────────────────────
       const ID_REGEX = /^\d+$/;
-      const EVENT_CODE_REGEX = /^[A-Za-z0-9_\-]+$/;
-
       type Violation = { row: number; value: string };
       const idMismatches: Violation[] = ids
         .map((value, i) => ({ row: i + 1, value }))
@@ -556,7 +557,7 @@ test.describe("Admin 이벤트 당첨 관리 @feature:admin_event_winning_manage
 
       expect(
         codeMismatches,
-        `❌ 이벤트 코드 형식 위반 — 영숫자/언더스코어/하이픈만 허용. 위반 행: ${JSON.stringify(codeMismatches)}`,
+        `❌ 이벤트 코드 형식 위반 — ${EVENT_CODE_FORMAT_MESSAGE}. 위반 행: ${JSON.stringify(codeMismatches)}`,
       ).toHaveLength(0);
 
       expect(
