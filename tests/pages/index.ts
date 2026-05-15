@@ -96,6 +96,14 @@ export type { CategoryCreateOptions } from "./admin-category-create.page";
 export { AdminNotificationListPage } from "./admin-notification-list.page";
 export type { NotificationTab } from "./admin-notification-list.page";
 
+// Admin 공지 등록 페이지
+export { AdminNotificationNoticeCreatePage } from "./admin-notification-notice-create.page";
+export type {
+  NoticeCategory,
+  NoticeLanguage,
+  NoticeCreateOptions,
+} from "./admin-notification-notice-create.page";
+
 // Admin 대분류 상세 페이지
 export { CategoryDetailPage } from "./admin-category-detail.page";
 export type { CategoryItemCreateOptions } from "./admin-category-detail.page";
