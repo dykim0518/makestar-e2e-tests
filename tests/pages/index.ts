@@ -95,6 +95,26 @@ export type { CategorySearchOptions } from "./admin-category-list.page";
 export { CategoryCreatePage } from "./admin-category-create.page";
 export type { CategoryCreateOptions } from "./admin-category-create.page";
 
+// Admin 공지사항 목록 페이지 (공지관리/팝업관리)
+export { AdminNotificationListPage } from "./admin-notification-list.page";
+export type { NotificationTab } from "./admin-notification-list.page";
+
+// Admin 공지 등록 페이지
+export { AdminNotificationNoticeCreatePage } from "./admin-notification-notice-create.page";
+export type {
+  NoticeCategory,
+  NoticeLanguage,
+  NoticeCreateOptions,
+} from "./admin-notification-notice-create.page";
+
+// Admin 팝업 등록 페이지
+export { AdminNotificationPopupCreatePage } from "./admin-notification-popup-create.page";
+export type {
+  PopupCategory,
+  PopupAlignment,
+  PopupCreateOptions,
+} from "./admin-notification-popup-create.page";
+
 // Admin 대분류 상세 페이지
 export { CategoryDetailPage } from "./admin-category-detail.page";
 export type { CategoryItemCreateOptions } from "./admin-category-detail.page";
