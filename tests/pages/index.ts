@@ -24,6 +24,9 @@ export type { MenuItem, ProductInfo, WebVitalsResult } from "./makestar.page";
 export { MakestarPaymentPage } from "./makestar-payment.page";
 export type { MakeOrderResponse } from "./makestar-payment.page";
 
+// Makestar 마이페이지 (배송지·프로필 등 사용자 상태 리셋 책임)
+export { MakestarMyPage } from "./makestar-mypage.page";
+
 // AlbumBuddy 페이지
 export {
   AlbumBuddyPage,
