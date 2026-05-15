@@ -104,6 +104,14 @@ export type {
   NoticeCreateOptions,
 } from "./admin-notification-notice-create.page";
 
+// Admin 팝업 등록 페이지
+export { AdminNotificationPopupCreatePage } from "./admin-notification-popup-create.page";
+export type {
+  PopupCategory,
+  PopupAlignment,
+  PopupCreateOptions,
+} from "./admin-notification-popup-create.page";
+
 // Admin 대분류 상세 페이지
 export { CategoryDetailPage } from "./admin-category-detail.page";
 export type { CategoryItemCreateOptions } from "./admin-category-detail.page";
