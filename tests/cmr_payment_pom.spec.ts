@@ -25,7 +25,7 @@
  * @see tests/fixtures/cmr-payment.ts
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures/user-state";
 import { MakestarPaymentPage } from "./pages";
 import {
   PAYABLE_PRODUCT_IDS,
@@ -50,14 +50,15 @@ test.describe.serial("CMR 결제 회귀", () => {
 
   let payment: MakestarPaymentPage;
 
-  test.beforeEach(async ({ page }, testInfo) => {
+  test.beforeEach(async ({ page, resetUserState }, testInfo) => {
     testInfo.setTimeout(TEST_TIMEOUT);
     payment = new MakestarPaymentPage(page, BASE_URL);
 
-    // 테스트 간 장바구니 고립: Purchase 버튼이 카트 전체를 order-review에 싣기 때문에
-    // 이전 테스트가 카트를 남겨두면 amount 누적으로 결제 금액 검증이 실패한다.
-    // 병렬 워커가 같은 세션(stg-auth.json)을 공유하는 구조라 스크립트에서 격리 보장.
-    await payment.clearCart();
+    // 테스트 간 격리: 카트(amount 누적 차단) + 통화(KRW 강제) + 배송지(KR 강제).
+    // 배송지 KR 강제는 CMR-PAY-02(지역제한 상품) 회귀의 전제이며, 메모리
+    // `feedback_auth_user_state_isolation`에 기록된 사고(2026-04-23) 재발 방지용.
+    // 자세한 fixture 설계는 tests/fixtures/user-state.ts 참고.
+    await resetUserState({ cart: true, currency: "KRW", address: "KR" });
   });
 
   test(
