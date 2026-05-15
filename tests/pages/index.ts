@@ -92,6 +92,10 @@ export type { CategorySearchOptions } from "./admin-category-list.page";
 export { CategoryCreatePage } from "./admin-category-create.page";
 export type { CategoryCreateOptions } from "./admin-category-create.page";
 
+// Admin 공지사항 목록 페이지 (공지관리/팝업관리)
+export { AdminNotificationListPage } from "./admin-notification-list.page";
+export type { NotificationTab } from "./admin-notification-list.page";
+
 // Admin 대분류 상세 페이지
 export { CategoryDetailPage } from "./admin-category-detail.page";
 export type { CategoryItemCreateOptions } from "./admin-category-detail.page";
