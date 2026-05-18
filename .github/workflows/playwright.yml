@@ -318,6 +318,10 @@ jobs:
           if [ -n "${SKIP_REASONS_JOINED}" ]; then
             echo "ℹ️ 제외 항목: ${SKIP_REASONS_JOINED}"
           fi
+          export RUN_REQUESTED_SUITE="${SUITE_INPUT}"
+          export RUN_SUITE="${SUITE_INPUT}"
+          export RUN_EFFECTIVE_TARGETS="${EFFECTIVE_TARGETS_JOINED}"
+          export RUN_SKIP_REASONS="${SKIP_REASONS_JOINED}"
           "${CMD[@]}"
         env:
           CI: true
@@ -518,6 +522,9 @@ jobs:
             -H "X-GitHub-Sha: ${{ github.sha }}" \
             -H "X-GitHub-Branch: ${{ github.ref_name }}" \
             -H "X-GitHub-Triggered-By: ${{ github.event_name }}" \
+            -H "X-QA-Requested-Suite: ${{ steps.run_playwright.outputs.suite }}" \
+            -H "X-QA-Effective-Targets: ${{ steps.run_playwright.outputs.effective_targets }}" \
+            -H "X-QA-Skip-Reasons: ${{ steps.run_playwright.outputs.skip_reasons }}" \
             --data-binary @test-results/results.json \
             --max-time 15 || true
         env:
@@ -728,6 +735,10 @@ jobs:
           echo "retries=${RETRIES_INPUT}" >> "$GITHUB_OUTPUT"
 
           echo "▶ 실행 명령: ${PLAYWRIGHT_CMD}"
+          export RUN_REQUESTED_SUITE="${SUITE_INPUT}"
+          export RUN_SUITE="admin"
+          export RUN_EFFECTIVE_TARGETS="${EFFECTIVE_TARGETS_JOINED}"
+          export RUN_SKIP_REASONS="${SKIP_REASONS_JOINED}"
           "${CMD[@]}"
         env:
           CI: true
@@ -940,6 +951,9 @@ jobs:
             -H "X-GitHub-Sha: ${{ github.sha }}" \
             -H "X-GitHub-Branch: ${{ github.ref_name }}" \
             -H "X-GitHub-Triggered-By: ${{ github.event_name }}" \
+            -H "X-QA-Requested-Suite: admin" \
+            -H "X-QA-Effective-Targets: ${{ steps.run_playwright.outputs.effective_targets }}" \
+            -H "X-QA-Skip-Reasons: ${{ steps.run_playwright.outputs.skip_reasons }}" \
             --data-binary @test-results/results.json \
             --max-time 15 || true
         env:
