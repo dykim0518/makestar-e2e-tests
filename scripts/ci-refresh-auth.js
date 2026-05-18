@@ -29,7 +29,7 @@ const {
   readStorageState,
   resolveTargetDomain,
 } = require("./auth-state");
-const { checkLiveAuth } = require("./live-auth-check");
+const { checkLiveAuth, checkProtectedApi } = require("./live-auth-check");
 
 const AUTH_FILE =
   process.env.AUTH_FILE_PATH || path.join(process.cwd(), "auth.json");
@@ -165,11 +165,47 @@ async function refreshAuth() {
   // 2. 갱신 필요 여부 확인
   if (!needsRefresh(cookies)) {
     const liveAuth = await checkLiveAuth(auth);
-    if (liveAuth.skipped || liveAuth.ok) {
+    const protectedAuth = await checkProtectedApi(auth);
+
+    const liveAuthOk = liveAuth.skipped || liveAuth.ok;
+    const protectedOk = protectedAuth.skipped || protectedAuth.ok;
+
+    if (liveAuthOk && protectedOk) {
       if (liveAuth.ok) log(`live auth 검증 통과 (${liveAuth.status})`);
+      if (protectedAuth.ok) {
+        log(`protected api 검증 통과 (${protectedAuth.status})`);
+      }
       return true; // 갱신 불필요 = 성공
     }
-    log(`${liveAuth.message} — refresh_token 재발급 시도`);
+
+    // 5xx/네트워크 에러로 인한 일시적 실패는 OAuth 재발급을 유발하지 않도록
+    // 401/403(진짜 인증 실패)인 경우에만 재발급 경로로 진입한다.
+    const liveAuthSays401 =
+      !liveAuthOk && (liveAuth.status === 401 || liveAuth.status === 403);
+    const protectedSays401 =
+      !protectedOk &&
+      (protectedAuth.status === 401 || protectedAuth.status === 403);
+
+    if (!liveAuthSays401 && !protectedSays401) {
+      if (!liveAuthOk) {
+        log(
+          `${liveAuth.message} — 일시적 오류로 간주하고 갱신 skip (status=${liveAuth.status})`,
+        );
+      }
+      if (!protectedOk) {
+        log(
+          `${protectedAuth.message} — 일시적 오류로 간주하고 갱신 skip (status=${protectedAuth.status})`,
+        );
+      }
+      return true;
+    }
+
+    // refresh_token 잔여는 충분하지만 access_token이 만료된 케이스 — strict 검증이
+    // 잡아낸다. 클라이언트 SDK의 race로 PUT 흐름이 깨지는 것을 막기 위해 강제 재발급.
+    if (liveAuthSays401) log(`${liveAuth.message} — refresh_token 재발급 시도`);
+    if (protectedSays401) {
+      log(`${protectedAuth.message} — access_token 만료 의심, 재발급 시도`);
+    }
   }
 
   // 3. Google 세션 쿠키 존재 확인

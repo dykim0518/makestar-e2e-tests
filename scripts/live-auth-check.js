@@ -26,6 +26,7 @@ function getLiveAuthConfig(env = process.env) {
     authHost,
     appOrigin,
     profileUrl: `https://${authHost}/v1/user/profile/me/`,
+    protectedUrl: `https://${authHost}/v1/user/user_group/my_user_group_info/`,
     targetDomain: resolveTargetDomain(env),
   };
 }
@@ -260,9 +261,88 @@ async function checkLivePageAuth(authInput, options = {}) {
   }
 }
 
+/**
+ * 보호된 commerce-flow API(my_user_group_info)를 strict하게 호출해 access_token
+ * 자체의 만료를 감지한다. checkLiveAuth(profile/me)는 cookie-only로도 통과하는
+ * 경우가 있어, 실제 결제/장바구니 흐름의 401 시그널을 놓치는 false-positive를
+ * 막기 위한 추가 가드.
+ *
+ * 검증 조건:
+ *   - storage에 access_token이 존재해야 함 (Bearer 헤더 명시)
+ *   - Bearer 헤더만으로 호출하여 클라이언트 SDK의 자동 token_refresh 회복 효과를
+ *     배제 (즉, refresh가 필요한 상태도 fail로 노출)
+ */
+async function checkProtectedApi(authInput, options = {}) {
+  const env = options.env || process.env;
+  if (env.AUTH_PROTECTED_CHECK === "false") {
+    return {
+      ok: true,
+      skipped: true,
+      message: "protected api check disabled",
+    };
+  }
+
+  const { appOrigin, protectedUrl } = getLiveAuthConfig(env);
+  const accessToken = getAccessTokenFromStorage(authInput, appOrigin);
+  if (!accessToken) {
+    return {
+      ok: false,
+      status: 0,
+      message:
+        "access_token이 storage에 없습니다. (장바구니/결제 API는 Bearer 토큰을 요구하므로 만료된 세션으로 간주)",
+    };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(),
+    Number(env.AUTH_PROTECTED_CHECK_TIMEOUT_MS) ||
+      Number(env.AUTH_LIVE_CHECK_TIMEOUT_MS) ||
+      15000,
+  );
+
+  try {
+    const response = await fetch(protectedUrl, {
+      method: "GET",
+      headers: {
+        accept: "application/json",
+        authorization: `Bearer ${accessToken}`,
+        origin: appOrigin,
+        referer: `${appOrigin}/`,
+      },
+      signal: controller.signal,
+    });
+
+    if (response.ok) {
+      return {
+        ok: true,
+        status: response.status,
+        message: `protected api OK (${response.status})`,
+      };
+    }
+
+    return {
+      ok: false,
+      status: response.status,
+      message: `protected api 실패: ${protectedUrl} -> HTTP ${response.status}. access_token이 만료되었거나 무효입니다.`,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: 0,
+      message: `protected api 요청 실패: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 module.exports = {
   buildCookieHeader,
   checkLiveAuth,
   checkLivePageAuth,
+  checkProtectedApi,
   getLiveAuthConfig,
 };

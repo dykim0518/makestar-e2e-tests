@@ -31,7 +31,11 @@ const {
   readStorageState,
   resolveTargetDomain,
 } = require("./auth-state");
-const { checkLiveAuth, checkLivePageAuth } = require("./live-auth-check");
+const {
+  checkLiveAuth,
+  checkLivePageAuth,
+  checkProtectedApi,
+} = require("./live-auth-check");
 
 const AUTH_FILE =
   process.env.AUTH_FILE_PATH || path.join(process.cwd(), "auth.json");
@@ -153,6 +157,28 @@ async function main() {
     );
   } else {
     console.log(`✅ live auth 검증 통과 (${liveAuth.status})`);
+  }
+
+  // 장바구니/결제 PUT 흐름과 동일한 strict Bearer 호출. profile/me는 cookie-only로
+  // 통과되는 경우가 있어 만료 감지를 놓침. 여기서 access_token 자체의 유효성을 본다.
+  //
+  // 이 검증의 실패는 livePageAuth(/my-page 진입)로 구제하지 않는다 — my-page는 만료된
+  // access_token으로도 렌더링되지만 PUT 흐름에서는 클라이언트가 401로 막힌다. 즉
+  // page-check 통과 = cart/checkout 동작 가능이 아니다. AUTH_PROTECTED_CHECK=false로
+  // 명시 비활성화하지 않는 한 fail-fast로 잡 중단.
+  const protectedAuth = await checkProtectedApi(authState.state);
+  if (protectedAuth.skipped) {
+    console.log(`\nℹ️ protected api 검증 건너뜀 (${protectedAuth.message})`);
+  } else if (!protectedAuth.ok) {
+    console.log("");
+    console.log(
+      `::error::${AUTH_FILE_LABEL} access_token이 strict 보호 API에서 거부되었습니다. 장바구니/결제 흐름이 실패할 가능성이 매우 높습니다.`,
+    );
+    console.log(protectedAuth.message);
+    outputRefreshGuide("protected api(my_user_group_info) 검증 실패");
+    process.exit(1);
+  } else {
+    console.log(`✅ protected api 검증 통과 (${protectedAuth.status})`);
   }
 
   const livePageAuth = await checkLivePageAuth(authState.state);
