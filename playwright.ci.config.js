@@ -57,12 +57,6 @@ export default defineConfig({
         ...devices["Desktop Chrome"],
         viewport: { width: 1920, height: 1080 },
         storageState: AUTH_STORAGE_STATE,
-        // ubuntu-latest 기본 locale은 en-US이며, makestar 클라이언트가 이를 보고
-        // base_currency=usd로 매핑한다. USD 통화 흐름에서 cart-add PUT 직전
-        // client-side 가드가 logout으로 분기되는 회귀가 잡혀(2026-05-15~18 CMR 실패)
-        // 수동 환경(KST)과 동일한 KRW 흐름으로 정렬한다.
-        locale: "ko-KR",
-        timezoneId: "Asia/Seoul",
       },
     },
     {

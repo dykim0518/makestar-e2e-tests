@@ -5,7 +5,7 @@
  * 목적별 spec로 나누고, 공통 설정은 tests/helpers에서 가져옵니다.
  */
 
-import { test, expect } from "./fixtures/user-state";
+import { test, expect } from "@playwright/test";
 import { getPriceOptionProductIds } from "./fixtures/cmr-products";
 import { runOptionalStep } from "./helpers/optional-step";
 import { BASE_URL, TEST_TIMEOUT } from "./helpers/cmr-monitoring-config";
@@ -18,24 +18,9 @@ const PRICE_OPTION_PRODUCT_IDS = getPriceOptionProductIds(BASE_URL);
 test.describe("상품/장바구니 기능 @feature:cmr.cart @feature:cmr.product @feature:cmr.shop", () => {
   let makestar: MakestarPage;
 
-  test.beforeEach(async ({ page, resetUserState }, testInfo) => {
+  test.beforeEach(async ({ page }, testInfo) => {
     testInfo.setTimeout(TEST_TIMEOUT);
     makestar = new MakestarPage(page);
-    // 저장된 storage state에 `i18n_redirected=en` cookie가 있어 SSR이 영문 페이지를
-    // 내려주고, 그 영문 흐름에서 cart-add PUT 직전 client-side 가드가 logout으로
-    // 분기되는 회귀(2026-05-15~18). currency localStorage(setCurrency) + locale
-    // (playwright config) + accept-language만으론 부족 — cookie 자체를 ko로 덮어써야
-    // SSR이 한글/KRW 페이지를 내려준다.
-    await page.context().addCookies([
-      {
-        name: "i18n_redirected",
-        value: "ko",
-        domain: ".makestar.com",
-        path: "/",
-        sameSite: "Lax",
-      },
-    ]);
-    await resetUserState({ currency: "KRW" });
     await makestar.gotoHome();
   });
   test("CMR-ACTION-01: 상품 옵션 변경에 따른 가격 변동 확인", async ({}, testInfo) => {
