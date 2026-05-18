@@ -95,9 +95,4 @@ export class AdminNotificationListPage extends AdminBasePage {
       this.page.getByText(/최대 5개까지 등록 가능합니다/),
     ).toBeVisible();
   }
-
-  /** 안정 대기: 네트워크 idle + 짧은 stabilize */
-  private async waitForContentStable(): Promise<void> {
-    await this.page.waitForLoadState("networkidle").catch(() => {});
-  }
 }
