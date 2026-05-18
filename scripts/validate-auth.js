@@ -6,6 +6,7 @@
  *   - refresh_token 만료 시간 (JWT exp 또는 cookie expires)
  *   - 실제 auth API 응답(profile/me) 기준 세션 유효성
  *   - AUTH_PAGE_CHECK=true일 때 실제 /my-page 브라우저 진입 가능 여부
+ *   - AUTH_CART_CHECK=true일 때 실제 product -> cart 인증 리다이렉트 여부
  *
  * 종료 코드:
  *   0 = 유효 (잔여 > WARN_THRESHOLD)
@@ -18,6 +19,8 @@
  *   AUTH_TARGET_DOMAIN — 검증할 refresh_token 도메인 직접 지정
  *   AUTH_LIVE_CHECK=false — live auth API 검증 비활성화
  *   AUTH_PAGE_CHECK=true — Playwright로 /my-page 진입 검증 활성화
+ *   AUTH_CART_CHECK=true — Playwright로 상품 장바구니 진입 인증 검증 활성화
+ *   AUTH_CART_PRODUCT_ID — cart flow precheck 대상 상품 ID (기본: 17940)
  *   ENVIRONMENT_INPUT / MAKESTAR_BASE_URL — stg/prod 환경 판별
  */
 
@@ -32,6 +35,7 @@ const {
   resolveTargetDomain,
 } = require("./auth-state");
 const {
+  checkCartFlowAuth,
   checkLiveAuth,
   checkLivePageAuth,
   checkProtectedApi,
@@ -179,6 +183,21 @@ async function main() {
     process.exit(1);
   } else {
     console.log(`✅ protected api 검증 통과 (${protectedAuth.status})`);
+  }
+
+  const cartFlowAuth = await checkCartFlowAuth(authState.state);
+  if (cartFlowAuth.skipped) {
+    console.log(`ℹ️ cart flow auth 검증 건너뜀 (${cartFlowAuth.message})`);
+  } else if (!cartFlowAuth.ok) {
+    console.log("");
+    console.log(
+      `::error::${AUTH_FILE_LABEL} token은 API 기준으로 유효하지만 실제 장바구니 인증 흐름에서 실패했습니다.`,
+    );
+    console.log(cartFlowAuth.message);
+    outputRefreshGuide("cart flow auth 검증 실패");
+    process.exit(1);
+  } else {
+    console.log(`✅ cart flow auth 검증 통과 (${cartFlowAuth.status})`);
   }
 
   const livePageAuth = await checkLivePageAuth(authState.state);

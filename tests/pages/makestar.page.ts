@@ -954,6 +954,31 @@ export class MakestarPage extends MakestarCartPage {
     '[class*="nav"]',
   ] as const;
 
+  private isAuthenticationRedirectUrl(url: string): boolean {
+    try {
+      const parsed = new URL(url);
+      if (
+        parsed.hostname === "auth.makestar.com" ||
+        parsed.hostname === "stage-auth.makeuni2026.com"
+      ) {
+        return true;
+      }
+    } catch {
+      // fall through to path-based check
+    }
+
+    return /\/login(?:[/?#]|$)/i.test(url);
+  }
+
+  private async assertNotAuthenticationRedirect(action: string): Promise<void> {
+    const currentUrl = this.page.url();
+    if (!this.isAuthenticationRedirectUrl(currentUrl)) return;
+
+    throw new Error(
+      `${action}: 인증 세션이 로그인 화면으로 리다이렉트되었습니다. auth.json/GitHub Secret 갱신 또는 cart-flow auth precheck 확인이 필요합니다. URL: ${currentUrl}`,
+    );
+  }
+
   /** 로고 존재 확인 */
   async verifyLogo(timeout: number = this.timeouts.medium): Promise<boolean> {
     const result = await this.findVisibleElement(this.logoSelectors, timeout);
@@ -978,6 +1003,8 @@ export class MakestarPage extends MakestarCartPage {
 
   /** 로고 클릭으로 홈 복귀 (모달이 열려있으면 먼저 닫음) */
   async clickLogoToHome(): Promise<void> {
+    await this.assertNotAuthenticationRedirect("로고 클릭으로 홈 복귀 전");
+
     // 팝업 모달 처리 (Close, 닫기 등)
     await this.handleModal();
     // 3rd-party 설문 모달이 헤더/로고를 덮을 수 있음 (STG 특히 자주 발생)
@@ -991,6 +1018,7 @@ export class MakestarPage extends MakestarCartPage {
     }
 
     await this.dismissAllBlockingModals({ waitForDelayedMs: 1500 });
+    await this.assertNotAuthenticationRedirect("로고 클릭으로 홈 복귀 전");
 
     // findVisibleElement의 isVisible은 timeout을 기다리지 않고 즉시 판정하는
     // Playwright 특성 때문에, 로고 렌더 직전/모달 dismiss 직후 race가 발생.
@@ -2022,20 +2050,20 @@ export class MakestarPage extends MakestarCartPage {
           // PUT 응답 timeout — 인증 만료로 페이지가 로그인 화면으로 redirect되어
           // PUT 자체가 발사되지 않는 케이스가 가장 흔하므로 트라이아지를 위해 현재 URL을 명시.
           const currentUrl = this.page.url();
-          const onLoginPage = /\/login\/?(\?|$)/i.test(currentUrl);
-          if (onLoginPage) {
-            console.warn(
-              `   ⚠️ 장바구니 PUT 응답 timeout — 로그인 화면으로 redirect됨 (인증 만료 의심). URL: ${currentUrl}`,
-            );
-          } else {
-            console.warn(
-              `   ⚠️ 장바구니 PUT 응답 timeout — 응답 누락. URL: ${currentUrl}`,
-            );
-          }
+          await this.assertNotAuthenticationRedirect("장바구니 담기");
+          console.warn(
+            `   ⚠️ 장바구니 PUT 응답 timeout — 응답 누락. URL: ${currentUrl}`,
+          );
           return false;
         }
 
         const status = response.status();
+        if (status === 401 || status === 403) {
+          throw new Error(
+            `장바구니 담기 API 인증 실패 (${status}). auth.json/GitHub Secret 갱신 또는 cart-flow auth precheck 확인이 필요합니다.`,
+          );
+        }
+
         if (status >= 400) {
           console.warn(`   ⚠️ 장바구니 담기 API 실패 (${status})`);
           return false;
@@ -2069,6 +2097,7 @@ export class MakestarPage extends MakestarCartPage {
     await this.purchaseButton.click();
     await this.waitForNetworkStable(3000).catch(() => {});
     await this.waitForContentStable(500).catch(() => {});
+    await this.assertNotAuthenticationRedirect("구매 CTA 클릭 후");
 
     // 시트가 열린 뒤 옵션/수량 UI가 나타날 수 있어 한 번 더 맞춰줌.
     await this.selectFirstOption().catch(() => false);
