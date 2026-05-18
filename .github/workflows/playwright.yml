@@ -118,6 +118,9 @@ jobs:
         continue-on-error: true
         env:
           ENVIRONMENT_INPUT: ${{ github.event.inputs.environment || 'prod' }}
+          AUTH_CART_CHECK: ${{ github.event_name != 'workflow_dispatch' || ((github.event.inputs.environment || 'prod') == 'prod' && ((github.event.inputs.suite || 'cmr') == 'cmr' || (github.event.inputs.suite || 'cmr') == 'all' || contains(github.event.inputs.project || '', 'cmr'))) }}
+          AUTH_CART_PRODUCT_ID: "17940"
+          AUTH_FORCE_REFRESH: ${{ github.event_name != 'workflow_dispatch' || ((github.event.inputs.environment || 'prod') == 'prod' && ((github.event.inputs.suite || 'cmr') == 'cmr' || (github.event.inputs.suite || 'cmr') == 'all' || contains(github.event.inputs.project || '', 'cmr'))) }}
 
       # 갱신 후 토큰 유효성 최종 검증 (실패 시 테스트 중단 + 갱신 안내)
       - name: Validate auth tokens

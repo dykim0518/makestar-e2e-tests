@@ -13,6 +13,7 @@
  * 사용법:
  *   node scripts/ci-refresh-auth.js          # 기본 (만료 시에만 갱신)
  *   node scripts/ci-refresh-auth.js --force  # 강제 갱신
+ *   AUTH_FORCE_REFRESH=true node scripts/ci-refresh-auth.js  # CI env 기반 강제 갱신
  *
  * 종료 코드:
  *   0 = 갱신 성공 또는 갱신 불필요
@@ -29,12 +30,13 @@ const {
   readStorageState,
   resolveTargetDomain,
 } = require("./auth-state");
-const { checkLiveAuth } = require("./live-auth-check");
+const { checkCartFlowAuth, checkLiveAuth } = require("./live-auth-check");
 
 const AUTH_FILE =
   process.env.AUTH_FILE_PATH || path.join(process.cwd(), "auth.json");
 const AUTH_FILE_LABEL = path.basename(AUTH_FILE);
-const FORCE = process.argv.includes("--force");
+const FORCE =
+  process.argv.includes("--force") || process.env.AUTH_FORCE_REFRESH === "true";
 const REFRESH_THRESHOLD_MS = 2 * 60 * 60 * 1000; // 2시간 이내면 갱신 시도
 
 // STG 환경 감지: MAKESTAR_BASE_URL 또는 ENVIRONMENT_INPUT으로 판별
@@ -143,6 +145,23 @@ function isAuthPageUrl(url) {
   return LOGIN_PATTERNS[0].test(url);
 }
 
+async function hasUsableCartSession(auth) {
+  if (process.env.AUTH_CART_CHECK !== "true") return true;
+
+  const cartAuth = await checkCartFlowAuth(auth);
+  if (cartAuth.skipped) {
+    log(`cart flow auth 검증 건너뜀: ${cartAuth.message}`);
+    return true;
+  }
+  if (cartAuth.ok) {
+    log(`cart flow auth 검증 통과 (${cartAuth.status})`);
+    return true;
+  }
+
+  log(`${cartAuth.message} — refresh_token 재발급 시도`);
+  return false;
+}
+
 async function refreshAuth() {
   // 1. auth.json 로드
   const authState = readStorageState(AUTH_FILE);
@@ -167,9 +186,12 @@ async function refreshAuth() {
     const liveAuth = await checkLiveAuth(auth);
     if (liveAuth.skipped || liveAuth.ok) {
       if (liveAuth.ok) log(`live auth 검증 통과 (${liveAuth.status})`);
-      return true; // 갱신 불필요 = 성공
+      if (await hasUsableCartSession(auth)) {
+        return true; // 갱신 불필요 = 성공
+      }
+    } else {
+      log(`${liveAuth.message} — refresh_token 재발급 시도`);
     }
-    log(`${liveAuth.message} — refresh_token 재발급 시도`);
   }
 
   // 3. Google 세션 쿠키 존재 확인
