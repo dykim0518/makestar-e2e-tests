@@ -21,10 +21,20 @@ test.describe("상품/장바구니 기능 @feature:cmr.cart @feature:cmr.product
   test.beforeEach(async ({ page, resetUserState }, testInfo) => {
     testInfo.setTimeout(TEST_TIMEOUT);
     makestar = new MakestarPage(page);
-    // CI runner의 기본 locale(en-US)이 makestar 클라이언트의 USD 통화 흐름을 활성화시켜
-    // ACTION-03/05의 cart-add PUT이 client-side 가드에 막히는 회귀(2026-05-15~18).
-    // 매 테스트 시작 시 currency localStorage를 KRW로 강제해 수동(KST) 환경과 일치시킨다.
-    // (feedback_auth_user_state_isolation Phase 2 마이그레이션)
+    // 저장된 storage state에 `i18n_redirected=en` cookie가 있어 SSR이 영문 페이지를
+    // 내려주고, 그 영문 흐름에서 cart-add PUT 직전 client-side 가드가 logout으로
+    // 분기되는 회귀(2026-05-15~18). currency localStorage(setCurrency) + locale
+    // (playwright config) + accept-language만으론 부족 — cookie 자체를 ko로 덮어써야
+    // SSR이 한글/KRW 페이지를 내려준다.
+    await page.context().addCookies([
+      {
+        name: "i18n_redirected",
+        value: "ko",
+        domain: ".makestar.com",
+        path: "/",
+        sameSite: "Lax",
+      },
+    ]);
     await resetUserState({ currency: "KRW" });
     await makestar.gotoHome();
   });
