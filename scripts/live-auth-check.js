@@ -261,6 +261,194 @@ async function checkLivePageAuth(authInput, options = {}) {
   }
 }
 
+async function checkCartFlowAuth(authInput, options = {}) {
+  const env = options.env || process.env;
+  if (env.AUTH_CART_CHECK !== "true") {
+    return {
+      ok: true,
+      skipped: true,
+      message: "cart flow auth check disabled",
+    };
+  }
+
+  let chromium;
+  try {
+    chromium = require("@playwright/test").chromium;
+  } catch (error) {
+    return {
+      ok: false,
+      status: 0,
+      message: `Playwright 브라우저 로드 실패: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    };
+  }
+
+  const { authHost, appOrigin } = getLiveAuthConfig(env);
+  const productId = env.AUTH_CART_PRODUCT_ID || "17940";
+  const targetUrl = `${appOrigin}/product/${productId}`;
+  const timeoutMs = Number(env.AUTH_CART_CHECK_TIMEOUT_MS) || 30000;
+  const actionTimeoutMs = Number(env.AUTH_CART_ACTION_TIMEOUT_MS) || 15000;
+  const settleMs = Number(env.AUTH_CART_CHECK_SETTLE_MS) || 3000;
+  const localeCookieDomain = isStageEnv(env)
+    ? ".makeuni2026.com"
+    : ".makestar.com";
+  const state = getStorageState(authInput);
+  let browser;
+
+  try {
+    browser = await chromium.launch({ headless: true });
+    const context = await browser.newContext({
+      storageState: state,
+      viewport: { width: 1280, height: 720 },
+      locale: "ko-KR",
+      timezoneId: "Asia/Seoul",
+    });
+    await context.addCookies([
+      {
+        name: "i18n_redirected",
+        value: "ko",
+        domain: localeCookieDomain,
+        path: "/",
+        sameSite: "Lax",
+      },
+    ]);
+
+    const page = await context.newPage();
+    await page.addInitScript(() => {
+      window.localStorage.setItem("currency", "krw");
+    });
+
+    const response = await page.goto(targetUrl, {
+      waitUntil: "domcontentloaded",
+      timeout: timeoutMs,
+    });
+    await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
+
+    let finalUrl = new URL(await waitForUrlToSettle(page, settleMs));
+    if (isLoginUrl(finalUrl, authHost)) {
+      return {
+        ok: false,
+        status: response?.status() || 0,
+        message: `cart flow precheck가 상품 상세 진입 중 로그인 페이지로 리다이렉트되었습니다: ${finalUrl.href}`,
+      };
+    }
+
+    if (finalUrl.origin !== appOrigin) {
+      return {
+        ok: false,
+        status: response?.status() || 0,
+        message: `cart flow precheck 상품 상세 origin이 예상과 다릅니다: ${finalUrl.href}`,
+      };
+    }
+
+    const cartButton = page
+      .locator(
+        'button:has-text("장바구니"), button:has-text("cart"), button:has-text("Cart")',
+      )
+      .first();
+    const cartButtonVisible = await cartButton
+      .isVisible({ timeout: actionTimeoutMs })
+      .catch(() => false);
+    if (!cartButtonVisible) {
+      return {
+        ok: true,
+        skipped: true,
+        status: response?.status() || 0,
+        message: `cart flow precheck 상품(${productId})에서 장바구니 CTA를 찾지 못해 auth redirect 확인만 수행했습니다.`,
+      };
+    }
+
+    const cartMutationResponse = page
+      .waitForResponse(
+        (cartResponse) => {
+          const request = cartResponse.request();
+          return (
+            request.method() === "PUT" &&
+            cartResponse.url().includes("/v1/commerce/order/put_in_cart/")
+          );
+        },
+        { timeout: actionTimeoutMs },
+      )
+      .catch(() => null);
+
+    const loginRedirect = page
+      .waitForURL((url) => isLoginUrl(url, authHost), {
+        timeout: actionTimeoutMs,
+      })
+      .then(() => true)
+      .catch(() => false);
+
+    await cartButton.click();
+
+    const firstOutcome = await Promise.race([
+      cartMutationResponse.then((cartResponse) => ({
+        type: "cart",
+        response: cartResponse,
+      })),
+      loginRedirect.then((redirected) =>
+        redirected ? { type: "login", response: null } : null,
+      ),
+    ]);
+
+    finalUrl = new URL(await waitForUrlToSettle(page, settleMs));
+    if (firstOutcome?.type === "login" || isLoginUrl(finalUrl, authHost)) {
+      return {
+        ok: false,
+        status: 0,
+        message: `cart flow precheck가 장바구니 클릭 후 로그인 페이지로 리다이렉트되었습니다: ${finalUrl.href}`,
+      };
+    }
+
+    const cartResponse =
+      firstOutcome?.type === "cart"
+        ? firstOutcome.response
+        : await cartMutationResponse;
+    if (!cartResponse) {
+      return {
+        ok: true,
+        skipped: true,
+        status: 0,
+        message: `cart flow precheck 상품(${productId})에서 장바구니 PUT 응답을 관측하지 못했지만 로그인 리다이렉트는 발생하지 않았습니다.`,
+      };
+    }
+
+    const status = cartResponse.status();
+    if (status === 401 || status === 403) {
+      return {
+        ok: false,
+        status,
+        message: `cart flow precheck 장바구니 API가 인증 실패를 반환했습니다: HTTP ${status}`,
+      };
+    }
+
+    if (status >= 400) {
+      return {
+        ok: true,
+        skipped: true,
+        status,
+        message: `cart flow precheck 장바구니 API가 HTTP ${status}를 반환했지만 인증 실패는 아닙니다.`,
+      };
+    }
+
+    return {
+      ok: true,
+      status,
+      message: `cart flow auth OK (${status})`,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: 0,
+      message: `cart flow auth 요청 실패: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    };
+  } finally {
+    if (browser) await browser.close();
+  }
+}
+
 /**
  * 보호된 commerce-flow API(my_user_group_info)를 strict하게 호출해 access_token
  * 자체의 만료를 감지한다. checkLiveAuth(profile/me)는 cookie-only로도 통과하는
@@ -341,6 +529,7 @@ async function checkProtectedApi(authInput, options = {}) {
 
 module.exports = {
   buildCookieHeader,
+  checkCartFlowAuth,
   checkLiveAuth,
   checkLivePageAuth,
   checkProtectedApi,

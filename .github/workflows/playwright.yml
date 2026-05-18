@@ -126,6 +126,8 @@ jobs:
         env:
           AUTH_WARN_HOURS: "2"
           AUTH_PAGE_CHECK: "true"
+          AUTH_CART_CHECK: ${{ github.event_name != 'workflow_dispatch' || ((github.event.inputs.environment || 'prod') == 'prod' && ((github.event.inputs.suite || 'cmr') == 'cmr' || (github.event.inputs.suite || 'cmr') == 'all' || contains(github.event.inputs.project || '', 'cmr'))) }}
+          AUTH_CART_PRODUCT_ID: "17940"
           ENVIRONMENT_INPUT: ${{ github.event.inputs.environment || 'prod' }}
 
       - name: Validate AlbumBuddy auth tokens
