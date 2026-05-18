@@ -5,7 +5,7 @@
  * 목적별 spec로 나누고, 공통 설정은 tests/helpers에서 가져옵니다.
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./fixtures/user-state";
 import { getPriceOptionProductIds } from "./fixtures/cmr-products";
 import { runOptionalStep } from "./helpers/optional-step";
 import { BASE_URL, TEST_TIMEOUT } from "./helpers/cmr-monitoring-config";
@@ -18,15 +18,17 @@ const PRICE_OPTION_PRODUCT_IDS = getPriceOptionProductIds(BASE_URL);
 test.describe("상품/장바구니 기능 @feature:cmr.cart @feature:cmr.product @feature:cmr.shop", () => {
   let makestar: MakestarPage;
 
-  test.beforeEach(async ({ page }, testInfo) => {
+  test.beforeEach(async ({ page, resetUserState }, testInfo) => {
     testInfo.setTimeout(TEST_TIMEOUT);
     makestar = new MakestarPage(page);
+    // CI runner의 기본 locale(en-US)이 makestar 클라이언트의 USD 통화 흐름을 활성화시켜
+    // ACTION-03/05의 cart-add PUT이 client-side 가드에 막히는 회귀(2026-05-15~18).
+    // 매 테스트 시작 시 currency localStorage를 KRW로 강제해 수동(KST) 환경과 일치시킨다.
+    // (feedback_auth_user_state_isolation Phase 2 마이그레이션)
+    await resetUserState({ currency: "KRW" });
     await makestar.gotoHome();
   });
-  test("CMR-ACTION-01: 상품 옵션 변경에 따른 가격 변동 확인", async (
-    {},
-    testInfo,
-  ) => {
+  test("CMR-ACTION-01: 상품 옵션 변경에 따른 가격 변동 확인", async ({}, testInfo) => {
     test.setTimeout(TEST_TIMEOUT);
 
     let priceChanged = false;
@@ -206,10 +208,7 @@ test.describe("상품/장바구니 기능 @feature:cmr.cart @feature:cmr.product
     });
   });
 
-  test("CMR-ACTION-05: 장바구니 수량 증가 시 가격 반영 검증", async (
-    {},
-    testInfo,
-  ) => {
+  test("CMR-ACTION-05: 장바구니 수량 증가 시 가격 반영 검증", async ({}, testInfo) => {
     test.skip(
       testInfo.project.name === "mobile-chrome",
       "모바일은 장바구니 UI가 데스크톱과 달라 데스크톱 전용으로 검증",
