@@ -425,9 +425,11 @@ export class MakestarPage extends MakestarCartPage {
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
         await this.prepareForGlobalNavigation();
-        await expect(link, `${label} GNB 링크가 표시되어야 합니다`).toBeVisible({
-          timeout: this.timeouts.medium,
-        });
+        await expect(link, `${label} GNB 링크가 표시되어야 합니다`).toBeVisible(
+          {
+            timeout: this.timeouts.medium,
+          },
+        );
 
         await Promise.all([
           this.page
@@ -2017,7 +2019,19 @@ export class MakestarPage extends MakestarCartPage {
 
         const response = await cartMutationResponse;
         if (!response) {
-          console.warn("   ⚠️ 장바구니 담기 API 응답을 확인하지 못했습니다.");
+          // PUT 응답 timeout — 인증 만료로 페이지가 로그인 화면으로 redirect되어
+          // PUT 자체가 발사되지 않는 케이스가 가장 흔하므로 트라이아지를 위해 현재 URL을 명시.
+          const currentUrl = this.page.url();
+          const onLoginPage = /\/login\/?(\?|$)/i.test(currentUrl);
+          if (onLoginPage) {
+            console.warn(
+              `   ⚠️ 장바구니 PUT 응답 timeout — 로그인 화면으로 redirect됨 (인증 만료 의심). URL: ${currentUrl}`,
+            );
+          } else {
+            console.warn(
+              `   ⚠️ 장바구니 PUT 응답 timeout — 응답 누락. URL: ${currentUrl}`,
+            );
+          }
           return false;
         }
 
