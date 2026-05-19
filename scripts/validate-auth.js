@@ -185,17 +185,20 @@ async function main() {
     console.log(`✅ protected api 검증 통과 (${protectedAuth.status})`);
   }
 
+  // cart precheck는 strict access_token 검증(checkProtectedApi)이 통과한 뒤에도
+  // 실제 cart 흐름에서 로그인 페이지로 리다이렉트되는 케이스를 잡기 위한 보조 검증.
+  // fail-fast로 다루면 cart와 무관한 모든 monitoring 영역이 함께 스킵되어
+  // blast radius가 너무 크다 — cart 회귀는 cart 관련 spec이 직접 fail 시켜
+  // 시그널을 노출하면 충분하므로 여기서는 warning만 남긴다.
   const cartFlowAuth = await checkCartFlowAuth(authState.state);
   if (cartFlowAuth.skipped) {
     console.log(`ℹ️ cart flow auth 검증 건너뜀 (${cartFlowAuth.message})`);
   } else if (!cartFlowAuth.ok) {
     console.log("");
     console.log(
-      `::error::${AUTH_FILE_LABEL} token은 API 기준으로 유효하지만 실제 장바구니 인증 흐름에서 실패했습니다.`,
+      `::warning::${AUTH_FILE_LABEL} token은 API 기준으로 유효하지만 실제 장바구니 인증 흐름에서 실패했습니다. cart 관련 spec만 영향을 받으며 나머지 영역은 계속 진행합니다.`,
     );
     console.log(cartFlowAuth.message);
-    outputRefreshGuide("cart flow auth 검증 실패");
-    process.exit(1);
   } else {
     console.log(`✅ cart flow auth 검증 통과 (${cartFlowAuth.status})`);
   }
