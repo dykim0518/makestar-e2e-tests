@@ -218,11 +218,30 @@ async function checkLivePageAuth(authInput, options = {}) {
       timeout: timeoutMs,
     });
     const finalUrl = new URL(await waitForUrlToSettle(page, settleMs));
+    const status = response?.status() || 0;
+    const bodyText = await page
+      .locator("body")
+      .innerText({ timeout: 2000 })
+      .catch(() => "");
+    const accessDenied = /Access Denied|IP address is not authorized/i.test(
+      bodyText,
+    );
+
+    if (status === 401 || status === 403 || accessDenied) {
+      const reason = accessDenied
+        ? "Access Denied 페이지가 표시되었습니다"
+        : `HTTP ${status} 응답을 받았습니다`;
+      return {
+        ok: false,
+        status,
+        message: `/my-page 진입 실패: ${reason}. 현재 URL=${finalUrl.href}`,
+      };
+    }
 
     if (isLoginUrl(finalUrl, authHost)) {
       return {
         ok: false,
-        status: response?.status() || 0,
+        status,
         message: `/my-page 진입이 로그인 페이지로 리다이렉트되었습니다: ${finalUrl.href}`,
       };
     }
@@ -230,7 +249,7 @@ async function checkLivePageAuth(authInput, options = {}) {
     if (finalUrl.origin !== appOrigin) {
       return {
         ok: false,
-        status: response?.status() || 0,
+        status,
         message: `/my-page 진입 후 예상 origin이 아닙니다: ${finalUrl.href}`,
       };
     }
@@ -238,14 +257,14 @@ async function checkLivePageAuth(authInput, options = {}) {
     if (!finalUrl.pathname.startsWith("/my-page")) {
       return {
         ok: false,
-        status: response?.status() || 0,
+        status,
         message: `/my-page 진입 후 인증 UI가 아닌 경로로 이동했습니다: ${finalUrl.href}`,
       };
     }
 
     return {
       ok: true,
-      status: response?.status() || 200,
+      status: status || 200,
       message: `live page auth OK (${finalUrl.href})`,
     };
   } catch (error) {
