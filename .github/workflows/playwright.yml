@@ -303,12 +303,30 @@ jobs:
             SKIP_REASONS_JOINED="$(printf '%s||' "${SKIP_REASONS[@]}")"
             SKIP_REASONS_JOINED="${SKIP_REASONS_JOINED%||}"
           fi
+          export QA_REQUESTED_SUITE="${SUITE_INPUT}"
+          export QA_EFFECTIVE_TARGETS="${EFFECTIVE_TARGETS_JOINED}"
+          export QA_SKIP_REASONS="${SKIP_REASONS_JOINED}"
+          QA_PROVENANCE="$(node <<'EOF'
+          const splitList = (value, separator) =>
+            (value || '')
+              .split(separator)
+              .map((item) => item.trim())
+              .filter(Boolean);
+          const payload = {
+            requestedSuite: process.env.QA_REQUESTED_SUITE || '',
+            effectiveTargets: splitList(process.env.QA_EFFECTIVE_TARGETS, ','),
+            skipReasons: splitList(process.env.QA_SKIP_REASONS, '||'),
+          };
+          process.stdout.write(Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url'));
+          EOF
+          )"
 
           echo "playwright_command=${PLAYWRIGHT_CMD}" >> "$GITHUB_OUTPUT"
           echo "suite=${SUITE_INPUT}" >> "$GITHUB_OUTPUT"
           echo "environment=${ENV_INPUT}" >> "$GITHUB_OUTPUT"
           echo "effective_targets=${EFFECTIVE_TARGETS_JOINED}" >> "$GITHUB_OUTPUT"
           echo "skip_reasons=${SKIP_REASONS_JOINED}" >> "$GITHUB_OUTPUT"
+          echo "provenance=${QA_PROVENANCE}" >> "$GITHUB_OUTPUT"
           echo "project=${PROJECT_INPUT}" >> "$GITHUB_OUTPUT"
           echo "spec=${SPEC_INPUT}" >> "$GITHUB_OUTPUT"
           echo "grep=${GREP_INPUT}" >> "$GITHUB_OUTPUT"
@@ -522,9 +540,9 @@ jobs:
             -H "X-GitHub-Sha: ${{ github.sha }}" \
             -H "X-GitHub-Branch: ${{ github.ref_name }}" \
             -H "X-GitHub-Triggered-By: ${{ github.event_name }}" \
+            -H "X-QA-Provenance: ${{ steps.run_playwright.outputs.provenance }}" \
             -H "X-QA-Requested-Suite: ${{ steps.run_playwright.outputs.suite }}" \
             -H "X-QA-Effective-Targets: ${{ steps.run_playwright.outputs.effective_targets }}" \
-            -H "X-QA-Skip-Reasons: ${{ steps.run_playwright.outputs.skip_reasons }}" \
             --data-binary @test-results/results.json \
             --max-time 15 || true
         env:
@@ -723,12 +741,30 @@ jobs:
           PLAYWRIGHT_CMD="${CMD[*]}"
           EFFECTIVE_TARGETS_JOINED="$(IFS=,; echo "${EFFECTIVE_TARGETS[*]}")"
           SKIP_REASONS_JOINED=""
+          export QA_REQUESTED_SUITE="admin"
+          export QA_EFFECTIVE_TARGETS="${EFFECTIVE_TARGETS_JOINED}"
+          export QA_SKIP_REASONS="${SKIP_REASONS_JOINED}"
+          QA_PROVENANCE="$(node <<'EOF'
+          const splitList = (value, separator) =>
+            (value || '')
+              .split(separator)
+              .map((item) => item.trim())
+              .filter(Boolean);
+          const payload = {
+            requestedSuite: process.env.QA_REQUESTED_SUITE || '',
+            effectiveTargets: splitList(process.env.QA_EFFECTIVE_TARGETS, ','),
+            skipReasons: splitList(process.env.QA_SKIP_REASONS, '||'),
+          };
+          process.stdout.write(Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url'));
+          EOF
+          )"
 
           echo "playwright_command=${PLAYWRIGHT_CMD}" >> "$GITHUB_OUTPUT"
           echo "suite=admin" >> "$GITHUB_OUTPUT"
           echo "environment=${ENV_INPUT}" >> "$GITHUB_OUTPUT"
           echo "effective_targets=${EFFECTIVE_TARGETS_JOINED}" >> "$GITHUB_OUTPUT"
           echo "skip_reasons=${SKIP_REASONS_JOINED}" >> "$GITHUB_OUTPUT"
+          echo "provenance=${QA_PROVENANCE}" >> "$GITHUB_OUTPUT"
           echo "project=${PROJECT_INPUT}" >> "$GITHUB_OUTPUT"
           echo "spec=${SPEC_INPUT}" >> "$GITHUB_OUTPUT"
           echo "grep=${GREP_INPUT}" >> "$GITHUB_OUTPUT"
@@ -951,9 +987,9 @@ jobs:
             -H "X-GitHub-Sha: ${{ github.sha }}" \
             -H "X-GitHub-Branch: ${{ github.ref_name }}" \
             -H "X-GitHub-Triggered-By: ${{ github.event_name }}" \
+            -H "X-QA-Provenance: ${{ steps.run_playwright.outputs.provenance }}" \
             -H "X-QA-Requested-Suite: admin" \
             -H "X-QA-Effective-Targets: ${{ steps.run_playwright.outputs.effective_targets }}" \
-            -H "X-QA-Skip-Reasons: ${{ steps.run_playwright.outputs.skip_reasons }}" \
             --data-binary @test-results/results.json \
             --max-time 15 || true
         env:
