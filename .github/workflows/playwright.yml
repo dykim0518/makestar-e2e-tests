@@ -20,7 +20,6 @@ on:
           - cmr-payment
           - albumbuddy
           - admin
-          - all
         required: true
         default: cmr
       environment:
@@ -126,7 +125,7 @@ jobs:
         env:
           AUTH_WARN_HOURS: "2"
           AUTH_PAGE_CHECK: "true"
-          AUTH_CART_CHECK: ${{ github.event_name != 'workflow_dispatch' || ((github.event.inputs.environment || 'prod') == 'prod' && ((github.event.inputs.suite || 'cmr') == 'cmr' || (github.event.inputs.suite || 'cmr') == 'all' || contains(github.event.inputs.project || '', 'cmr'))) }}
+          AUTH_CART_CHECK: ${{ github.event_name != 'workflow_dispatch' || ((github.event.inputs.environment || 'prod') == 'prod' && ((github.event.inputs.suite || 'cmr') == 'cmr' || contains(github.event.inputs.project || '', 'cmr'))) }}
           AUTH_CART_PRODUCT_ID: "17940"
           ENVIRONMENT_INPUT: ${{ github.event.inputs.environment || 'prod' }}
 
@@ -137,7 +136,7 @@ jobs:
           PROJECT_INPUT="${{ github.event.inputs.project || '' }}"
           ALBUMBUDDY_REQUESTED=0
 
-          if [[ "${SUITE_INPUT}" == "albumbuddy" || "${SUITE_INPUT}" == "all" || "${PROJECT_INPUT}" == *albumbuddy* ]]; then
+          if [[ "${SUITE_INPUT}" == "albumbuddy" || "${PROJECT_INPUT}" == *albumbuddy* ]]; then
             ALBUMBUDDY_REQUESTED=1
           fi
 
@@ -272,13 +271,8 @@ jobs:
                 exit 1
                 ;;
               all)
-                add_project "cmr-monitoring"
-                if [ "${HAS_AB_AUTH}" -eq 1 ]; then
-                  add_project "albumbuddy-monitoring"
-                else
-                  SKIP_REASONS+=("albumbuddy 제외: AB_AUTH_JSON secret 없음 또는 빈 쿠키")
-                fi
-                SKIP_REASONS+=("admin 제외: GitHub Hosted Runner IP 미허용")
+                echo "::error::suite=all은 더 이상 지원하지 않습니다. cmr, cmr-payment, albumbuddy, admin을 개별 실행해주세요."
+                exit 1
                 ;;
               *)
                 echo "지원하지 않는 suite 입력값: ${SUITE_INPUT}"
