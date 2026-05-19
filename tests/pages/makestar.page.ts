@@ -1321,14 +1321,7 @@ export class MakestarPage extends MakestarCartPage {
       }
     }
 
-    const purchaseVisible = await this.purchaseButton
-      .isVisible({ timeout: this.timeouts.short })
-      .catch(() => false);
-    if (!purchaseVisible) {
-      return false;
-    }
-
-    return await this.purchaseButton.isEnabled().catch(() => false);
+    return await this.hasEnabledPurchaseButton();
   }
 
   private async hasSalesEndedState(): Promise<boolean> {
@@ -1387,6 +1380,42 @@ export class MakestarPage extends MakestarCartPage {
       console.log(
         `   상품 ${i + 1}: 활성 장바구니/구매 CTA 없음 - 다음 상품 시도`,
       );
+      await this.returnToProductListing();
+    }
+
+    return false;
+  }
+
+  async openFirstPurchaseEligibleProduct(
+    maxProducts: number = 8,
+  ): Promise<boolean> {
+    await this.waitForShopProductsLoaded();
+    const cardCount = await this.shopProductCard.count();
+    const attemptCount = Math.min(cardCount, maxProducts);
+
+    for (let i = 0; i < attemptCount; i++) {
+      const opened = await this.clickProductCardByIndex(i);
+      if (!opened) continue;
+
+      await this.handleModal().catch(() => {});
+      await this.waitForContentStable(300).catch(() => {});
+
+      if (await this.hasSalesEndedState()) {
+        console.log(`   상품 ${i + 1}: 판매 종료 상품 - 건너뜀`);
+        await this.returnToProductListing();
+        continue;
+      }
+
+      await this.setQuantity(1).catch(() => {});
+      await this.selectFirstOption().catch(() => false);
+      await this.waitForContentStable(300).catch(() => {});
+
+      if (await this.hasEnabledPurchaseButton()) {
+        console.log(`   ✅ 구매 가능 상품 ${i + 1}번 선택`);
+        return true;
+      }
+
+      console.log(`   상품 ${i + 1}: 활성 구매 CTA 없음 - 다음 상품 시도`);
       await this.returnToProductListing();
     }
 
@@ -1458,6 +1487,14 @@ export class MakestarPage extends MakestarCartPage {
     'button:has-text("cart"):not([disabled])',
     '[role="dialog"] button:has-text("장바구니"):not([disabled])',
     '[role="dialog"] button:has-text("Cart"):not([disabled])',
+  ] as const;
+
+  private readonly purchaseButtonPatterns = [
+    /^\s*구매하기\s*$/i,
+    /^\s*구매\s*$/i,
+    /^\s*Buy Now\s*$/i,
+    /^\s*Buy\s*$/i,
+    /^\s*Purchase\s*$/i,
   ] as const;
 
   private readonly artistEntrySelectors = [
@@ -1828,6 +1865,10 @@ export class MakestarPage extends MakestarCartPage {
         .catch(() => false)
     ) {
       const value = await firstSpinner.inputValue().catch(() => "0");
+      if (parseInt(value, 10) > 0) {
+        console.log(`   ✅ 첫 번째 옵션 수량 ${value} 확인 (spinbutton)`);
+        return true;
+      }
       if (parseInt(value, 10) === 0) {
         // spinbutton의 부모 컨테이너에서 마지막 img 클릭 (plus 버튼)
         const container = firstSpinner.locator("xpath=..");
@@ -1968,16 +2009,27 @@ export class MakestarPage extends MakestarCartPage {
 
   /** 구매 버튼 클릭 */
   async clickPurchaseButton(): Promise<boolean> {
-    const patterns = [
-      /^\s*구매하기\s*$/i,
-      /^\s*구매\s*$/i,
-      /^\s*Buy Now\s*$/i,
-      /^\s*Buy\s*$/i,
-      /^\s*Purchase\s*$/i,
-    ];
+    for (const candidate of this.getPurchaseButtonCandidates()) {
+      const visible = await candidate.locator
+        .isVisible({ timeout: this.timeouts.short })
+        .catch(() => false);
+      if (!visible) continue;
 
-    for (const pattern of patterns) {
-      const candidates = [
+      const enabled = await candidate.locator.isEnabled().catch(() => false);
+      if (!enabled) continue;
+
+      await candidate.locator.click();
+      console.log(`✅ 구매 CTA 클릭: ${candidate.label}`);
+      return true;
+    }
+
+    return false;
+  }
+
+  private getPurchaseButtonCandidates(): { locator: Locator; label: string }[] {
+    const candidates: { locator: Locator; label: string }[] = [];
+    for (const pattern of this.purchaseButtonPatterns) {
+      candidates.push(
         {
           locator: this.page.getByRole("button", { name: pattern }).last(),
           label: `role=button ${pattern}`,
@@ -1996,19 +2048,20 @@ export class MakestarPage extends MakestarCartPage {
             .last(),
           label: `[role="button"] ${pattern}`,
         },
-      ];
+      );
+    }
+    return candidates;
+  }
 
-      for (const candidate of candidates) {
-        const visible = await candidate.locator
-          .isVisible({ timeout: this.timeouts.short })
-          .catch(() => false);
-        if (!visible) continue;
+  async hasEnabledPurchaseButton(): Promise<boolean> {
+    for (const candidate of this.getPurchaseButtonCandidates()) {
+      const visible = await candidate.locator
+        .isVisible({ timeout: this.timeouts.short })
+        .catch(() => false);
+      if (!visible) continue;
 
-        const enabled = await candidate.locator.isEnabled().catch(() => false);
-        if (!enabled) continue;
-
-        await candidate.locator.click();
-        console.log(`✅ 구매 CTA 클릭: ${candidate.label}`);
+      const enabled = await candidate.locator.isEnabled().catch(() => false);
+      if (enabled) {
         return true;
       }
     }

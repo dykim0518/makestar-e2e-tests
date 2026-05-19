@@ -152,14 +152,37 @@ test.describe("기본 페이지 @feature:cmr.home @feature:cmr.event @feature:cm
     }
     await makestar.handleModal();
 
-    const optionSelected = await makestar.selectFirstOption();
-    if (!optionSelected) {
-      await makestar.setQuantity(1);
-      console.log("ℹ️ 옵션 선택 UI 미발견, 기본 수량만 설정 후 구매 시도");
-    }
+    const prepareProductForPurchase = async (label: string) => {
+      const optionSelected = await makestar.selectFirstOption();
+      if (!optionSelected) {
+        await makestar.setQuantity(1);
+        console.log(
+          `ℹ️ ${label}: 옵션 선택 UI 미발견, 기본 수량만 설정 후 구매 시도`,
+        );
+      }
+      await makestar.waitForContentStable(300).catch(() => {});
+    };
 
-    const purchaseClicked = await makestar.clickPurchaseButton();
-    expect(purchaseClicked).toBeTruthy();
+    await prepareProductForPurchase("Event 상품");
+
+    let purchaseClicked = await makestar.clickPurchaseButton();
+    if (!purchaseClicked) {
+      console.warn(
+        "⚠️ Event 첫 상품의 구매 CTA가 비활성 상태입니다. Shop 구매 가능 상품으로 폴백합니다.",
+      );
+      await makestar.clickLogoToHome();
+      await makestar.navigateToShop();
+      await makestar.waitForPageContent();
+      const openedFromShop = await makestar.openFirstPurchaseEligibleProduct();
+      expect(
+        openedFromShop,
+        "Event 첫 상품과 Shop 후보 중 구매 가능한 상품을 찾지 못했습니다.",
+      ).toBe(true);
+      await makestar.handleModal();
+      await prepareProductForPurchase("Shop 폴백 상품");
+      purchaseClicked = await makestar.clickPurchaseButton();
+    }
+    expect(purchaseClicked, "활성화된 구매 CTA를 클릭해야 합니다.").toBe(true);
 
     // 결제/로그인 진입은 비동기 라우팅이라 초기 URL을 너무 빨리 읽으면 거짓 실패가 날 수 있음
     await runOptionalStep(() =>
