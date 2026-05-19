@@ -67,8 +67,7 @@ export class MakestarMyPage extends BasePage {
    * 현재는 KR만 지원하며, 테스트 계정의 KR 주소 ID를 fixture 상수로 하드코딩한다
    * (`STG_TEST_ACCOUNT.KR_DEFAULT_ADDRESS_ID`). 해당 주소가 존재하지 않으면 fail-fast.
    *
-   * 멱등 — 이미 기본인 경우에도 안전하게 다시 호출 가능 (`check()`는 already-checked
-   * 상태에서 no-op).
+   * 멱등 — 이미 기본인 경우에는 저장 버튼이 disabled일 수 있으므로 저장 없이 통과한다.
    */
   async setDefaultShippingAddress(country: ShippingCountry): Promise<void> {
     if (country !== "KR") {
@@ -101,6 +100,10 @@ export class MakestarMyPage extends BasePage {
       setMainCheckbox,
       "Set as Main Address 체크박스를 찾을 수 없음 — 마이페이지 UI 변경 가능성",
     ).toBeVisible({ timeout: this.timeouts.medium });
+    if (await setMainCheckbox.isChecked()) {
+      return;
+    }
+
     await setMainCheckbox.check();
 
     const saveButton = this._page.getByRole("button", {
