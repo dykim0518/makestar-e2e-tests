@@ -19,6 +19,32 @@ export class MakestarMyPage extends BasePage {
     super(page, timeouts);
   }
 
+  private async assertNoAccessDenied(context: string): Promise<void> {
+    const accessDeniedHeading = this._page.getByRole("heading", {
+      name: /Access Denied/i,
+    });
+    const accessDeniedBody = this._page.getByText(
+      /IP address is not authorized/i,
+    );
+    const isAccessDenied =
+      (await accessDeniedHeading
+        .waitFor({ state: "visible", timeout: 1000 })
+        .then(() => true)
+        .catch(() => false)) ||
+      (await accessDeniedBody
+        .waitFor({ state: "visible", timeout: 1000 })
+        .then(() => true)
+        .catch(() => false));
+
+    if (isAccessDenied) {
+      throw new Error(
+        `${context} 실패: Access Denied 페이지가 표시되었습니다. ` +
+          `현재 실행 환경의 IP가 ${this.baseUrl} 접근 허용 대상인지 확인하세요. ` +
+          `현재 URL ${this._page.url()}`,
+      );
+    }
+  }
+
   /** 배송지 관리 목록(`/my-page/address`) 진입 */
   async gotoAddressBook(): Promise<void> {
     await this._page.goto(`${this.baseUrl}/my-page/address`, {
@@ -27,6 +53,7 @@ export class MakestarMyPage extends BasePage {
     await this._page
       .waitForLoadState("networkidle", { timeout: this.timeouts.long })
       .catch(() => {});
+    await this.assertNoAccessDenied("배송지 관리 페이지 진입");
     if (!this._page.url().includes("/my-page")) {
       throw new Error(
         `배송지 관리 페이지 진입 실패: 현재 URL ${this._page.url()}. storageState 만료 가능성.`,
@@ -58,6 +85,7 @@ export class MakestarMyPage extends BasePage {
     await this._page
       .waitForLoadState("networkidle", { timeout: this.timeouts.long })
       .catch(() => {});
+    await this.assertNoAccessDenied("KR 기본 주소 edit 화면 진입");
 
     if (!this._page.url().includes(`/address/update/${addressId}`)) {
       throw new Error(

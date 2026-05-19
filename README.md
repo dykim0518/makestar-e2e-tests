@@ -124,7 +124,7 @@ Actions 탭 > Playwright Tests > Run workflow
 
 - `suite`: `cmr | cmr-payment | albumbuddy | admin`
   - `cmr`: prod CMR 모니터링 전용, 결제 spec 제외
-  - `cmr-payment`: STG 결제 회귀 전용 (`environment=stg` 필수)
+  - `cmr-payment`: STG 결제 회귀 전용 (`environment=stg` 필수, STG 허용 IP의 self-hosted runner에서 실행)
   - `albumbuddy`: AlbumBuddy 모니터링 전용 (`AB_AUTH_JSON` 필수)
   - `admin`: GitHub Hosted Runner에서는 실행 불가 (사내 VPN/IP allowlist 필요)
 - 참고: `all`은 더 이상 지원하지 않음. CMR, CMR 결제, AlbumBuddy, Admin을 개별 실행

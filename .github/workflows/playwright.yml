@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
     inputs:
       suite:
-        description: "실행할 테스트 스위트 (admin은 self-hosted runner에서 실행)"
+        description: "실행할 테스트 스위트 (admin/cmr-payment는 self-hosted runner에서 실행)"
         type: choice
         options:
           - cmr
@@ -63,7 +63,7 @@ concurrency:
 jobs:
   test:
     name: Playwright Monitoring
-    if: ${{ github.event_name != 'workflow_dispatch' || ((github.event.inputs.suite || 'cmr') != 'admin' && !contains(github.event.inputs.project || '', 'admin')) }}
+    if: ${{ github.event_name != 'workflow_dispatch' || ((github.event.inputs.suite || 'cmr') != 'admin' && (github.event.inputs.suite || 'cmr') != 'cmr-payment' && !contains(github.event.inputs.project || '', 'admin') && !contains(github.event.inputs.project || '', 'cmr-payment')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -626,9 +626,9 @@ jobs:
           RUN_ENVIRONMENT: ${{ steps.run_playwright.outputs.environment }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
-  admin-local:
-    name: Playwright Admin Local
-    if: ${{ github.event_name == 'workflow_dispatch' && ((github.event.inputs.suite || 'cmr') == 'admin' || contains(github.event.inputs.project || '', 'admin')) }}
+  restricted-local:
+    name: Playwright Restricted Local
+    if: ${{ github.event_name == 'workflow_dispatch' && ((github.event.inputs.suite || 'cmr') == 'admin' || (github.event.inputs.suite || 'cmr') == 'cmr-payment' || contains(github.event.inputs.project || '', 'admin') || contains(github.event.inputs.project || '', 'cmr-payment')) }}
     runs-on: [self-hosted, macOS, admin-local]
     timeout-minutes: 120
 
@@ -647,13 +647,20 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install chromium
 
-      - name: Setup Admin authentication
+      - name: Setup STG authentication
         run: |
           ENV_INPUT="stg"
+          SUITE_INPUT="${{ github.event.inputs.suite || 'cmr' }}"
+          PROJECT_INPUT="${{ github.event.inputs.project || '' }}"
           AUTH_STATE_PATH_INPUT="${{ vars.ADMIN_AUTH_STATE_PATH }}"
           AUTH_STATE_PATH="${AUTH_STATE_PATH_INPUT:-${ADMIN_AUTH_STATE_PATH:-}}"
 
-          if [ -n "$AUTH_STATE_PATH" ] && [ -f "$AUTH_STATE_PATH" ]; then
+          USE_LOCAL_ADMIN_AUTH=0
+          if [[ "${SUITE_INPUT}" == "admin" || "${PROJECT_INPUT}" == *admin* ]]; then
+            USE_LOCAL_ADMIN_AUTH=1
+          fi
+
+          if [ "${USE_LOCAL_ADMIN_AUTH}" = "1" ] && [ -n "$AUTH_STATE_PATH" ] && [ -f "$AUTH_STATE_PATH" ]; then
             cp "$AUTH_STATE_PATH" auth.json
             echo "✅ 로컬 인증 파일 복사 완료"
           elif [ -n "$STG_AUTH_JSON" ]; then
@@ -682,17 +689,21 @@ jobs:
         run: node scripts/validate-auth.js
         env:
           AUTH_WARN_HOURS: "2"
+          AUTH_PAGE_CHECK: ${{ ((github.event.inputs.suite || 'cmr') == 'cmr-payment' || contains(github.event.inputs.project || '', 'cmr-payment')) && 'true' || 'false' }}
           ENVIRONMENT_INPUT: stg
 
-      - name: Run Admin Playwright tests
+      - name: Run restricted Playwright tests
         id: run_playwright
         run: |
-          SUITE_INPUT="${{ github.event.inputs.suite || 'admin' }}"
+          SUITE_INPUT="${{ github.event.inputs.suite || 'cmr' }}"
           PROJECT_INPUT="${{ github.event.inputs.project || '' }}"
           SPEC_INPUT="${{ github.event.inputs.spec || '' }}"
           GREP_INPUT="${{ github.event.inputs.grep || '' }}"
           RETRIES_INPUT="${{ github.event.inputs.retries || '1' }}"
           ENV_INPUT="stg"
+          REQUESTED_SUITE="${SUITE_INPUT}"
+
+          export MAKESTAR_BASE_URL="https://stage-new.makeuni2026.com"
 
           if ! [[ "${RETRIES_INPUT}" =~ ^[0-5]$ ]]; then
             echo "retries 입력값은 0~5 정수만 허용됩니다: ${RETRIES_INPUT}"
@@ -714,17 +725,37 @@ jobs:
           fi
 
           if [ -n "${PROJECT_INPUT}" ]; then
-            if [[ "${PROJECT_INPUT}" != *admin* ]]; then
-              echo "::error::admin-local job은 admin project만 실행합니다. 입력값: ${PROJECT_INPUT}"
+            if [[ "${PROJECT_INPUT}" == *admin* ]]; then
+              REQUESTED_SUITE="admin"
+              add_project "${PROJECT_INPUT}"
+            elif [[ "${PROJECT_INPUT}" == *cmr-payment* ]]; then
+              REQUESTED_SUITE="cmr-payment"
+              export INCLUDE_CMR_PAYMENT=true
+              add_project "${PROJECT_INPUT}"
+            else
+              echo "::error::restricted-local job은 admin 또는 cmr-payment project만 실행합니다. 입력값: ${PROJECT_INPUT}"
               exit 1
             fi
-            add_project "${PROJECT_INPUT}"
           else
-            add_project "admin-full"
+            case "${SUITE_INPUT}" in
+              admin)
+                REQUESTED_SUITE="admin"
+                add_project "admin-full"
+                ;;
+              cmr-payment)
+                REQUESTED_SUITE="cmr-payment"
+                export INCLUDE_CMR_PAYMENT=true
+                add_project "cmr-payment-stg"
+                ;;
+              *)
+                echo "::error::restricted-local job은 admin 또는 cmr-payment suite만 실행합니다. 입력값: ${SUITE_INPUT}"
+                exit 1
+                ;;
+            esac
           fi
 
           if [ "${#EFFECTIVE_TARGETS[@]}" -eq 0 ]; then
-            echo "::error::실행 가능한 admin project가 없습니다."
+            echo "::error::실행 가능한 restricted project가 없습니다."
             exit 1
           fi
 
@@ -735,7 +766,7 @@ jobs:
           PLAYWRIGHT_CMD="${CMD[*]}"
           EFFECTIVE_TARGETS_JOINED="$(IFS=,; echo "${EFFECTIVE_TARGETS[*]}")"
           SKIP_REASONS_JOINED=""
-          export QA_REQUESTED_SUITE="admin"
+          export QA_REQUESTED_SUITE="${REQUESTED_SUITE}"
           export QA_EFFECTIVE_TARGETS="${EFFECTIVE_TARGETS_JOINED}"
           export QA_SKIP_REASONS="${SKIP_REASONS_JOINED}"
           QA_PROVENANCE="$(node <<'EOF'
@@ -754,7 +785,7 @@ jobs:
           )"
 
           echo "playwright_command=${PLAYWRIGHT_CMD}" >> "$GITHUB_OUTPUT"
-          echo "suite=admin" >> "$GITHUB_OUTPUT"
+          echo "suite=${REQUESTED_SUITE}" >> "$GITHUB_OUTPUT"
           echo "environment=${ENV_INPUT}" >> "$GITHUB_OUTPUT"
           echo "effective_targets=${EFFECTIVE_TARGETS_JOINED}" >> "$GITHUB_OUTPUT"
           echo "skip_reasons=${SKIP_REASONS_JOINED}" >> "$GITHUB_OUTPUT"
@@ -765,8 +796,8 @@ jobs:
           echo "retries=${RETRIES_INPUT}" >> "$GITHUB_OUTPUT"
 
           echo "▶ 실행 명령: ${PLAYWRIGHT_CMD}"
-          export RUN_REQUESTED_SUITE="${SUITE_INPUT}"
-          export RUN_SUITE="admin"
+          export RUN_REQUESTED_SUITE="${REQUESTED_SUITE}"
+          export RUN_SUITE="${REQUESTED_SUITE}"
           export RUN_EFFECTIVE_TARGETS="${EFFECTIVE_TARGETS_JOINED}"
           export RUN_SKIP_REASONS="${SKIP_REASONS_JOINED}"
           "${CMD[@]}"
@@ -774,11 +805,11 @@ jobs:
           CI: true
           DASHBOARD_URL: ${{ secrets.DASHBOARD_URL }}
           DASHBOARD_API_SECRET: ${{ secrets.DASHBOARD_API_SECRET }}
-          SUITE_INPUT: admin
+          SUITE_INPUT: ${{ github.event.inputs.suite || 'cmr' }}
           ENVIRONMENT_INPUT: stg
 
       - name: Persist Admin authentication
-        if: always()
+        if: always() && steps.run_playwright.outputs.suite == 'admin'
         run: |
           AUTH_STATE_PATH_INPUT="${{ vars.ADMIN_AUTH_STATE_PATH }}"
           AUTH_STATE_PATH="${AUTH_STATE_PATH_INPUT:-${ADMIN_AUTH_STATE_PATH:-}}"
@@ -825,7 +856,7 @@ jobs:
           const outcomeLabel = outcomeLabelMap[outcome] || outcome;
 
           const lines = [];
-          lines.push('## Playwright Admin 실행 요약');
+          lines.push(`## Playwright ${suite} 실행 요약`);
           lines.push('');
           lines.push('| 항목 | 값 |');
           lines.push('|---|---|');
@@ -952,7 +983,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: playwright-report-admin-${{ github.run_id }}-${{ github.run_attempt }}
+          name: playwright-report-${{ steps.run_playwright.outputs.suite || 'restricted' }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: playwright-report/
           retention-days: 30
           if-no-files-found: ignore
@@ -961,7 +992,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: test-results-admin-${{ github.run_id }}-${{ github.run_attempt }}
+          name: test-results-${{ steps.run_playwright.outputs.suite || 'restricted' }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: test-results/
           retention-days: 7
 
@@ -976,13 +1007,13 @@ jobs:
             -H "Authorization: Bearer $DASHBOARD_API_SECRET" \
             -H "Content-Type: application/json" \
             -H "X-GitHub-Run-Id: ${{ github.run_id }}" \
-            -H "X-GitHub-Suite: admin" \
+            -H "X-GitHub-Suite: ${{ steps.run_playwright.outputs.suite }}" \
             -H "X-GitHub-Environment: ${{ steps.run_playwright.outputs.environment }}" \
             -H "X-GitHub-Sha: ${{ github.sha }}" \
             -H "X-GitHub-Branch: ${{ github.ref_name }}" \
             -H "X-GitHub-Triggered-By: ${{ github.event_name }}" \
             -H "X-QA-Provenance: ${{ steps.run_playwright.outputs.provenance }}" \
-            -H "X-QA-Requested-Suite: admin" \
+            -H "X-QA-Requested-Suite: ${{ steps.run_playwright.outputs.suite }}" \
             -H "X-QA-Effective-Targets: ${{ steps.run_playwright.outputs.effective_targets }}" \
             --data-binary @test-results/results.json \
             --max-time 15 || true
