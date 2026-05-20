@@ -118,6 +118,15 @@ jobs:
         env:
           ENVIRONMENT_INPUT: ${{ github.event.inputs.environment || 'prod' }}
 
+      # AlbumBuddy 인증 토큰 자동 갱신
+      # ab-auth.json은 secret 크기 제한(48KB)으로 로컬→AB_AUTH_JSON secret sync가 불가능하므로
+      # CI에서 직접 headless 갱신해야 access_token 만료(단명)를 막을 수 있다.
+      - name: Auto-refresh AlbumBuddy auth tokens
+        id: ab_auth_refresh
+        if: ${{ github.event_name == 'workflow_dispatch' && ((github.event.inputs.suite || 'cmr') == 'albumbuddy' || contains(github.event.inputs.project || '', 'albumbuddy')) }}
+        run: env AUTH_FILE_PATH=ab-auth.json node scripts/ci-refresh-auth.js
+        continue-on-error: true
+
       # 갱신 후 토큰 유효성 최종 검증 (실패 시 테스트 중단 + 갱신 안내)
       - name: Validate auth tokens
         id: auth_check
