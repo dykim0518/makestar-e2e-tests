@@ -79,7 +79,7 @@ async function cleanupAllDummyNotices(page: Page): Promise<number> {
 }
 
 test.describe
-  .serial("Admin 공지등록 + 프론트 노출 검증 @feature:admin_notice_create", () => {
+  .serial("Admin 공지등록 + 프론트 노출 검증 @feature:admin_makestar.notice.create", () => {
   // 한 번 생성한 dummyTitle을 모든 test가 공유 (등록 → 프론트 검증 → cleanup)
   let dummyTitle: string;
 

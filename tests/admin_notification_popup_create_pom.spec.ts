@@ -121,7 +121,7 @@ async function cleanupAllDummyPopups(page: Page): Promise<number> {
 }
 
 test.describe
-  .serial("Admin 팝업등록 (더미 + cleanup) @feature:admin_popup_create", () => {
+  .serial("Admin 팝업등록 (더미 + cleanup) @feature:admin_makestar.popup.create", () => {
   let dummyTitle: string;
   let period: ReturnType<typeof exposurePeriod>;
 
