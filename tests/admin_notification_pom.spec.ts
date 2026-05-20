@@ -15,7 +15,7 @@ import { applyAdminTestConfig } from "./helpers/admin/test-helpers";
 applyAdminTestConfig("공지사항");
 
 test.describe
-  .serial("Admin 공지사항 - 공지관리 탭 @feature:admin_notification_list", () => {
+  .serial("Admin 공지사항 - 공지관리 탭 @feature:admin_makestar.notification.list", () => {
   let notiPage: AdminNotificationListPage;
 
   test.beforeEach(async ({ page }) => {
@@ -86,7 +86,7 @@ test.describe
 });
 
 test.describe
-  .serial("Admin 공지사항 - 팝업관리 탭 @feature:admin_notification_list", () => {
+  .serial("Admin 공지사항 - 팝업관리 탭 @feature:admin_makestar.notification.list", () => {
   let notiPage: AdminNotificationListPage;
 
   test.beforeEach(async ({ page }) => {

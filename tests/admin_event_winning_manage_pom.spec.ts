@@ -125,7 +125,7 @@ async function assertFilterStrictMatch(
 // ##############################################################################
 // Admin 이벤트 당첨 관리
 // ##############################################################################
-test.describe("Admin 이벤트 당첨 관리 @feature:admin_event_winning_manage", () => {
+test.describe("Admin 이벤트 당첨 관리 @feature:admin_makestar.eventwinningmanage.list", () => {
   let pageObj: EventWinningManagePage;
 
   // ===========================================================================
