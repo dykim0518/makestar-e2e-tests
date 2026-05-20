@@ -1,8 +1,8 @@
 /**
- * POCAAlbum 당첨자조회 목록 페이지 객체
+ * POCAAlbum 당첨자조회(배송 정보) 목록 페이지 객체
  *
- * URL: /pocaalbum/winner/list (예상 - 탐색 후 확정)
- * Read Only 예상
+ * URL: /pocaalbum/winner/delivery/list (STG 사이드바 탐색으로 확정)
+ * Read Only
  */
 
 import { Page, Locator } from "@playwright/test";
@@ -13,15 +13,15 @@ export class PocaWinnerListPage extends AdminBasePage {
 
   constructor(page: Page) {
     super(page, ADMIN_TIMEOUTS);
-    this.searchInput = page.locator('input[placeholder*="검색"]').first();
+    this.searchInput = page.getByPlaceholder("이메일 입력").first();
   }
 
   getPageUrl(): string {
-    return `${this.baseUrl}/pocaalbum/winner/list`;
+    return `${this.baseUrl}/pocaalbum/winner/delivery/list`;
   }
 
   getHeadingText(): string {
-    return "당첨자";
+    return "배송 정보 리스트";
   }
 
   /** 키워드로 당첨자 검색 */

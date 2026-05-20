@@ -1,8 +1,8 @@
 /**
- * POCAAlbum 시스템관리 목록 페이지 객체
+ * POCAAlbum 시스템관리(캐시 관리) 목록 페이지 객체
  *
- * URL: /pocaalbum/system/list (예상 - 탐색 후 확정)
- * Read Only 예상
+ * URL: /pocaalbum/system/cache/list (STG 사이드바 탐색으로 확정)
+ * Read Only
  */
 
 import { Page, Locator } from "@playwright/test";
@@ -13,15 +13,15 @@ export class PocaSystemListPage extends AdminBasePage {
 
   constructor(page: Page) {
     super(page, ADMIN_TIMEOUTS);
-    this.searchInput = page.locator('input[placeholder*="검색"]').first();
+    this.searchInput = page.getByPlaceholder("검색어 입력").first();
   }
 
   getPageUrl(): string {
-    return `${this.baseUrl}/pocaalbum/system/list`;
+    return `${this.baseUrl}/pocaalbum/system/cache/list`;
   }
 
   getHeadingText(): string {
-    return "시스템";
+    return "캐시";
   }
 
   /** 키워드로 시스템 설정 검색 */

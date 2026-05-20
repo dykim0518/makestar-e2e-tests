@@ -1,8 +1,8 @@
 /**
- * POCAAlbum 고객관리 목록 페이지 객체
+ * POCAAlbum 고객관리(회원관리) 목록 페이지 객체
  *
- * URL: /pocaalbum/customer/list (예상 - 탐색 후 확정)
- * Read Only 예상
+ * URL: /pocaalbum/user/list (STG 사이드바 탐색으로 확정)
+ * Read Only
  */
 
 import { Page, Locator } from "@playwright/test";
@@ -13,15 +13,15 @@ export class PocaCustomerListPage extends AdminBasePage {
 
   constructor(page: Page) {
     super(page, ADMIN_TIMEOUTS);
-    this.searchInput = page.locator('input[placeholder*="검색"]').first();
+    this.searchInput = page.getByPlaceholder("검색어 입력").first();
   }
 
   getPageUrl(): string {
-    return `${this.baseUrl}/pocaalbum/customer/list`;
+    return `${this.baseUrl}/pocaalbum/user/list`;
   }
 
   getHeadingText(): string {
-    return "고객";
+    return "회원 관리";
   }
 
   /** 키워드로 고객 검색 */
