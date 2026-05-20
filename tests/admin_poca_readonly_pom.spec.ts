@@ -11,7 +11,7 @@
  * Section 9: 신고내역 (Read Only)
  * ============================================================================
  *   PR-PAGE-01: 목록 로드
- *   PR-SEARCH-01: 키워드 검색
+ *   PR-DATA-01: 목록 데이터 정합성 (검색 UI 없음)
  *
  * ============================================================================
  * Section 10: 고객관리 (Read Only)
@@ -56,6 +56,12 @@ type PocaReadonlyListPage =
   | PocaCustomerListPage
   | PocaSystemListPage;
 
+/** 검색 UI가 존재하는 읽기 전용 목록 페이지 (신고내역 제외) */
+type PocaSearchableListPage =
+  | PocaWinnerListPage
+  | PocaCustomerListPage
+  | PocaSystemListPage;
+
 async function expectReadonlyListTable(
   listPage: PocaReadonlyListPage,
   label: string,
@@ -67,7 +73,7 @@ async function expectReadonlyListTable(
 }
 
 async function expectReadonlySearchInput(
-  listPage: PocaReadonlyListPage,
+  listPage: PocaSearchableListPage,
   label: string,
 ): Promise<void> {
   await expect(
@@ -101,8 +107,7 @@ test.describe("POCAAlbum Admin 읽기 전용 테스트", () => {
 
       await winnerListPage.searchByKeyword("테스트");
       const hasData = await winnerListPage.hasTableData();
-      const hasNoResult = await winnerListPage.noResultMessage
-        .isVisible();
+      const hasNoResult = await winnerListPage.noResultMessage.isVisible();
 
       expect(
         hasData || hasNoResult,
@@ -130,17 +135,17 @@ test.describe("POCAAlbum Admin 읽기 전용 테스트", () => {
       console.log(`  신고내역 목록: ${rowCount}행`);
     });
 
-    test("PR-SEARCH-01: 신고내역 키워드 검색", async () => {
-      await expectReadonlySearchInput(reportListPage, "신고내역");
+    // 신고내역 목록 페이지에는 검색 UI가 없으므로(STG 탐색으로 확인),
+    // 검색 대신 읽기 전용 목록의 데이터 정합성을 검증한다.
+    test("PR-DATA-01: 신고내역 목록 데이터 정합성", async () => {
+      await expectReadonlyListTable(reportListPage, "신고내역");
 
-      await reportListPage.searchByKeyword("신고");
       const hasData = await reportListPage.hasTableData();
-      const hasNoResult = await reportListPage.noResultMessage
-        .isVisible();
+      const hasNoResult = await reportListPage.noResultMessage.isVisible();
 
       expect(
         hasData || hasNoResult,
-        "검색 후 결과나 안내 메시지가 없습니다",
+        "신고내역 목록에 데이터나 안내 메시지가 없습니다",
       ).toBeTruthy();
     });
   });
@@ -169,8 +174,7 @@ test.describe("POCAAlbum Admin 읽기 전용 테스트", () => {
 
       await customerListPage.searchByKeyword("테스트");
       const hasData = await customerListPage.hasTableData();
-      const hasNoResult = await customerListPage.noResultMessage
-        .isVisible();
+      const hasNoResult = await customerListPage.noResultMessage.isVisible();
 
       expect(
         hasData || hasNoResult,
@@ -203,8 +207,7 @@ test.describe("POCAAlbum Admin 읽기 전용 테스트", () => {
 
       await systemListPage.searchByKeyword("설정");
       const hasData = await systemListPage.hasTableData();
-      const hasNoResult = await systemListPage.noResultMessage
-        .isVisible();
+      const hasNoResult = await systemListPage.noResultMessage.isVisible();
 
       expect(
         hasData || hasNoResult,
@@ -217,7 +220,8 @@ test.describe("POCAAlbum Admin 읽기 전용 테스트", () => {
   // Section 12: 캐시 관리 변경성 — QA-78: 선택한 캐시 삭제 기능 동작 불가
   // Jira: https://makestar-product.atlassian.net/browse/QA-78
   // ========================================================================
-  test.describe.serial("캐시 관리 변경성 검증 @suite:ops @feature:admin_pocaalbum.cache.list", () => {
+  test.describe
+    .serial("캐시 관리 변경성 검증 @suite:ops @feature:admin_pocaalbum.cache.list", () => {
     const CACHE_URL =
       "https://stage-new-admin.makeuni2026.com/pocaalbum/system/cache/list";
 

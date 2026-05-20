@@ -174,8 +174,9 @@ test.describe("대분류 목록 @feature:admin_makestar.product.list", () => {
     });
 
     test("CAT-PAGE-03: 브레드크럼 네비게이션 검증", async () => {
-      const isBreadcrumbVisible = await categoryPage.breadcrumb
-        .isVisible({ timeout: 5000 });
+      const isBreadcrumbVisible = await categoryPage.breadcrumb.isVisible({
+        timeout: 5000,
+      });
       expect(
         isBreadcrumbVisible,
         "❌ 브레드크럼이 보이지 않습니다. UI가 변경되었는지 확인하세요.",
@@ -279,11 +280,12 @@ test.describe("대분류 목록 @feature:admin_makestar.product.list", () => {
     });
 
     test("CAT-PAGIN-01: 다음 페이지 이동", async () => {
+      const page = categoryPage.page;
+
       const rowCount = await categoryPage.getRowCount();
       expect(rowCount, "❌ 테이블에 데이터가 없습니다").toBeGreaterThan(0);
 
-      const isNextVisible = await categoryPage.nextPageButton
-        .isVisible();
+      const isNextVisible = await categoryPage.nextPageButton.isVisible();
       const isNextEnabled = isNextVisible
         ? await categoryPage.nextPageButton.isEnabled()
         : false;
@@ -294,14 +296,35 @@ test.describe("대분류 목록 @feature:admin_makestar.product.list", () => {
       ).toBeTruthy();
 
       const firstRowBefore = await categoryPage.getFirstRow().textContent();
-      await categoryPage.goToNextPage();
-      await waitForPageStable(categoryPage.page, 5000);
-      const firstRowAfter = await categoryPage.getFirstRow().textContent();
+
+      // 다음 페이지 버튼 클릭과 page=2 목록 API 응답을 함께 대기.
+      // API 응답 수신을 명시적으로 검증해 "버튼 클릭 실패"와
+      // "API는 정상이나 테이블이 갱신되지 않는 문제"를 구분한다.
+      const [nextPageResponse] = await Promise.all([
+        page.waitForResponse(
+          (response) =>
+            response.url().includes("commerce/product") &&
+            response.url().includes("page=2"),
+          { timeout: ELEMENT_TIMEOUT },
+        ),
+        categoryPage.nextPageButton.click(),
+      ]);
 
       expect(
-        firstRowBefore,
-        "페이지 이동 후 데이터가 변경되지 않았습니다.",
-      ).not.toBe(firstRowAfter);
+        nextPageResponse.ok(),
+        `다음 페이지(page=2) 목록 API가 실패했습니다 (status: ${nextPageResponse.status()}).`,
+      ).toBeTruthy();
+
+      // API 응답 이후 테이블 리렌더를 폴링으로 대기.
+      // 느린 렌더링이면 갱신을 잡아내고, 끝내 갱신되지 않으면 제품 버그로 명확히 보고한다.
+      await waitForTableUpdate(page);
+      await expect
+        .poll(() => categoryPage.getFirstRow().textContent(), {
+          timeout: ELEMENT_TIMEOUT,
+          message:
+            "page=2 목록 API는 200으로 응답했으나 대분류 목록 테이블이 다음 페이지 데이터로 갱신되지 않았습니다. (제품 측 페이지네이션 리렌더 버그 의심)",
+        })
+        .not.toBe(firstRowBefore);
     });
 
     test("CAT-PAGIN-02: 페이지당 표시 개수 검증", async () => {
@@ -336,7 +359,9 @@ test.describe("대분류 목록 @feature:admin_makestar.product.list", () => {
 // ##############################################################################
 test.describe
   .serial("대분류 생성 @suite:ops @feature:admin_makestar.product.create", () => {
-  test("CAT-CREATE-01: 대분류 신규 생성 및 검증 @suite:ops", async ({ page }) => {
+  test("CAT-CREATE-01: 대분류 신규 생성 및 검증 @suite:ops", async ({
+    page,
+  }) => {
     const categoryListPage = new CategoryListPage(page);
     const categoryCreatePage = new CategoryCreatePage(page);
 
@@ -431,8 +456,9 @@ test.describe
         const createdRow = page
           .locator(`table tbody tr:has-text("${categoryNameKr}")`)
           .first();
-        createdVisible = await createdRow
-          .isVisible({ timeout: ELEMENT_TIMEOUT });
+        createdVisible = await createdRow.isVisible({
+          timeout: ELEMENT_TIMEOUT,
+        });
         if (createdVisible) {
           break;
         }
@@ -615,8 +641,7 @@ test.describe.serial("SKU 목록 @feature:admin_makestar.sku.list", () => {
       const rowCount = await skuPage.getRowCount();
       expect(rowCount, "❌ 테이블에 데이터가 없습니다").toBeGreaterThan(0);
 
-      const isNextVisible = await skuPage.nextPageButton
-        .isVisible();
+      const isNextVisible = await skuPage.nextPageButton.isVisible();
       const isNextEnabled = isNextVisible
         ? await skuPage.nextPageButton.isEnabled()
         : false;
@@ -720,7 +745,8 @@ test.describe.serial("SKU 목록 @feature:admin_makestar.sku.list", () => {
 // ##############################################################################
 // 2. SKU - 신규 생성
 // ##############################################################################
-test.describe.serial("SKU 생성 @suite:ops @feature:admin_makestar.sku.create", () => {
+test.describe
+  .serial("SKU 생성 @suite:ops @feature:admin_makestar.sku.create", () => {
   test("SKU-CREATE-01: SKU 신규 생성 및 검증 @suite:ops", async ({ page }) => {
     const skuListPage = new SKUListPage(page);
     const skuCreatePage = new SkuCreatePage(page);
@@ -827,8 +853,9 @@ test.describe("상품 목록 @feature:admin_makestar.event.list", () => {
     });
 
     test("PRD-PAGE-03: 브레드크럼 네비게이션 검증", async () => {
-      const isBreadcrumbVisible = await eventPage.breadcrumb
-        .isVisible({ timeout: 3000 });
+      const isBreadcrumbVisible = await eventPage.breadcrumb.isVisible({
+        timeout: 3000,
+      });
       if (isBreadcrumbVisible) {
         await eventPage.assertBreadcrumb(eventPage.getBreadcrumbPath());
       } else {
@@ -874,8 +901,9 @@ test.describe("상품 목록 @feature:admin_makestar.event.list", () => {
       ).toBeGreaterThan(1);
 
       await eventPage.searchByName(searchToken);
-      const hasNoResult = await eventPage.noResultMessage
-        .isVisible({ timeout: 3000 });
+      const hasNoResult = await eventPage.noResultMessage.isVisible({
+        timeout: 3000,
+      });
       expect(
         hasNoResult,
         `❌ "${searchToken}" 검색 시 결과가 없어야 할 이유가 없습니다.`,
@@ -906,8 +934,9 @@ test.describe("상품 목록 @feature:admin_makestar.event.list", () => {
       await eventPage.searchByName(randomString);
 
       const rowCount = await eventPage.getRowCount();
-      const hasNoResult = await eventPage.noResultMessage
-        .isVisible({ timeout: 3000 });
+      const hasNoResult = await eventPage.noResultMessage.isVisible({
+        timeout: 3000,
+      });
 
       expect(
         rowCount === 0 || hasNoResult,
@@ -933,8 +962,7 @@ test.describe("상품 목록 @feature:admin_makestar.event.list", () => {
       const page2Button = eventPage.page.locator(
         'nav[aria-label="Pagination"] button:has-text("2")',
       );
-      const isPage2Visible = await page2Button
-        .isVisible({ timeout: 3000 });
+      const isPage2Visible = await page2Button.isVisible({ timeout: 3000 });
 
       if (!isPage2Visible) {
         console.log("ℹ️ 페이지 2 버튼이 없음 - 데이터가 1페이지만 있음 (정상)");
@@ -985,8 +1013,11 @@ test.describe("상품 목록 @feature:admin_makestar.event.list", () => {
 // ##############################################################################
 // 3. 상품 (PRD) - 신규 등록
 // ##############################################################################
-test.describe.serial("상품 등록 @suite:ops @feature:admin_makestar.event.create", () => {
-  test("PRD-CREATE-01: 상품 신규 등록 및 검증 @suite:ops", async ({ page }, testInfo) => {
+test.describe
+  .serial("상품 등록 @suite:ops @feature:admin_makestar.event.create", () => {
+  test("PRD-CREATE-01: 상품 신규 등록 및 검증 @suite:ops", async ({
+    page,
+  }, testInfo) => {
     // 다단계 테스트 (대분류 확인/생성 → 상품등록 → 폼입력 → 저장) — 타임아웃 확장
     test.setTimeout(300_000);
     const eventListPage = new EventListPage(page);

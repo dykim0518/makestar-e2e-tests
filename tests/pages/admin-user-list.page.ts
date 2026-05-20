@@ -297,28 +297,48 @@ export class UserListPage extends AdminBasePage {
   }
 
   /**
-   * 가입서비스 필터 버튼 클릭
+   * 가입서비스 필터 칩 로케이터 반환
+   *
+   * STG 회원관리 페이지의 가입서비스 옵션은 `<button>`이 아닌
+   * `cursor:pointer`를 가진 `<div>` 칩으로 렌더링된다.
+   * `getByText(name, { exact: true })`로 정확 일치시켜
+   * 헤더의 "메이크스타 관리시스템" 버튼(부분 일치)을 배제한다.
+   */
+  getServiceFilterChip(serviceName: string): Locator {
+    return this.page.getByText(serviceName, { exact: true });
+  }
+
+  /**
+   * 가입서비스 필터 칩 클릭
    * (확장 검색 모드에서만 사용 가능)
    */
   async clickServiceFilter(serviceName: string): Promise<void> {
     await this.expandSearchMode();
 
-    const button = this.page
-      .getByRole("button", { name: serviceName, exact: true })
-      .or(this.page.locator(`button:has-text("${serviceName}")`));
-    await button.first().click();
+    const chip = this.getServiceFilterChip(serviceName);
+    await chip.waitFor({ state: "visible", timeout: this.timeouts.medium });
+    await chip.click();
   }
 
   /**
-   * 가입서비스 필터 버튼 존재 여부 확인
+   * 가입서비스 필터 칩이 선택(활성) 상태인지 확인
+   *
+   * 선택 시 칩의 class가 `text-primary ... bg-white`(비활성)에서
+   * `border-2 border-accent-pink bg-[rgba(255,85,143,0.1)]`(활성)으로 바뀐다.
+   * 동적 해시 클래스가 아닌 안정적인 `border-accent-pink` 클래스를 신호로 사용한다.
+   */
+  async isServiceFilterChipSelected(serviceName: string): Promise<boolean> {
+    const chip = this.getServiceFilterChip(serviceName);
+    const className = (await chip.getAttribute("class")) || "";
+    return className.includes("border-accent-pink");
+  }
+
+  /**
+   * 가입서비스 필터 칩 존재 여부 확인
    */
   async hasServiceFilterButtons(): Promise<boolean> {
     await this.expandSearchMode();
-    const firstService = this.page
-      .getByRole("button", { name: "메이크스타", exact: true })
-      .or(this.page.locator('button:has-text("메이크스타")'));
-    return await firstService
-      .first()
+    return await this.getServiceFilterChip("메이크스타")
       .isVisible({ timeout: 3000 })
       .catch(() => false);
   }

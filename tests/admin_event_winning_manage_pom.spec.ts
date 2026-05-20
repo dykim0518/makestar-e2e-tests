@@ -71,8 +71,7 @@ function buildEventNameSearchToken(eventName: string): string {
 const SALE_DURATION_REGEX =
   /^\d{4}-\d{2}-\d{2}\s*~\s*(\d{4}-\d{2}-\d{2}|-|미정)$/;
 const EVENT_CODE_REGEX = /^[A-Za-z0-9_&-]+$/;
-const EVENT_CODE_FORMAT_MESSAGE =
-  "영숫자/언더스코어/하이픈/앰퍼샌드(&)만 허용";
+const EVENT_CODE_FORMAT_MESSAGE = "영숫자/언더스코어/하이픈/앰퍼샌드(&)만 허용";
 
 /**
  * 상태 필터 적용 후 정밀 매칭 검증
@@ -231,7 +230,7 @@ test.describe("Admin 이벤트 당첨 관리 @feature:admin_event_winning_manage
       ).toHaveLength(0);
     });
 
-    test("EWN-SEARCH-02: 이벤트명 일부 검색 → 모든 결과 이벤트명 포함", async () => {
+    test("EWN-SEARCH-02: 이벤트명 일부 검색 → 모든 결과 이벤트명/코드 포함", async () => {
       const initialEventName = await pageObj.getFirstRowEventName();
       const searchToken = buildEventNameSearchToken(initialEventName);
       expect(
@@ -247,21 +246,26 @@ test.describe("Admin 이벤트 당첨 관리 @feature:admin_event_winning_manage
         `❌ 현재 목록의 이벤트명 일부로 검색했는데 결과가 없습니다. (검색어: ${searchToken})`,
       ).toBe(false);
 
-      const eventNames = await pageObj.getColumnTexts(
-        EventWinningManagePage.COL.eventName,
-      );
-      const normalizedToken = normalizeSearchText(searchToken);
-      const mismatches = eventNames.filter(
-        (name) => !normalizeSearchText(name).includes(normalizedToken),
-      );
+      // 행 단위로 (이벤트명, 이벤트 코드)를 함께 추출 → 인덱스 정렬 보장
+      const rows = await pageObj.getEventNameCodePairs();
 
       expect(
-        eventNames.length,
+        rows.length,
         "❌ 검색 결과 이벤트명 컬럼을 읽지 못했습니다.",
       ).toBeGreaterThan(0);
+
+      // 제품 검색은 이벤트명뿐 아니라 이벤트 코드도 매칭하므로
+      // 각 행의 이벤트명 또는 이벤트 코드 중 하나라도 토큰을 포함하면 정상으로 간주
+      const normalizedToken = normalizeSearchText(searchToken);
+      const mismatches = rows.filter((row) => {
+        const nameHit = normalizeSearchText(row.name).includes(normalizedToken);
+        const codeHit = normalizeSearchText(row.code).includes(normalizedToken);
+        return !nameHit && !codeHit;
+      });
+
       expect(
         mismatches,
-        `❌ "${searchToken}" 검색 결과에 토큰 미포함 이벤트명이 존재함: ${JSON.stringify(mismatches.slice(0, 3))}`,
+        `❌ "${searchToken}" 검색 결과에 이벤트명/코드 어디에도 토큰이 없는 행이 존재함: ${JSON.stringify(mismatches.slice(0, 3))}`,
       ).toHaveLength(0);
     });
 

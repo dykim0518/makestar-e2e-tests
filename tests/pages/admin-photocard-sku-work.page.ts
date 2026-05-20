@@ -13,9 +13,8 @@ export class PhotocardSkuWorkPage extends AdminBasePage {
   constructor(page: Page) {
     super(page, ADMIN_TIMEOUTS);
 
-    this.skuSearchInput = page.getByPlaceholder(
-      "SKU 코드, 이름을 입력해주세요",
-    );
+    this.skuSearchInput =
+      page.getByPlaceholder("SKU 코드, 이름을 입력해주세요");
     this.skuSearchButton = page.getByRole("button", {
       name: "검색",
       exact: false,
@@ -90,7 +89,11 @@ export class PhotocardSkuWorkPage extends AdminBasePage {
 
     await this.skuSearchInput.fill(searchToken);
     await this.skuSearchButton.click({ force: true });
-    await this.waitForSearchSettled(beforeFingerprint, searchToken, columnIndex);
+    await this.waitForSearchSettled(
+      beforeFingerprint,
+      searchToken,
+      columnIndex,
+    );
 
     return await this.getSkuNameColumnTexts(columnIndex);
   }
@@ -101,9 +104,11 @@ export class PhotocardSkuWorkPage extends AdminBasePage {
     await this.skuSearchInput.fill(searchToken);
     await this.skuSearchButton.click({ force: true });
 
-    await this.page.waitForLoadState("networkidle", {
-      timeout: this.timeouts.long,
-    }).catch(() => {});
+    await this.page
+      .waitForLoadState("networkidle", {
+        timeout: this.timeouts.long,
+      })
+      .catch(() => {});
 
     await expect
       .poll(
@@ -133,11 +138,13 @@ export class PhotocardSkuWorkPage extends AdminBasePage {
     return await this.tableRows.evaluateAll(
       (rows, index) =>
         rows
-          .map((row) =>
-            (row as HTMLTableRowElement)
-              .querySelectorAll("td")
-              [index].textContent?.trim(),
-          )
+          // 작업 현황 테이블에는 각 작업의 버전별 종속 하위 행(td 3개)이 섞여 있다.
+          // 이 하위 행은 실제 SKU 행이 아니므로 SKU명 컬럼이 존재하는 행만 대상으로 한다.
+          .map((row) => {
+            const cells = (row as HTMLTableRowElement).querySelectorAll("td");
+            if (cells.length <= index) return undefined;
+            return cells[index]?.textContent?.trim();
+          })
           .filter((text): text is string => !!text),
       columnIndex,
     );
@@ -148,9 +155,11 @@ export class PhotocardSkuWorkPage extends AdminBasePage {
     searchToken: string,
     columnIndex: number,
   ): Promise<void> {
-    await this.page.waitForLoadState("networkidle", {
-      timeout: this.timeouts.long,
-    }).catch(() => {});
+    await this.page
+      .waitForLoadState("networkidle", {
+        timeout: this.timeouts.long,
+      })
+      .catch(() => {});
 
     await expect
       .poll(

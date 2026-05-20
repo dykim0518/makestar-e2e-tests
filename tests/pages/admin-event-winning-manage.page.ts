@@ -223,6 +223,30 @@ export class EventWinningManagePage extends AdminBasePage {
     );
   }
 
+  /**
+   * 모든 행의 (이벤트명, 이벤트 코드) 쌍을 행 단위로 반환
+   * - getColumnTexts는 컬럼별 빈 셀을 제거하므로 인덱스 정렬이 깨질 수 있음
+   * - 행 단위 추출로 이벤트명/코드 매칭 검증 시 정렬을 보장
+   */
+  async getEventNameCodePairs(): Promise<
+    Array<{ name: string; code: string }>
+  > {
+    return await this.tableRows.evaluateAll(
+      (rows, col) =>
+        rows.map((row) => {
+          const cells = row.querySelectorAll("td");
+          return {
+            name: (cells[col.name]?.textContent ?? "").trim(),
+            code: (cells[col.code]?.textContent ?? "").trim(),
+          };
+        }),
+      {
+        name: EventWinningManagePage.COL.eventName,
+        code: EventWinningManagePage.COL.eventCode,
+      },
+    );
+  }
+
   /** 첫 번째 행의 ID 셀 텍스트 */
   async getFirstRowId(): Promise<string> {
     return await this.getCellText(0, EventWinningManagePage.COL.id);
