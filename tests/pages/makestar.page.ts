@@ -1932,6 +1932,35 @@ export class MakestarPage extends MakestarCartPage {
     return false;
   }
 
+  /** 상품 상세 페이지에서 첫 번째 옵션 행의 수량을 1 증가시킨다. 값이 증가하면 true. */
+  async increaseFirstOptionQuantity(): Promise<boolean> {
+    const spinbutton = this.page.getByRole("spinbutton").first();
+    const visible = await spinbutton
+      .isVisible({ timeout: this.timeouts.medium })
+      .catch(() => false);
+    if (!visible) return false;
+
+    const before = parseInt(
+      (await spinbutton.inputValue().catch(() => "0")) || "0",
+      10,
+    );
+    // 구조: [img minus] [spinbutton] [img plus] — 라벨이 모두 minus라 마지막 img가 + 버튼
+    const plusButton = spinbutton.locator("xpath=..").locator("img").last();
+    const plusVisible = await plusButton
+      .isVisible({ timeout: this.timeouts.short })
+      .catch(() => false);
+    if (!plusVisible) return false;
+
+    await plusButton.click();
+    await this.waitForContentStable(300).catch(() => {});
+
+    const after = parseInt(
+      (await spinbutton.inputValue().catch(() => "0")) || "0",
+      10,
+    );
+    return after > before;
+  }
+
   /** 수량 설정 */
   async setQuantity(quantity: number): Promise<void> {
     const quantityInput = await this.findVisibleElement(

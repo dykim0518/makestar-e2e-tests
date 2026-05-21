@@ -6,14 +6,9 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { getPriceOptionProductIds } from "./fixtures/cmr-products";
 import { runOptionalStep } from "./helpers/optional-step";
 import { BASE_URL, TEST_TIMEOUT } from "./helpers/cmr-monitoring-config";
-import { verifyCurrentProductOptionPriceChange } from "./helpers/cmr-product-option";
 import { MakestarPage } from "./pages/makestar.page";
-
-const PRICE_OPTION_SCAN_LIMIT = 10;
-const PRICE_OPTION_PRODUCT_IDS = getPriceOptionProductIds(BASE_URL);
 
 test.describe("상품/장바구니 기능 @feature:cmr.cart @feature:cmr.product @feature:cmr.shop", () => {
   let makestar: MakestarPage;
@@ -23,43 +18,8 @@ test.describe("상품/장바구니 기능 @feature:cmr.cart @feature:cmr.product
     makestar = new MakestarPage(page);
     await makestar.gotoHome();
   });
-  test("CMR-ACTION-01: 상품 옵션 변경에 따른 가격 변동 확인", async ({}, testInfo) => {
+  test("CMR-ACTION-01: 상품 상세 수량 변경에 따른 가격 반영 확인", async () => {
     test.setTimeout(TEST_TIMEOUT);
-
-    let priceChanged = false;
-    let optionCandidateFound = false;
-    let verificationDetail =
-      "옵션 변경에 따라 가격이 달라지는 상품을 찾지 못했습니다.";
-    const checkedDetails: string[] = [];
-
-    for (const productId of PRICE_OPTION_PRODUCT_IDS) {
-      await makestar.goto(`${makestar.baseUrl}/product/${productId}`);
-      await makestar.waitForLoadState("domcontentloaded");
-      await makestar.waitForContentStable();
-      await makestar.handleModal();
-
-      const result = await verifyCurrentProductOptionPriceChange(
-        makestar,
-        `고정 상품 ${productId}`,
-      );
-      optionCandidateFound ||= result.optionCandidateFound;
-      priceChanged ||= result.priceChanged;
-      verificationDetail = result.detail;
-      checkedDetails.push(result.detail);
-
-      if (priceChanged) {
-        console.log(`✅ 옵션 변경 후 가격 변동 확인됨 (${verificationDetail})`);
-        break;
-      }
-    }
-
-    if (PRICE_OPTION_PRODUCT_IDS.length > 0) {
-      expect(
-        priceChanged,
-        `고정 가격 옵션 상품(${PRICE_OPTION_PRODUCT_IDS.join(", ")})에서 가격 변동을 확인하지 못했습니다. ${checkedDetails.join(" | ")}`,
-      ).toBe(true);
-      return;
-    }
 
     // GNB Shop 버튼 클릭 (유저 시나리오)
     await makestar.navigateToShop();
@@ -68,56 +28,42 @@ test.describe("상품/장바구니 기능 @feature:cmr.cart @feature:cmr.product
     // 상품 그리드 렌더를 별도로 보장한다.
     await makestar.waitForShopProductsLoaded();
 
-    const productCount = await makestar.shopProductCard.count();
+    const opened = await makestar.openFirstCartEligibleProduct();
     expect(
-      productCount,
-      "Shop 페이지에 상품이 표시되어야 합니다",
-    ).toBeGreaterThan(0);
+      opened,
+      "수량 검증이 가능한 구매 가능 상품 상세 페이지로 진입해야 합니다",
+    ).toBe(true);
 
-    for (
-      let productIndex = 0;
-      productIndex < Math.min(PRICE_OPTION_SCAN_LIMIT, productCount);
-      productIndex++
-    ) {
-      const productCard = makestar.shopProductCard.nth(productIndex);
-      await expect(productCard).toBeVisible({ timeout: 5000 });
-      await productCard.click();
-      await makestar.waitForLoadState("domcontentloaded");
-      await makestar.waitForContentStable();
-      await makestar.handleModal();
+    const optionVisible = await makestar.ensureOptionSelectionVisible();
+    expect(
+      optionVisible,
+      "상품 상세에 옵션/수량 선택 영역이 표시되어야 합니다",
+    ).toBe(true);
 
-      const result = await verifyCurrentProductOptionPriceChange(
-        makestar,
-        `상품 ${productIndex + 1}`,
-      );
-      optionCandidateFound ||= result.optionCandidateFound;
-      priceChanged ||= result.priceChanged;
-      verificationDetail = result.detail;
-      checkedDetails.push(result.detail);
+    const basePrice = await makestar.getCurrentPrice();
+    expect(
+      basePrice,
+      "기준 총 상품금액을 읽을 수 있어야 합니다",
+    ).not.toBeNull();
+    expect(basePrice!).toBeGreaterThan(0);
+    console.log(`   기준 총 상품금액: ${basePrice}`);
 
-      if (priceChanged) {
-        console.log(`✅ 옵션 변경 후 가격 변동 확인됨 (${verificationDetail})`);
-        break;
-      }
+    const increased = await makestar.increaseFirstOptionQuantity();
+    expect(increased, "상품 상세에서 수량을 1 증가시킬 수 있어야 합니다").toBe(
+      true,
+    );
 
-      await makestar.goto(`${makestar.baseUrl}/shop`);
-      await makestar.handleModal();
-      await makestar.waitForPageContent();
-    }
+    await expect
+      .poll(async () => await makestar.getCurrentPrice(), {
+        timeout: 10000,
+        message: "수량 증가 후 총 상품금액이 기준 금액보다 커져야 합니다",
+      })
+      .toBeGreaterThan(basePrice!);
 
-    if (!priceChanged) {
-      const reason = optionCandidateFound
-        ? `옵션은 2개 이상인 상품이 있었지만 가격 변동 상품은 없습니다. 마지막 상태: ${verificationDetail}`
-        : `옵션 가격 변동 검증 가능한 상품이 현재 데이터셋에 없습니다. 마지막 상태: ${verificationDetail}`;
-      testInfo.annotations.push({
-        type: "data-unavailable",
-        description: checkedDetails.join(" | "),
-      });
-      test.skip(
-        !priceChanged,
-        `데이터 조건 미충족으로 가격 변동 검증을 건너뜁니다. ${reason}`,
-      );
-    }
+    const updatedPrice = await makestar.getCurrentPrice();
+    console.log(
+      `   ✅ 수량 증가 후 총 상품금액 반영 확인: ${basePrice} → ${updatedPrice}`,
+    );
   });
 
   test("CMR-ACTION-02: 품절 상품 표시 확인", async ({ page }) => {
