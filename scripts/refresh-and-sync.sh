@@ -7,7 +7,7 @@
 # 동작:
 #   1. save-auth.spec.ts 실행 (브라우저에서 수동 로그인)
 #   2. auth.json 갱신 확인
-#   3. gh secret set AUTH_JSON 으로 CI secret 동기화
+#   3. gh secret set AUTH_JSON / STG_AUTH_JSON 으로 CI secret 동기화
 #
 
 set -euo pipefail
@@ -82,8 +82,9 @@ if ! gh auth status &> /dev/null; then
 fi
 
 gh secret set AUTH_JSON < auth.json
+gh secret set STG_AUTH_JSON < auth.json
 
-echo -e "${GREEN}✅ AUTH_JSON secret 동기화 완료${NC}"
+echo -e "${GREEN}✅ AUTH_JSON / STG_AUTH_JSON secret 동기화 완료${NC}"
 echo ""
 
 # 완료
