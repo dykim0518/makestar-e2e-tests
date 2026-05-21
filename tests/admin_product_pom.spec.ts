@@ -959,19 +959,19 @@ test.describe("상품 목록 @feature:admin_makestar.event.list", () => {
       const rowCount = await eventPage.getRowCount();
       expect(rowCount, "❌ 테이블에 데이터가 없습니다.").toBeGreaterThan(0);
 
-      const page2Button = eventPage.page.locator(
-        'nav[aria-label="Pagination"] button:has-text("2")',
-      );
-      const isPage2Visible = await page2Button.isVisible({ timeout: 3000 });
+      const isNextVisible = await eventPage.nextPageButton.isVisible();
+      const isNextEnabled = isNextVisible
+        ? await eventPage.nextPageButton.isEnabled()
+        : false;
 
-      if (!isPage2Visible) {
-        console.log("ℹ️ 페이지 2 버튼이 없음 - 데이터가 1페이지만 있음 (정상)");
-        return;
-      }
+      expect(
+        isNextVisible && isNextEnabled,
+        "다음 페이지 버튼이 없거나 비활성화 상태입니다 - 데이터가 1페이지만 존재",
+      ).toBeTruthy();
 
       const firstRowBefore = await eventPage.getFirstRow().textContent();
-      await page2Button.click();
-      await waitForPageStable(eventPage.page, 3000);
+      await eventPage.goToNextPage();
+      await waitForPageStable(eventPage.page, 5000);
       const firstRowAfter = await eventPage.getFirstRow().textContent();
 
       expect(
