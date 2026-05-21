@@ -9,7 +9,7 @@ import { test, expect } from "@playwright/test";
 import { MakestarPage } from "./pages/makestar.page";
 import { TEST_TIMEOUT } from "./helpers/cmr-monitoring-config";
 
-test.describe("검색 기능 @feature:cmr.home", () => {
+test.describe("검색 기능 @feature:cmr.search.overlay @feature:cmr.search.results @feature:cmr.search.filters", () => {
   let makestar: MakestarPage;
 
   test.beforeEach(async ({ page }, testInfo) => {
@@ -28,8 +28,9 @@ test.describe("검색 기능 @feature:cmr.home", () => {
     const hasRecommended = await makestar.verifyRecommendedKeywords();
     expect(hasRecommended).toBeTruthy();
 
-    const hasCancelBtn = await makestar.cancelButton
-      .isVisible({ timeout: 2000 });
+    const hasCancelBtn = await makestar.cancelButton.isVisible({
+      timeout: 2000,
+    });
     expect(hasCancelBtn).toBeTruthy();
   });
 
