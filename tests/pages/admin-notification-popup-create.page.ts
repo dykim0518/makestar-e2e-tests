@@ -244,47 +244,88 @@ export class AdminNotificationPopupCreatePage extends AdminBasePage {
   }
 
   /**
-   * 등록 + 모달 에러 감지 + 목록 이동 대기.
+   * 등록 + POST 응답 검증 + 모달 에러 감지 + 목록 이동 대기.
    *
-   * `expectedStartDate` 지정 시 등록 POST 응답의 display_start_at가 해당 날짜(YYYY-MM-DD)로
-   * 시작하는지 검증한다. 캘린더에서 이전/다음 달 셀이 클릭되어 과거 날짜로 등록되는 회귀를 잡는다.
+   * 실패 노출 정책 (fail-fast):
+   *  - 클릭 후 mutation(POST/PUT/PATCH) 요청이 한 건도 안 잡히면 폼 검증 실패로 throw
+   *  - notification/popup 경로 mutation이 4xx/5xx면 응답 본문까지 포함해 throw
+   *  - 클라이언트 측 알림 모달이 뜨면 그 내용 throw
+   *  - 목록으로 redirect 안 되면 throw (waitForFunction 자체 timeout)
+   *  - `expectedStartDate` 지정 시 응답 본문의 display_start_at가 해당 날짜로 시작하는지 검증
+   *    (캘린더에서 이전/다음 달 셀이 잘못 클릭되어 과거/미래 날짜로 등록되는 회귀 방지).
    */
   async submitAndWaitForList(options?: {
     expectedStartDate?: Date;
   }): Promise<void> {
-    const responsePromise = options?.expectedStartDate
-      ? this.page
-          .waitForResponse(
-            (resp) =>
-              /create_popup/.test(resp.url()) &&
-              resp.request().method() === "POST" &&
-              resp.status() >= 200 &&
-              resp.status() < 300,
-            { timeout: 15000 },
-          )
-          .catch(() => null)
-      : null;
+    const mutations: Array<{
+      url: string;
+      method: string;
+      status: number;
+      response: import("@playwright/test").Response;
+    }> = [];
+    const onResponse = (resp: import("@playwright/test").Response) => {
+      const method = resp.request().method();
+      if (method !== "POST" && method !== "PUT" && method !== "PATCH") return;
+      const url = resp.url();
+      if (/\.(js|css|png|jpg|jpeg|svg|woff2?)(\?|$)/i.test(url)) return;
+      mutations.push({ url, method, status: resp.status(), response: resp });
+    };
+    this.page.on("response", onResponse);
 
-    await this.submitButton.scrollIntoViewIfNeeded();
-    await this.submitButton.click({ force: true });
+    try {
+      await this.submitButton.scrollIntoViewIfNeeded();
+      await this.submitButton.click({ force: true });
 
-    if (responsePromise && options?.expectedStartDate) {
-      const resp = await responsePromise;
-      if (resp) {
-        const body = (await resp.json().catch(() => null)) as Record<
-          string,
-          unknown
-        > | null;
-        const startAt = extractDisplayStartAt(body);
-        const expected = formatYmd(options.expectedStartDate);
-        if (startAt && !startAt.startsWith(expected)) {
-          throw new Error(
-            `등록 응답 display_start_at가 예상 날짜와 다름. 실제: "${startAt}", 기대: "${expected} ..." (캘린더 셀이 잘못된 달을 클릭했을 가능성)`,
-          );
-        }
-      } else {
-        console.warn(
-          "[popup-create] 등록 POST 응답을 캡처하지 못함 — display_start_at 검증 skip",
+      // 알림 모달이 떴거나, URL이 /create에서 벗어났거나, 등록 POST가 잡힐 때까지 race.
+      await Promise.race([
+        this.page
+          .locator('[role="dialog"], .fixed:has-text("알림")')
+          .first()
+          .waitFor({ state: "visible", timeout: 15000 }),
+        this.page.waitForFunction(
+          () => !window.location.href.includes("/create"),
+          { timeout: 15000 },
+        ),
+        this.page.waitForResponse(
+          (r) =>
+            /\/(popup|notification)/i.test(r.url()) &&
+            ["POST", "PUT", "PATCH"].includes(r.request().method()),
+          { timeout: 15000 },
+        ),
+      ]).catch(() => {
+        /* 어느 신호도 안 잡히면 아래 분기에서 mutations 기반으로 fail-fast */
+      });
+    } finally {
+      this.page.off("response", onResponse);
+    }
+
+    const createResp = mutations.find((r) =>
+      /\/(popup|notification)/i.test(r.url),
+    );
+    if (createResp && createResp.status >= 400) {
+      let body = "";
+      try {
+        body = await createResp.response.text();
+      } catch {
+        body = "(응답 본문 읽기 실패)";
+      }
+      throw new Error(
+        `등록 API 실패 — ${createResp.method} ${createResp.status} ${
+          createResp.url
+        }\n응답: ${body.substring(0, 500)}`,
+      );
+    }
+
+    // 등록 응답 본문의 display_start_at 검증 (캘린더 셀 오선택 회귀 방지).
+    if (createResp && options?.expectedStartDate) {
+      const body = (await createResp.response
+        .json()
+        .catch(() => null)) as Record<string, unknown> | null;
+      const startAt = extractDisplayStartAt(body);
+      const expected = formatYmd(options.expectedStartDate);
+      if (startAt && !startAt.startsWith(expected)) {
+        throw new Error(
+          `등록 응답 display_start_at가 예상 날짜와 다름. 실제: "${startAt}", 기대: "${expected} ..." (캘린더 셀이 잘못된 달을 클릭했을 가능성)`,
         );
       }
     }
@@ -293,22 +334,27 @@ export class AdminNotificationPopupCreatePage extends AdminBasePage {
       .locator('[role="dialog"], .fixed:has-text("알림")')
       .first();
     const hasModal = await modal
-      .isVisible({ timeout: 1500 })
+      .isVisible({ timeout: 1000 })
       .catch(() => false);
     if (hasModal) {
       const body = (await modal.textContent().catch(() => "")) || "";
       throw new Error(`등록 실패 — 모달: ${body.trim().substring(0, 200)}`);
     }
 
-    await this.page
-      .waitForFunction(() => !window.location.href.includes("/create"), {
-        timeout: 15000,
-      })
-      .catch(() => {});
-
-    if (this.page.url().includes("/create")) {
-      throw new Error(`등록 후 목록 이동 실패 — 현재 URL: ${this.page.url()}`);
+    if (!createResp) {
+      const otherMutations = mutations
+        .map((r) => `${r.method} ${r.status} ${r.url}`)
+        .join("; ");
+      throw new Error(
+        `등록 POST/PUT/PATCH 요청이 감지되지 않음 — 폼 검증 실패로 백엔드 호출이 발생하지 않음. ` +
+          `다른 mutation 응답: ${otherMutations || "(없음)"}`,
+      );
     }
+
+    await this.page.waitForFunction(
+      () => !window.location.href.includes("/create"),
+      { timeout: 15000 },
+    );
     await this.page.waitForLoadState("domcontentloaded");
   }
 }
