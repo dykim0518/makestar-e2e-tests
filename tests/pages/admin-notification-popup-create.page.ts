@@ -18,6 +18,34 @@
 import { Page, Locator, expect } from "@playwright/test";
 import { AdminBasePage } from "./admin-base.page";
 
+function formatYmd(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * 등록 응답 JSON에서 display_start_at 값을 추출한다. create_popup_v2 응답은
+ * `{ popup: { display_start_at: "YYYY-MM-DD HH:MM:SS" } }` 구조라 popup key를 우선 본다.
+ * 다른 흔한 nested 키도 fallback으로 탐색한다.
+ */
+function extractDisplayStartAt(
+  body: Record<string, unknown> | null,
+): string | null {
+  if (!body) return null;
+  const direct = body["display_start_at"];
+  if (typeof direct === "string") return direct;
+  for (const key of ["popup", "data", "result", "payload"]) {
+    const nested = body[key];
+    if (nested && typeof nested === "object") {
+      const found = extractDisplayStartAt(nested as Record<string, unknown>);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
 export type PopupCategory = "공통 팝업" | "B2C 팝업" | "B2B 팝업";
 export type PopupAlignment = "왼쪽 정렬" | "가운데 정렬";
 
@@ -111,12 +139,20 @@ export class AdminNotificationPopupCreatePage extends AdminBasePage {
   /**
    * 날짜 input은 readonly — 클릭하면 캘린더 팝업이 뜨고, 일자 셀을 클릭해서 선택.
    * 같은 달 안의 단일 일자만 지원 (월간 navigation 미구현).
+   *
+   * 캘린더 그리드(.grid.grid-cols-7)는 이전/다음 달 일자도 함께 렌더한다.
+   * 현재 달 셀 wrapper에는 `text-primary`, 다른 달 wrapper에는 `text-secondary`가 붙는다.
+   * 같은 숫자(예: 26)가 양쪽에 존재하므로 `text-primary`로 한정해야 이전 달이 클릭되지 않는다.
    */
   async pickDate(input: Locator, day: number): Promise<void> {
     await input.click({ force: true });
-    // 캘린더는 dialog/popup으로 떠있음. 일자 셀은 텍스트만 가진 작은 노드.
-    const cell = this.page.getByText(String(day), { exact: true }).first();
-    await expect(cell, `${day}일 셀 미발견`).toBeVisible({ timeout: 5000 });
+    const cell = this.page
+      .locator(".grid.grid-cols-7 > div.text-primary")
+      .filter({ hasText: new RegExp(`^\\s*${day}\\s*$`) })
+      .first();
+    await expect(cell, `현재 달의 ${day}일 셀 미발견`).toBeVisible({
+      timeout: 5000,
+    });
     await cell.click({ force: true });
   }
 
@@ -207,10 +243,51 @@ export class AdminNotificationPopupCreatePage extends AdminBasePage {
     }
   }
 
-  /** 등록 + 모달 에러 감지 + 목록 이동 대기 */
-  async submitAndWaitForList(): Promise<void> {
+  /**
+   * 등록 + 모달 에러 감지 + 목록 이동 대기.
+   *
+   * `expectedStartDate` 지정 시 등록 POST 응답의 display_start_at가 해당 날짜(YYYY-MM-DD)로
+   * 시작하는지 검증한다. 캘린더에서 이전/다음 달 셀이 클릭되어 과거 날짜로 등록되는 회귀를 잡는다.
+   */
+  async submitAndWaitForList(options?: {
+    expectedStartDate?: Date;
+  }): Promise<void> {
+    const responsePromise = options?.expectedStartDate
+      ? this.page
+          .waitForResponse(
+            (resp) =>
+              /create_popup/.test(resp.url()) &&
+              resp.request().method() === "POST" &&
+              resp.status() >= 200 &&
+              resp.status() < 300,
+            { timeout: 15000 },
+          )
+          .catch(() => null)
+      : null;
+
     await this.submitButton.scrollIntoViewIfNeeded();
     await this.submitButton.click({ force: true });
+
+    if (responsePromise && options?.expectedStartDate) {
+      const resp = await responsePromise;
+      if (resp) {
+        const body = (await resp.json().catch(() => null)) as Record<
+          string,
+          unknown
+        > | null;
+        const startAt = extractDisplayStartAt(body);
+        const expected = formatYmd(options.expectedStartDate);
+        if (startAt && !startAt.startsWith(expected)) {
+          throw new Error(
+            `등록 응답 display_start_at가 예상 날짜와 다름. 실제: "${startAt}", 기대: "${expected} ..." (캘린더 셀이 잘못된 달을 클릭했을 가능성)`,
+          );
+        }
+      } else {
+        console.warn(
+          "[popup-create] 등록 POST 응답을 캡처하지 못함 — display_start_at 검증 skip",
+        );
+      }
+    }
 
     const modal = this.page
       .locator('[role="dialog"], .fixed:has-text("알림")')
