@@ -52,23 +52,3 @@ jobs:
               },
             });
             console.log('AlbumBuddy (prod) dispatched');
-
-      - name: Trigger Admin (STG)
-        # 매일 실행으로 admin-auth.json 의 7일짜리 STG 세션 쿠키를 항상 갱신 →
-        # admin run 공백이 7일을 넘겨 인증이 만료되는 데드락을 방지한다.
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.actions.createWorkflowDispatch({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: 'playwright.yml',
-              ref: 'main',
-              inputs: {
-                suite: 'admin',
-                environment: 'stg',
-                retries: '3',
-                notify_slack: 'true',
-              },
-            });
-            console.log('Admin (STG) dispatched');
