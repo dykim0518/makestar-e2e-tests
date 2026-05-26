@@ -49,6 +49,7 @@ function makeDummyTitle(): string {
  * 시간 포맷: "오전/오후 HH:MM" (12시간제).
  */
 function exposurePeriod(): {
+  startDate: Date;
   startDay: number;
   startTime: string;
   endDay: number;
@@ -70,6 +71,7 @@ function exposurePeriod(): {
   };
 
   return {
+    startDate: start,
     startDay: start.getDate(),
     startTime: fmtTime(start),
     endDay: end.getDate(),
@@ -184,7 +186,9 @@ test.describe
       popupTitleEn: dummyTitle,
     });
     expect(await createPage.isCategoryActive("공통 팝업")).toBe(true);
-    await createPage.submitAndWaitForList();
+    await createPage.submitAndWaitForList({
+      expectedStartDate: period.startDate,
+    });
 
     // 등록 후 자동 redirect — /notification/list?openedTab=popup 형태
     await expect(page).toHaveURL(/\/notification\/list/);
