@@ -27,7 +27,7 @@ import { setupAuthCookies } from "./helpers/admin";
 
 applyAdminTestConfig("배너설정");
 
-test.describe("Admin 배너설정", () => {
+test.describe("Admin 배너설정 @feature:admin_makestar.banner.list", () => {
   let bannerPage: BannerListPage;
 
   test.beforeEach(async ({ page }) => {
