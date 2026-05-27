@@ -6,13 +6,13 @@
  *   BNR-PAGE-02: 전시중/대기중 탭 전환
  *   BNR-ACTION-01: 메인배너 갯수 설정 모달 열기
  *   BNR-ACTION-02: 메인배너 갯수 설정 모달 취소 닫기
+ *   BNR-ACTION-03: 갯수 변경 시 종류 라벨 반영 및 새로고침 후 유지 (@write)
  *   BNR-CREATE-01: 배너 등록 모달 열기
  *   BNR-CREATE-02: 배너 등록 모달 필드 노출 검증
  *   BNR-CREATE-03: 배너 등록 모달 X 버튼 닫기
  *   BNR-CREATE-04: 빈 폼 제출 → "대분류를 선택해주세요" 유효성 (negative)
  *
  * 보류 (별도 follow-up):
- *   BNR-ACTION-03: 갯수 변경 — stage 백엔드 보정 추정, 수동 재현 후 결정
  *   BNR-CREATE-05: 필수값 입력 후 등록 — Vue multiselect 시간 dropdown + 데이터 누적 부담
  *
  * @see tests/pages/admin-banner-list.page.ts
@@ -75,6 +75,61 @@ test.describe("Admin 배너설정 @feature:admin_makestar.banner.list", () => {
       await expect(bannerPage.countModalHeading).toBeVisible();
       await bannerPage.closeMainBannerCountModal();
       await expect(bannerPage.countModalHeading).toBeHidden();
+    });
+
+    // 갯수 모달 input 표시값은 stage에서 항상 "1"로 보정되므로 input value 비교는 무의미.
+    // 대신 "전시중인 배너" 목록의 종류=메인 라벨 카운트가 새 갯수에 맞춰 변경되고
+    // 새로고침 후에도 유지되는지로 백엔드 반영을 검증한다. finally에서 원래 값으로 복원.
+    test("BNR-ACTION-03: 갯수 변경 시 종류=메인 라벨 카운트 반영 및 새로고침 후 유지 @write", async ({
+      page,
+    }) => {
+      await bannerPage.switchTab("displayed");
+      await waitForPageStable(page);
+
+      const original = await bannerPage.countDisplayedMainTypeChips();
+      expect(
+        original,
+        "❌ 전시중 탭에 종류=메인 라벨이 1개 이상 있어야 함 (시드 데이터 확인)",
+      ).toBeGreaterThanOrEqual(1);
+
+      const target = original >= 2 ? 1 : 2;
+
+      try {
+        await bannerPage.setMainBannerCount(target);
+        await waitForPageStable(page);
+
+        await expect
+          .poll(async () => bannerPage.countDisplayedMainTypeChips(), {
+            message: `❌ 갯수 변경 직후 종류=메인 라벨 카운트가 ${target}이어야 함 (원래 ${original})`,
+            timeout: 5_000,
+          })
+          .toBe(target);
+
+        await page.reload();
+        await bannerPage.waitForReady();
+        await waitForPageStable(page);
+        await bannerPage.switchTab("displayed");
+
+        await expect
+          .poll(async () => bannerPage.countDisplayedMainTypeChips(), {
+            message: `❌ 새로고침 후에도 종류=메인 라벨 카운트가 ${target}이어야 함 (백엔드 저장 검증)`,
+            timeout: 5_000,
+          })
+          .toBe(target);
+      } finally {
+        await bannerPage.setMainBannerCount(original);
+        await waitForPageStable(page);
+        await page.reload();
+        await bannerPage.waitForReady();
+        await waitForPageStable(page);
+        await bannerPage.switchTab("displayed");
+        await expect
+          .poll(async () => bannerPage.countDisplayedMainTypeChips(), {
+            message: `❌ 원상복귀 실패: 종류=메인 라벨 카운트가 ${original}이어야 함`,
+            timeout: 5_000,
+          })
+          .toBe(original);
+      }
     });
   });
 
