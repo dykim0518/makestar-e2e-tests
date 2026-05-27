@@ -195,11 +195,27 @@ test.describe
 
     // 자동 전환되지 않은 경우를 대비해 명시적으로 팝업 탭 보장
     const listPage = new AdminNotificationListPage(page);
-    await listPage.switchToPopupTab().catch(() => {});
-    await expect(
-      page.getByText(dummyTitle, { exact: false }).first(),
-      "등록한 팝업이 팝업관리 탭에 노출되어야 함",
-    ).toBeVisible({ timeout: 10000 });
+    await listPage.switchToPopupTab();
+
+    // 백엔드 eventual consistency 대응: list 갱신 지연 시 reload 재시도 (최대 3회)
+    // NTC-FRONT-01과 동일 패턴 — submit은 200 성공이나 list 페이지가 신규 행을 즉시 못 보는 케이스.
+    const titleCell = page.getByText(dummyTitle, { exact: false }).first();
+    let visible = false;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (await titleCell.isVisible({ timeout: 5000 }).catch(() => false)) {
+        visible = true;
+        break;
+      }
+      console.log(
+        `⏳ 팝업관리 탭 노출 미확인 (시도 ${attempt + 1}/3) — reload 재시도`,
+      );
+      await page.reload({ waitUntil: "domcontentloaded", timeout: 20000 });
+      await listPage.switchToPopupTab();
+    }
+    expect(
+      visible,
+      `등록한 팝업이 팝업관리 탭에 노출되어야 함 (3회 reload 재시도 후)`,
+    ).toBe(true);
   });
 
   test("POP-CLEANUP-99: 누적 더미 팝업 prefix 일괄 정리", async ({ page }) => {
