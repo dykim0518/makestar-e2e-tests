@@ -233,4 +233,24 @@ export class BannerListPage extends AdminBasePage {
       timeout: this.timeouts.medium,
     });
   }
+
+  // ==========================================================================
+  // 등록 모달 — 쓰기 동작 (negative만 지원)
+  // ==========================================================================
+
+  /**
+   * 등록 모달의 "배너 등록" 버튼 클릭 (제출).
+   * 유효성 실패 시 모달은 열린 상태 유지, 성공 시 닫힘.
+   */
+  async submitRegisterForm(): Promise<void> {
+    await this.registerModalSubmitButton.click();
+  }
+
+  /**
+   * 등록 모달 내 유효성 에러 메시지 노출 여부.
+   * @param messageRegex 부분 매칭 정규식 (예: /대분류를 선택해주세요/)
+   */
+  errorMessage(messageRegex: RegExp): Locator {
+    return this.page.getByText(messageRegex);
+  }
 }
