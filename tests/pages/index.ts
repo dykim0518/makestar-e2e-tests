@@ -226,3 +226,6 @@ export type {
 // Admin 이벤트 당첨 관리 — 상세 페이지
 export { EventWinningDetailPage } from "./admin-event-winning-detail.page";
 export type { DetailTabKey } from "./admin-event-winning-detail.page";
+
+// Admin 배너설정 페이지 (/contents/banner/list)
+export { BannerListPage } from "./admin-banner-list.page";
