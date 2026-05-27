@@ -107,6 +107,9 @@ export type {
   NoticeCreateOptions,
 } from "./admin-notification-notice-create.page";
 
+// Admin 공지 수정 페이지
+export { AdminNotificationNoticeUpdatePage } from "./admin-notification-notice-update.page";
+
 // Admin 팝업 등록 페이지
 export { AdminNotificationPopupCreatePage } from "./admin-notification-popup-create.page";
 export type {
@@ -114,6 +117,9 @@ export type {
   PopupAlignment,
   PopupCreateOptions,
 } from "./admin-notification-popup-create.page";
+
+// Admin 팝업 수정 페이지
+export { AdminNotificationPopupUpdatePage } from "./admin-notification-popup-update.page";
 
 // Admin 대분류 상세 페이지
 export { CategoryDetailPage } from "./admin-category-detail.page";
