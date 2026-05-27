@@ -86,7 +86,7 @@ global-setup.js      # 테스트 전 인증 점검/갱신
 | CMR 모니터링      | `CMR`  | Admin 인증     | `AUTH` |
 | Admin 주문        | `ORD`  | AlbumBuddy     | `AB`   |
 | Admin 대분류      | `CAT`  | Admin 회원관리 | `USR`  |
-| Admin SKU         | `SKU`  | —              | —      |
+| Admin SKU         | `SKU`  | Admin 배너     | `BNR`  |
 | Admin 상품        | `PRD`  | —              | —      |
 | POCAAlbum Admin   | `PA`   | —              | —      |
 | Admin 이벤트 당첨 | `EWN`  | —              | —      |
