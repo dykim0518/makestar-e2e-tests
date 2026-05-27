@@ -80,10 +80,18 @@ export class MakestarPage extends MakestarCartPage {
     this.navigation = page.locator('nav, header, [class*="nav"]').first();
 
     // 검색 요소 초기화
-    // 검색 버튼: SVG use href="#icon-search-line"을 포함하는 버튼
+    // 2026-05 GNB 개편: inline SVG <use href="#icon-search-line"> → <img> 마크업 (alt/aria-label 없음)
+    // 헤더 아이콘 5개(검색/팔로우/알림/장바구니/profile) 중 첫 번째가 검색.
+    // 로고(`a` with `img[alt="make-star"]`)의 부모 컨테이너 첫 button을 앵커로 식별.
+    // 폴백: aria-label/role 기반 (dev팀이 향후 라벨 추가할 가능성 대비)
     this.searchButton = page
-      .locator(
-        'button:has(svg use[href="#icon-search-line"]), button.icon-style:has(svg)',
+      .getByRole("button", { name: /^(search|검색)$/i })
+      .or(
+        page
+          .locator('div:has(> a:has(img[alt="make-star"]))')
+          .first()
+          .locator("button")
+          .first(),
       )
       .first();
     this.searchInput = page.getByPlaceholder(
@@ -94,16 +102,21 @@ export class MakestarPage extends MakestarCartPage {
       .first();
 
     // GNB 네비게이션 링크 초기화
-    // 실제 DOM 구조: <li><a href="/shop">Shop</a></li>
-    // <button>이 아닌 <a> 태그이므로 getByRole("link") 사용
-    // (2026-03-19 확인: getByRole("button") → count=0, getByRole("link") → count=1)
-    this.homeButton = page.getByRole("link", { name: "Home", exact: true });
-    this.eventButton = page.getByRole("link", { name: "Event", exact: true });
-    this.shopButton = page.getByRole("link", { name: "Shop", exact: true });
-    this.fundingButton = page.getByRole("link", {
-      name: "Funding",
-      exact: true,
-    });
+    // 2026-05 GNB 개편: 상단 GNB 링크가 메인 영역 tablist (role="tab") 로 이동
+    // 탭 라벨: Shop / Events (복수형!) / Funding / For You (=홈)
+    // 구버전 link 마크업이 남아있을 가능성을 대비해 tab.or(link) 폴백 패턴 유지
+    this.homeButton = page
+      .getByRole("tab", { name: "For You", exact: true })
+      .or(page.getByRole("link", { name: "Home", exact: true }));
+    this.eventButton = page
+      .getByRole("tab", { name: "Events", exact: true })
+      .or(page.getByRole("link", { name: "Event", exact: true }));
+    this.shopButton = page
+      .getByRole("tab", { name: "Shop", exact: true })
+      .or(page.getByRole("link", { name: "Shop", exact: true }));
+    this.fundingButton = page
+      .getByRole("tab", { name: "Funding", exact: true })
+      .or(page.getByRole("link", { name: "Funding", exact: true }));
 
     // 프로필/인증 요소 초기화
     // 로그인: a[href="/my-page"].icon-style (GNB 프로필 링크)
