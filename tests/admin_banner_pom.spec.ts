@@ -10,14 +10,18 @@
  *   BNR-CREATE-01: 배너 등록 모달 열기
  *   BNR-CREATE-02: 배너 등록 모달 필드 노출 검증
  *   BNR-CREATE-03: 배너 등록 모달 X 버튼 닫기
+ *
+ * 쓰기:
  *   BNR-CREATE-04: 빈 폼 제출 → "대분류를 선택해주세요" 유효성 (negative)
+ *   BNR-CREATE-05: 필수값 입력 후 등록 → 모달 닫힘 + 목록(대기중) 노출
  *
  * 보류 (별도 follow-up):
- *   BNR-CREATE-05: 필수값 입력 후 등록 — Vue multiselect 시간 dropdown + 데이터 누적 부담
+ *   BNR-DELETE-*: 등록 행 삭제 액션 미구현 (인라인/편집 모달 어디에도 없음). 누적 정리는 별도 작업.
  *
  * @see tests/pages/admin-banner-list.page.ts
  */
 import { test, expect } from "@playwright/test";
+import path from "path";
 import { BannerListPage } from "./pages";
 import {
   waitForPageStable,
@@ -182,7 +186,7 @@ test.describe("Admin 배너설정 @feature:admin_makestar.banner.list", () => {
   });
 
   // ==========================================================================
-  // 데이터 변경 (쓰기) — negative만. 등록 성공·갯수 변경은 별도 follow-up
+  // 데이터 변경 (쓰기) — 유효성(negative)과 성공 케이스. 갯수 변경은 위 모달 describe.
   // ==========================================================================
 
   test.describe("배너 등록 — 유효성 @write", () => {
@@ -199,6 +203,27 @@ test.describe("Admin 배너설정 @feature:admin_makestar.banner.list", () => {
       // 모달은 열린 상태 유지 (저장 시도 후 닫히지 않아야 함)
       await expect(bannerPage.registerModalHeading).toBeVisible();
       await bannerPage.closeRegisterModal();
+    });
+  });
+
+  // 등록 성공 케이스 — 데이터 누적되므로 별도 describe로 격리.
+  // 1년 후 일자/오전 00:00 시간으로 등록해 운영 노출과 격리.
+  test.describe("배너 등록 — 성공 @write", () => {
+    test("BNR-CREATE-05: 필수값 입력 후 등록 시 모달 닫힘 + 목록에 신규 행 노출", async () => {
+      const ts = Date.now();
+      const bannerName = `AUTOTEST_BNR_${ts}`;
+      const imagePath = path.resolve("tests/fixtures/dummy-popup.png");
+
+      await bannerPage.openRegisterModal();
+
+      await bannerPage.selectFirstCategory();
+      await bannerPage.uploadBannerImages(imagePath);
+      await bannerPage.fillBannerName(bannerName);
+      await bannerPage.fillAllLangDescriptions(`자동화 등록 ${ts}`);
+      // 시작/종료 모두 12개월 후 오늘 일자 + 시간은 첫 옵션(오전 00:00)
+      await bannerPage.setPeriodMonthsAhead(12, new Date().getDate());
+
+      await bannerPage.submitAndExpectListEntry(bannerName);
     });
   });
 });

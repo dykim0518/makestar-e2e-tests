@@ -278,7 +278,7 @@ export class BannerListPage extends AdminBasePage {
   }
 
   // ==========================================================================
-  // 등록 모달 — 쓰기 동작 (negative만 지원)
+  // 등록 모달 — 쓰기 동작
   // ==========================================================================
 
   /**
@@ -295,5 +295,241 @@ export class BannerListPage extends AdminBasePage {
    */
   errorMessage(messageRegex: RegExp): Locator {
     return this.page.getByText(messageRegex);
+  }
+
+  // --- 등록 폼 입력 헬퍼 (BNR-CREATE-05) -------------------------------------
+
+  /**
+   * 대분류 multiselect의 첫 옵션 선택.
+   * "대분류 검색" input을 가진 vue-multiselect wrapper 사용.
+   */
+  async selectFirstCategory(): Promise<void> {
+    const wrapper = this.page
+      .locator(".multiselect")
+      .filter({ has: this.page.getByPlaceholder("대분류 검색") })
+      .first();
+    await wrapper.locator(".multiselect__tags").click({ force: true });
+    const option = wrapper
+      .locator(".multiselect__option")
+      .filter({ hasNotText: /No elements found|List is empty/ })
+      .first();
+    await option.waitFor({ state: "visible", timeout: this.timeouts.medium });
+    await option.click({ force: true });
+  }
+
+  /**
+   * 이미지 3슬롯(가로형 데스크탑, 세로형 모바일, 서브)에 같은 파일 업로드.
+   *
+   * - 가로형/서브: hidden `input[type="file"]`에 setInputFiles 직접 주입 (정상 동작 확인)
+   * - 세로형 모바일: setInputFiles만으로는 Vue 컴포넌트의 즉시 업로드 핸들러가 반응하지 않는
+   *   이력이 있어 dropzone div 클릭 + filechooser 이벤트로 우회
+   * - 업로드 후 input.files는 0으로 reset되고 CDN URL이 미리보기에 박히는 즉시 업로드 패턴이라
+   *   각 업로드 사이 300ms 대기 (백엔드 race 회피)
+   */
+  async uploadBannerImages(absolutePath: string): Promise<void> {
+    // 가로형(데스크탑) — input nth(0)
+    await this.registerModalImageInputs.nth(0).setInputFiles(absolutePath);
+    await this.page.waitForTimeout(300);
+
+    // 세로형(모바일) — dropzone click → filechooser
+    const mobileDropzone = this.page
+      .getByText("세로형(모바일)", { exact: true })
+      .locator("..")
+      .locator('[class*="cursor-pointer"]')
+      .first();
+    const [chooser] = await Promise.all([
+      this.page.waitForEvent("filechooser", { timeout: this.timeouts.medium }),
+      mobileDropzone.click({ force: true }),
+    ]);
+    await chooser.setFiles(absolutePath);
+    await this.page.waitForTimeout(300);
+
+    // 서브 — input nth(2)
+    await this.registerModalImageInputs.nth(2).setInputFiles(absolutePath);
+    await this.page.waitForTimeout(300);
+  }
+
+  async fillBannerName(name: string): Promise<void> {
+    await this.registerModalNameInput.fill(name);
+  }
+
+  /**
+   * 다국어 4개 탭(한국어/영어/중국어/일본어)에 모두 같은 문구 입력.
+   * 탭 전환 시 textarea가 swap되므로 매번 fill — 어느 언어가 필수인지 명세 모호하여 안전한 풀필 정책.
+   */
+  async fillAllLangDescriptions(text: string): Promise<void> {
+    const langs: Array<"한국어" | "영어" | "중국어" | "일본어"> = [
+      "한국어",
+      "영어",
+      "중국어",
+      "일본어",
+    ];
+    for (const lang of langs) {
+      await this.registerModalLangButtons
+        .filter({ hasText: lang })
+        .click({ force: true });
+      const textarea = this.page.locator("textarea").first();
+      await textarea.waitFor({
+        state: "visible",
+        timeout: this.timeouts.medium,
+      });
+      await textarea.fill(text);
+    }
+  }
+
+  /**
+   * 캘린더 다음달 버튼을 N번 클릭한 뒤 현재 달의 day 셀 선택.
+   *
+   * 캘린더 헤더의 좌/우 화살표는 `img.cursor-pointer.rounded-[50px]` 두 개로 렌더되며
+   * nth(1)이 다음달 버튼. 셀 선택은 popup-create POM과 동일하게 `text-primary` (현재 달)만.
+   */
+  async pickFutureDateByCalendar(
+    dateInput: Locator,
+    monthsAhead: number,
+    day: number,
+  ): Promise<void> {
+    await dateInput.click({ force: true });
+    const grid = this.page.locator(".grid.grid-cols-7").first();
+    await grid.waitFor({ state: "visible", timeout: this.timeouts.medium });
+
+    const nextButton = this.page
+      .locator("img.cursor-pointer.rounded-\\[50px\\]")
+      .nth(1);
+    for (let i = 0; i < monthsAhead; i++) {
+      await nextButton.click();
+      await this.page.waitForTimeout(120);
+    }
+
+    const cell = this.page
+      .locator(".grid.grid-cols-7 > div.text-primary")
+      .filter({ hasText: new RegExp(`^\\s*${day}\\s*$`) })
+      .first();
+    await cell.waitFor({ state: "visible", timeout: this.timeouts.medium });
+    await cell.click({ force: true });
+  }
+
+  /**
+   * 시간 multiselect의 첫 옵션(오전 00:00) 선택.
+   * `.multiselect__select`는 zero-size로 not visible → `.multiselect__tags`를 force click.
+   */
+  async selectFirstTimeOption(which: "start" | "end"): Promise<void> {
+    const placeholder = which === "start" ? "시작 시간 선택" : "종료 시간 선택";
+    const wrapper = this.page
+      .locator(".multiselect")
+      .filter({ has: this.page.locator(`input[placeholder="${placeholder}"]`) })
+      .first();
+    await wrapper.locator(".multiselect__tags").click({ force: true });
+    const option = wrapper
+      .locator(".multiselect__option")
+      .filter({ hasNotText: /No elements found|List is empty/ })
+      .first();
+    await option.waitFor({ state: "visible", timeout: this.timeouts.medium });
+    await option.click({ force: true });
+  }
+
+  /**
+   * 게시기간을 미래(monthsAhead개월 후)의 같은 일자/시간 첫 옵션으로 세팅.
+   *
+   * 1년 후 같은 날 + 첫 시간(오전 00:00)으로 시작·종료 모두 지정하여 운영 데이터와 격리.
+   */
+  async setPeriodMonthsAhead(monthsAhead: number, day: number): Promise<void> {
+    await this.pickFutureDateByCalendar(
+      this.registerModalStartDateInput,
+      monthsAhead,
+      day,
+    );
+    await this.selectFirstTimeOption("start");
+    await this.pickFutureDateByCalendar(
+      this.registerModalEndDateInput,
+      monthsAhead,
+      day,
+    );
+    await this.selectFirstTimeOption("end");
+  }
+
+  /**
+   * 등록 폼 풀 채움 → 제출 → POST 응답 + 모달 닫힘 + 목록 노출 검증.
+   *
+   * fail-fast 정책:
+   *  - 등록 mutation(POST/PUT/PATCH) 미감지 → 폼 검증 실패로 throw
+   *  - 4xx/5xx 응답 → 본문 포함 throw
+   *  - 모달이 닫히지 않으면 throw
+   *  - 목록(전시중·대기중 어느 쪽이든)에 `bannerName` 행이 안 보이면 reload 1회 후 재검증
+   */
+  async submitAndExpectListEntry(bannerName: string): Promise<void> {
+    const mutations: Array<{
+      url: string;
+      method: string;
+      status: number;
+      response: import("@playwright/test").Response;
+    }> = [];
+    const onResponse = (resp: import("@playwright/test").Response) => {
+      const method = resp.request().method();
+      if (method !== "POST" && method !== "PUT" && method !== "PATCH") return;
+      const url = resp.url();
+      if (/\.(js|css|png|jpg|jpeg|svg|woff2?)(\?|$)/i.test(url)) return;
+      mutations.push({ url, method, status: resp.status(), response: resp });
+    };
+    this.page.on("response", onResponse);
+
+    try {
+      await this.registerModalSubmitButton.scrollIntoViewIfNeeded();
+      await this.registerModalSubmitButton.click({ force: true });
+
+      await Promise.race([
+        this.registerModalHeading.waitFor({ state: "hidden", timeout: 15000 }),
+        this.page.waitForResponse(
+          (r) =>
+            /banner/i.test(r.url()) &&
+            ["POST", "PUT", "PATCH"].includes(r.request().method()),
+          { timeout: 15000 },
+        ),
+      ]).catch(() => {
+        /* 시그널 없으면 아래에서 mutations로 fail-fast */
+      });
+    } finally {
+      this.page.off("response", onResponse);
+    }
+
+    const createResp = mutations.find((r) => /banner/i.test(r.url));
+    if (createResp && createResp.status >= 400) {
+      let body = "";
+      try {
+        body = await createResp.response.text();
+      } catch {
+        body = "(응답 본문 읽기 실패)";
+      }
+      throw new Error(
+        `등록 API 실패 — ${createResp.method} ${createResp.status} ${createResp.url}\n응답: ${body.substring(0, 500)}`,
+      );
+    }
+    if (!createResp) {
+      const otherMutations = mutations
+        .map((r) => `${r.method} ${r.status} ${r.url}`)
+        .join("; ");
+      throw new Error(
+        `등록 POST/PUT/PATCH 요청이 감지되지 않음 — 폼 검증 실패로 백엔드 호출이 발생하지 않음. 다른 mutation: ${otherMutations || "(없음)"}`,
+      );
+    }
+
+    await this.registerModalHeading.waitFor({
+      state: "hidden",
+      timeout: this.timeouts.medium,
+    });
+
+    // 목록 노출 검증 — 전시중/대기중 둘 다 살피되, 1년 후 시작이라 보통 "대기중" 탭에 들어감
+    const row = this.page.getByText(bannerName, { exact: true }).first();
+    const visible = await row
+      .waitFor({ state: "visible", timeout: this.timeouts.medium })
+      .then(() => true)
+      .catch(() => false);
+    if (!visible) {
+      await this.switchTab("waiting");
+      await this.page.waitForLoadState("domcontentloaded");
+      await row.waitFor({
+        state: "visible",
+        timeout: this.timeouts.long,
+      });
+    }
   }
 }
