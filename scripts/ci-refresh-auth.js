@@ -336,6 +336,26 @@ async function saveRefreshedAuth(originalAuth, context, page, currentUrl) {
     }, tokens);
   }
 
+  // SPA가 LOGGED_IN_USER localStorage를 채울 시간을 보장한다.
+  // CMR-AUTH-08은 storageState 단계에서 LOGGED_IN_USER 존재를 검증하므로
+  // hydrate 전에 캡처하면 access/refresh_token만 남아 검증이 실패한다.
+  try {
+    await page.waitForFunction(
+      () => {
+        try {
+          return Boolean(window.localStorage.getItem("LOGGED_IN_USER"));
+        } catch {
+          return false;
+        }
+      },
+      null,
+      { timeout: 15000 },
+    );
+    log("LOGGED_IN_USER localStorage 확인됨");
+  } catch {
+    log("⚠️ LOGGED_IN_USER 미확인 (15s 타임아웃) — storageState만 저장");
+  }
+
   const storageState = await context.storageState();
   const merged = mergeCookies(
     originalAuth.cookies || [],
