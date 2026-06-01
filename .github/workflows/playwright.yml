@@ -496,8 +496,8 @@ jobs:
           EOF
         env:
           RUN_OUTCOME: ${{ steps.run_playwright.outcome }}
-          RUN_SUITE: ${{ steps.run_playwright.outputs.suite }}
-          RUN_ENVIRONMENT: ${{ steps.run_playwright.outputs.environment }}
+          RUN_SUITE: ${{ steps.run_playwright.outputs.suite || github.event.inputs.suite }}
+          RUN_ENVIRONMENT: ${{ steps.run_playwright.outputs.environment || github.event.inputs.environment }}
           RUN_EFFECTIVE_TARGETS: ${{ steps.run_playwright.outputs.effective_targets }}
           RUN_SKIP_REASONS: ${{ steps.run_playwright.outputs.skip_reasons }}
           RUN_PROJECT: ${{ steps.run_playwright.outputs.project }}
@@ -565,8 +565,8 @@ jobs:
           const runUrl = `https://github.com/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
           const triggeredBy = process.env.GITHUB_EVENT_NAME || 'unknown';
 
-          const emojiMap = { success: '✅', failure: '🔴', cancelled: '⚠️' };
-          const labelMap = { success: '성공', failure: '실패', cancelled: '취소' };
+          const emojiMap = { success: '✅', failure: '🔴', cancelled: '⚠️', skipped: '⏭️' };
+          const labelMap = { success: '성공', failure: '실패', cancelled: '취소', skipped: '미실행(사전 검증 실패)' };
           const emoji = emojiMap[outcome] || '❓';
           const label = labelMap[outcome] || outcome;
 
@@ -630,8 +630,8 @@ jobs:
           SLACK_EOF
         env:
           RUN_OUTCOME: ${{ steps.run_playwright.outcome }}
-          RUN_SUITE: ${{ steps.run_playwright.outputs.suite }}
-          RUN_ENVIRONMENT: ${{ steps.run_playwright.outputs.environment }}
+          RUN_SUITE: ${{ steps.run_playwright.outputs.suite || github.event.inputs.suite }}
+          RUN_ENVIRONMENT: ${{ steps.run_playwright.outputs.environment || github.event.inputs.environment }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
   restricted-local:
@@ -977,8 +977,8 @@ jobs:
           EOF
         env:
           RUN_OUTCOME: ${{ steps.run_playwright.outcome }}
-          RUN_SUITE: ${{ steps.run_playwright.outputs.suite }}
-          RUN_ENVIRONMENT: ${{ steps.run_playwright.outputs.environment }}
+          RUN_SUITE: ${{ steps.run_playwright.outputs.suite || github.event.inputs.suite }}
+          RUN_ENVIRONMENT: ${{ steps.run_playwright.outputs.environment || github.event.inputs.environment }}
           RUN_EFFECTIVE_TARGETS: ${{ steps.run_playwright.outputs.effective_targets }}
           RUN_SKIP_REASONS: ${{ steps.run_playwright.outputs.skip_reasons }}
           RUN_PROJECT: ${{ steps.run_playwright.outputs.project }}
@@ -1042,8 +1042,8 @@ jobs:
           const runUrl = `https://github.com/${process.env.GITHUB_REPOSITORY}/actions/runs/${process.env.GITHUB_RUN_ID}`;
           const triggeredBy = process.env.GITHUB_EVENT_NAME || 'unknown';
 
-          const emojiMap = { success: '✅', failure: '🔴', cancelled: '⚠️' };
-          const labelMap = { success: '성공', failure: '실패', cancelled: '취소' };
+          const emojiMap = { success: '✅', failure: '🔴', cancelled: '⚠️', skipped: '⏭️' };
+          const labelMap = { success: '성공', failure: '실패', cancelled: '취소', skipped: '미실행(사전 검증 실패)' };
           const emoji = emojiMap[outcome] || '❓';
           const label = labelMap[outcome] || outcome;
 
@@ -1107,6 +1107,6 @@ jobs:
           SLACK_EOF
         env:
           RUN_OUTCOME: ${{ steps.run_playwright.outcome }}
-          RUN_SUITE: ${{ steps.run_playwright.outputs.suite }}
-          RUN_ENVIRONMENT: ${{ steps.run_playwright.outputs.environment }}
+          RUN_SUITE: ${{ steps.run_playwright.outputs.suite || github.event.inputs.suite }}
+          RUN_ENVIRONMENT: ${{ steps.run_playwright.outputs.environment || github.event.inputs.environment }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
