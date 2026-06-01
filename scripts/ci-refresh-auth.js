@@ -23,13 +23,17 @@ const { chromium } = require("@playwright/test");
 const fs = require("fs");
 const path = require("path");
 const {
+  applyTokenPair,
+  extractTokenPairFromCookies,
   extractTokenPairFromUrl,
+  findRefreshTokens,
   getLatestRefreshTokenExpiry,
   mergeCookies,
   readStorageState,
   resolveTargetDomain,
 } = require("./auth-state");
 const { checkLiveAuth } = require("./live-auth-check");
+const { refreshAccessToken } = require("./refresh-grant");
 
 const AUTH_FILE =
   process.env.AUTH_FILE_PATH || path.join(process.cwd(), "auth.json");
@@ -51,6 +55,8 @@ const LOGIN_PATTERNS = isSTG
 const SUCCESS_HOSTNAME = isSTG
   ? "stage-new.makeuni2026.com"
   : "www.makestar.com";
+const AUTH_HOST = isSTG ? "stage-auth.makeuni2026.com" : "auth.makestar.com";
+const APP_ORIGIN = `https://${SUCCESS_HOSTNAME}`;
 const TARGET_REFRESH_DOMAIN = resolveTargetDomain({
   ...process.env,
   ENVIRONMENT_INPUT: process.env.ENVIRONMENT_INPUT || (isSTG ? "stg" : "prod"),
@@ -143,6 +149,43 @@ function isAuthPageUrl(url) {
   return LOGIN_PATTERNS[0].test(url);
 }
 
+// refresh_token으로 access_token을 직접 재발급한다 (Google 브라우저 없이).
+// refresh_token이 유효한 동안은 이 경로로 access 만료를 해소하므로,
+// admin(통합매니저)의 Google challenge 데드락을 우회한다.
+async function tryRefreshGrant(auth, cookies) {
+  // needsRefresh와 동일하게 target 도메인 refresh_token을 우선 사용한다.
+  const refreshToken =
+    findRefreshTokens(cookies, TARGET_REFRESH_DOMAIN)[0]?.value ||
+    extractTokenPairFromCookies(cookies).refreshToken;
+
+  if (!refreshToken) {
+    log("refresh_token 없음 — refresh grant 불가");
+    return false;
+  }
+
+  const result = await refreshAccessToken({
+    refreshToken,
+    authHost: AUTH_HOST,
+  });
+  if (!result.ok) {
+    log(`refresh grant 실패 (${result.message}) — 브라우저 갱신으로 전환`);
+    return false;
+  }
+
+  applyTokenPair(auth, {
+    access: result.access,
+    refresh: result.refresh, // rotation 시에만 값 존재
+    appOrigin: APP_ORIGIN,
+    cookieDomain: TARGET_REFRESH_DOMAIN,
+  });
+  fs.writeFileSync(AUTH_FILE, JSON.stringify(auth, null, 2));
+
+  log(
+    `refresh grant로 access 재발급 성공 (rotation: ${result.refresh ? "예" : "아니오"})`,
+  );
+  return true;
+}
+
 async function refreshAuth() {
   // 1. auth.json 로드
   const authState = readStorageState(AUTH_FILE);
@@ -172,7 +215,13 @@ async function refreshAuth() {
     log(`${liveAuth.message} — refresh_token 재발급 시도`);
   }
 
-  // 3. Google 세션 쿠키 존재 확인
+  // 2-1. refresh grant 우선 시도 (브라우저 없이 access 재발급).
+  //      refresh_token이 살아 있으면 Google challenge 없이 해소된다.
+  if (await tryRefreshGrant(auth, cookies)) {
+    return true;
+  }
+
+  // 3. Google 세션 쿠키 존재 확인 (refresh grant 실패 시 fallback)
   const googleCookies = cookies.filter(
     (c) =>
       c.domain?.includes("google.com") &&
