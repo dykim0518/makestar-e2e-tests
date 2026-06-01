@@ -30,26 +30,22 @@ applyAdminTestConfig("포카앨범");
 async function readExposureState(
   exposureCell: Locator,
 ): Promise<boolean | null> {
-  const control = exposureCell
-    .locator(
-      'input[type="checkbox"], [role="switch"], button[aria-checked], button[aria-pressed]',
-    )
-    .first();
-  let hasControl = false;
-  try {
-    hasControl = await control.isVisible({ timeout: 3000 });
-  } catch {
-    hasControl = false;
+  // 노출 토글은 CSS 커스텀 스위치(label.switch-button > input.switch-input)이며
+  // 실제 input[type=checkbox]는 시각적으로 숨겨져 isVisible()이 false다.
+  // 따라서 가시성이 아니라 존재 여부로 판단하고 checked 상태를 직접 읽는다.
+  const checkbox = exposureCell.locator('input[type="checkbox"]').first();
+  if ((await checkbox.count()) > 0) {
+    return await checkbox.isChecked();
   }
 
-  if (hasControl) {
-    const isChecked = await control.isChecked().catch(() => null);
-    if (isChecked !== null) return isChecked;
-
-    const ariaChecked = await control.getAttribute("aria-checked");
+  const ariaControl = exposureCell
+    .locator('[role="switch"], button[aria-checked], button[aria-pressed]')
+    .first();
+  if ((await ariaControl.count()) > 0) {
+    const ariaChecked = await ariaControl.getAttribute("aria-checked");
     if (ariaChecked !== null) return ariaChecked === "true";
 
-    const ariaPressed = await control.getAttribute("aria-pressed");
+    const ariaPressed = await ariaControl.getAttribute("aria-pressed");
     if (ariaPressed !== null) return ariaPressed === "true";
   }
 
@@ -61,10 +57,7 @@ async function readExposureState(
   ) {
     return false;
   }
-  if (
-    /노출|활성|공개/.test(text) ||
-    ["ON", "Y", "TRUE"].includes(normalized)
-  ) {
+  if (/노출|활성|공개/.test(text) || ["ON", "Y", "TRUE"].includes(normalized)) {
     return true;
   }
   return null;
@@ -125,14 +118,16 @@ test.describe("POCAAlbum Admin Shop 테스트", () => {
       expect(rowCount, "❌ Shop 상품 데이터가 없습니다").toBeGreaterThan(0);
 
       const exposureCell = shopListPage.tableRows.first().locator("td").nth(7);
-      await expect(exposureCell, "❌ 첫 번째 상품의 노출 컬럼이 표시되어야 합니다")
-        .toBeVisible({ timeout: 5000 });
+      await expect(
+        exposureCell,
+        "❌ 첫 번째 상품의 노출 컬럼이 표시되어야 합니다",
+      ).toBeVisible({ timeout: 5000 });
 
       const visibility = await readExposureState(exposureCell);
-      test.skip(
-        visibility === null,
-        "Shop 노출 컬럼에 상태 텍스트나 토글 컨트롤이 없어 현재 데이터로 노출 상태를 검증할 수 없습니다.",
-      );
+      expect(
+        visibility,
+        "❌ 노출 컬럼에서 ON/OFF 상태를 읽지 못했습니다 (노출 토글 셀렉터 점검 필요)",
+      ).not.toBeNull();
       console.log(`  첫 번째 상품 노출 상태: ${visibility ? "ON" : "OFF"}`);
     });
   });
