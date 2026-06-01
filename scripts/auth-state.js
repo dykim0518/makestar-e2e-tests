@@ -4,8 +4,7 @@ function resolveTargetDomain(env = process.env) {
   if (env.AUTH_TARGET_DOMAIN) return env.AUTH_TARGET_DOMAIN;
 
   const isStg =
-    env.MAKESTAR_BASE_URL?.includes("stage") ||
-    env.ENVIRONMENT_INPUT === "stg";
+    env.MAKESTAR_BASE_URL?.includes("stage") || env.ENVIRONMENT_INPUT === "stg";
   return isStg ? ".makeuni2026.com" : ".makestar.com";
 }
 
@@ -26,9 +25,7 @@ function getJwtExpMs(token) {
 function getJwtPayload(token) {
   if (!token) return null;
   try {
-    return JSON.parse(
-      Buffer.from(token.split(".")[1], "base64url").toString(),
-    );
+    return JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString());
   } catch {
     return null;
   }
@@ -239,7 +236,54 @@ function parseJson(value) {
   }
 }
 
+/**
+ * refresh grant로 받은 새 토큰을 storageState JSON에 주입한다 (in-place 수정 후 반환).
+ * - access_token: appOrigin localStorage에 반영 (live-auth-check가 여기서 읽음)
+ * - refresh_token(rotation 시에만 전달): appOrigin localStorage + cookieDomain refresh_token
+ *   쿠키에 반영. needsRefresh는 쿠키 refresh_token 만료를 보므로 쿠키 갱신이 필수다.
+ */
+function applyTokenPair(state, { access, refresh, appOrigin, cookieDomain }) {
+  if (!state || typeof state !== "object") return state;
+  state.origins = Array.isArray(state.origins) ? state.origins : [];
+  state.cookies = Array.isArray(state.cookies) ? state.cookies : [];
+
+  let origin = state.origins.find((o) => o.origin === appOrigin);
+  if (!origin) {
+    origin = { origin: appOrigin, localStorage: [] };
+    state.origins.push(origin);
+  }
+  origin.localStorage = Array.isArray(origin.localStorage)
+    ? origin.localStorage
+    : [];
+
+  const setItem = (name, value) => {
+    const entry = origin.localStorage.find((e) => e.name === name);
+    if (entry) entry.value = value;
+    else origin.localStorage.push({ name, value });
+  };
+
+  if (access) setItem("access_token", access);
+
+  if (refresh) {
+    setItem("refresh_token", refresh);
+    const expMs = getJwtExpMs(refresh);
+    const expiresSec = expMs ? Math.floor(expMs / 1000) : undefined;
+    for (const cookie of state.cookies) {
+      if (
+        cookie.name === "refresh_token" &&
+        (!cookieDomain || domainMatches(cookie.domain, cookieDomain))
+      ) {
+        cookie.value = refresh;
+        if (expiresSec !== undefined) cookie.expires = expiresSec;
+      }
+    }
+  }
+
+  return state;
+}
+
 module.exports = {
+  applyTokenPair,
   buildAdminTokenData,
   domainMatches,
   extractTokenPairFromCookies,
