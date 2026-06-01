@@ -80,10 +80,13 @@ export class MakestarPage extends MakestarCartPage {
     this.navigation = page.locator('nav, header, [class*="nav"]').first();
 
     // 검색 요소 초기화
-    // 검색 버튼: SVG use href="#icon-search-line"을 포함하는 버튼
+    // 검색 버튼: 헤더의 데스크톱 검색 아이콘 버튼 (인라인 SVG, aria-label/텍스트 없음)
+    // 2026-06-01 확인: 기존 `svg use[href="#icon-search-line"]` 마크업 폐기됨(count=0).
+    // `button.hidden.desktop:flex:has(svg)`가 검색 버튼을 유일 매칭(count=1).
+    // 폴백: role=tab이 아닌 첫 SVG 아이콘 버튼(DOM 순서상 검색이 첫 번째).
     this.searchButton = page
       .locator(
-        'button:has(svg use[href="#icon-search-line"]), button.icon-style:has(svg)',
+        'button.hidden.desktop\\:flex:has(svg), button:has(svg):not([role="tab"])',
       )
       .first();
     this.searchInput = page.getByPlaceholder(
@@ -93,17 +96,14 @@ export class MakestarPage extends MakestarCartPage {
       .locator('button:has-text("취소"), button:has-text("Cancel")')
       .first();
 
-    // GNB 네비게이션 링크 초기화
-    // 실제 DOM 구조: <li><a href="/shop">Shop</a></li>
-    // <button>이 아닌 <a> 태그이므로 getByRole("link") 사용
-    // (2026-03-19 확인: getByRole("button") → count=0, getByRole("link") → count=1)
-    this.homeButton = page.getByRole("link", { name: "Home", exact: true });
-    this.eventButton = page.getByRole("link", { name: "Event", exact: true });
-    this.shopButton = page.getByRole("link", { name: "Shop", exact: true });
-    this.fundingButton = page.getByRole("link", {
-      name: "Funding",
-      exact: true,
-    });
+    // GNB 네비게이션 초기화
+    // 2026-06-01 리뉴얼: 기존 <a href> 링크 → 홈 헤더의 role=tab 버튼으로 변경.
+    // 탭 클릭 시 각 라우트로 실제 이동(For You→/, Events→/event, Shop→/shop, Funding→/funding).
+    // 로케일에 따라 라벨이 영문/국문으로 표기되므로 정규식으로 양쪽 매칭.
+    this.homeButton = page.getByRole("tab", { name: /^(For You|추천)$/ });
+    this.eventButton = page.getByRole("tab", { name: /^(Events|이벤트)$/ });
+    this.shopButton = page.getByRole("tab", { name: /^(Shop|쇼핑)$/ });
+    this.fundingButton = page.getByRole("tab", { name: /^(Funding|펀딩)$/ });
 
     // 프로필/인증 요소 초기화
     // 로그인: a[href="/my-page"].icon-style (GNB 프로필 링크)
@@ -380,23 +380,21 @@ export class MakestarPage extends MakestarCartPage {
 
   /** GNB/헤더 클릭 직전에 지연 노출 팝업까지 정리 */
   async prepareForGlobalNavigation(): Promise<void> {
-    await this.dismissAllBlockingModals({ waitForDelayedMs: 1500 });
+    // 프로모션 오버레이가 홈 진입 ~2초 후 지연 노출되므로 출현을 충분히 기다렸다가 제거한다.
+    // (오버레이가 떠 있으면 즉시 반환되므로 평상시 지연 비용은 거의 없음)
+    await this.dismissAllBlockingModals({ waitForDelayedMs: 3000 });
   }
 
-  /** Event 페이지로 이동 (GNB 링크 클릭) */
+  /** Event 페이지로 이동 (GNB 탭 클릭) */
   async navigateToEvent(): Promise<void> {
-    await this.prepareForGlobalNavigation();
-    try {
-      await this.eventButton.click({ timeout: 5000 });
-    } catch {
-      await this.prepareForGlobalNavigation();
-      await this.eventButton.click({ timeout: 5000 });
-    }
-    await this.waitForLoadState("domcontentloaded");
-    await this.handleModal();
+    await this.clickGlobalNavigationLink(
+      this.eventButton,
+      /\/event(?:[/?#]|$)/,
+      "Event",
+    );
   }
 
-  /** Shop 페이지로 이동 (GNB 링크 클릭) */
+  /** Shop 페이지로 이동 (GNB 탭 클릭) */
   async navigateToShop(): Promise<void> {
     await this.clickGlobalNavigationLink(
       this.shopButton,
@@ -405,7 +403,7 @@ export class MakestarPage extends MakestarCartPage {
     );
   }
 
-  /** Funding 페이지로 이동 (GNB 링크 클릭) */
+  /** Funding 페이지로 이동 (GNB 탭 클릭) */
   async navigateToFunding(): Promise<void> {
     await this.clickGlobalNavigationLink(
       this.fundingButton,
