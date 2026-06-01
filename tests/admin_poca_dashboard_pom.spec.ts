@@ -68,9 +68,10 @@ test.describe("POCAAlbum Admin 대시보드", () => {
       await expect(pocaPage.sidebarTitle).toBeVisible({ timeout: 5000 });
 
       const email = await pocaPage.getUserEmail();
-      expect(email, "❌ 사이드바에 사용자 이메일이 표시되어야 합니다").toContain(
-        "@",
-      );
+      expect(
+        email,
+        "❌ 사이드바에 사용자 이메일이 표시되어야 합니다",
+      ).toContain("@");
     });
 
     test("PA-PAGE-05: 대시보드 통계 카드 4개 표시", async () => {
@@ -170,12 +171,19 @@ test.describe("POCAAlbum Admin 대시보드", () => {
   // ========================================================================
   test.describe("사이드바 네비게이션", () => {
     test("PA-NAV-02: 각 메뉴 클릭 시 에러 없이 동작", async () => {
-      // 사이드바 메뉴 로딩 확인
+      // 사이드바 메뉴 목록은 세션(쿠키) 기준으로 렌더된다. 공통 beforeEach가
+      // 주입하는 Bearer 토큰(admin-tokens.json)은 메뉴 API에서 빈 목록을 주므로,
+      // 이 테스트에 한해 인터셉터를 해제하고 세션 인증으로 메뉴를 로드한다.
+      await pocaPage.page.unrouteAll({ behavior: "ignoreErrors" });
+      await pocaPage.navigate();
+      await waitForPageStable(pocaPage.page);
+
+      // 사이드바 메뉴가 렌더링되어야 함 (미렌더 시 skip이 아니라 실패로 노출)
       const sidebarLoaded = await pocaPage.ensureSidebarLoaded();
-      test.skip(
-        !sidebarLoaded,
-        "/pocaalbum/test 페이지에 사이드바 메뉴 데이터가 렌더링되지 않아 메뉴 클릭 검증 대상이 없습니다.",
-      );
+      expect(
+        sidebarLoaded,
+        "/pocaalbum/test 사이드바 메뉴가 렌더링되지 않았습니다",
+      ).toBe(true);
 
       for (const menuName of POCA_SIDEBAR_MENUS) {
         await test.step(`메뉴 클릭: ${menuName}`, async () => {
@@ -270,19 +278,22 @@ test.describe("POCAAlbum Admin 대시보드", () => {
   // P1: 페이지네이션
   // ========================================================================
   test.describe("페이지네이션", () => {
-    test("PA-PAGIN-01: 페이지네이션 버튼 클릭 동작", async () => {
-      const hasPagination = await pocaPage.hasPagination();
-      test.skip(
-        !hasPagination,
-        "페이지네이션 데이터가 1페이지 이하라 버튼 클릭 검증 대상이 없습니다.",
-      );
+    test("PA-PAGIN-01: 페이지네이션 2페이지 이동 동작", async () => {
+      // 검보 페이지에는 페이지네이션 데모가 여러 개 존재하므로
+      // 2페이지 이상인 컴포넌트를 대상으로 클릭 동작을 검증한다.
+      const pagination = pocaPage.getMultiPagePagination();
+      await expect(pagination).toBeVisible();
 
-      // 페이지 1 버튼이 존재하는지 확인
-      const page1Button = pocaPage.paginationNav.getByRole("button", {
-        name: "1",
+      const page2Button = pagination.getByRole("button", {
+        name: "2",
         exact: true,
       });
-      await expect(page1Button).toBeVisible();
+      await expect(page2Button).toBeVisible();
+      await page2Button.click();
+
+      // 클릭 후 2페이지 버튼이 활성 상태(background-secondary 클래스)가 되는지 확인
+      // (이 컴포넌트는 aria-current가 아니라 클래스로 활성 페이지를 표시함)
+      await expect(page2Button).toHaveClass(/background-secondary/);
     });
   });
 });

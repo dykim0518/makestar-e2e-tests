@@ -157,45 +157,21 @@ export class PocaDashboardPage extends AdminBasePage {
 
   /** 사이드바가 펼쳐지고 메뉴 항목이 렌더링될 때까지 대기 */
   async ensureSidebarLoaded(): Promise<boolean> {
-    // 1. 사이드바 컨테이너 대기
-    const sidebarVisible = await this.sidebar
-      .isVisible({ timeout: this.timeouts.medium })
-      .catch(() => false);
-    if (!sidebarVisible) {
-      console.warn("⚠️ 사이드바 컨테이너가 보이지 않습니다");
+    // 메뉴는 <li>가 아니라 텍스트 요소로 렌더되고 비동기 로드되므로,
+    // 즉시 평가하는 isVisible() 대신 waitFor()로 렌더 완료를 대기한다.
+    try {
+      await this.sidebar.waitFor({
+        state: "visible",
+        timeout: this.timeouts.medium,
+      });
+      await this.getSidebarMenuItem(POCA_SIDEBAR_MENUS[0]).waitFor({
+        state: "visible",
+        timeout: this.timeouts.long,
+      });
+      return true;
+    } catch {
       return false;
     }
-
-    // 2. 메뉴 항목이 있는지 확인 (최대 10초 대기)
-    const firstMenuSpan = this.sidebar
-      .locator("li span, li a, li button")
-      .first();
-    const menuExists = await firstMenuSpan
-      .isVisible({ timeout: this.timeouts.long })
-      .catch(() => false);
-
-    if (menuExists) return true;
-
-    // 3. 메뉴가 없으면 사이드바 토글 버튼 클릭 시도
-    const toggleBtn = this.sidebar
-      .locator("button")
-      .filter({ has: this.page.locator("img") })
-      .first();
-    if (await toggleBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
-      console.log("ℹ️ 사이드바 토글 클릭 시도");
-      await toggleBtn.click();
-      // 토글 후 메뉴 렌더링 대기
-      const afterToggle = await firstMenuSpan
-        .isVisible({ timeout: this.timeouts.medium })
-        .catch(() => false);
-      if (afterToggle) return true;
-    }
-
-    // 4. 사이드바 내 ul > li 안에 텍스트가 있는 메뉴 항목 검색
-    const menuInList = this.sidebar.locator(
-      `ul li :text-is("${POCA_SIDEBAR_MENUS[0]}")`,
-    );
-    return await menuInList.isVisible({ timeout: 3000 }).catch(() => false);
   }
 
   /** 사이드바 메뉴 항목 로케이터 (다중 전략) */
@@ -274,9 +250,17 @@ export class PocaDashboardPage extends AdminBasePage {
   // 페이지네이션 (부모 클래스 메서드 활용)
   // --------------------------------------------------------------------------
 
-  /** 페이지네이션 존재 여부 */
-  async hasPagination(): Promise<boolean> {
-    return await this.paginationNav.isVisible().catch(() => false);
+  /**
+   * 페이지네이션 데모(검보 페이지에는 nav[aria-label="Pagination"]이 여러 개) 중
+   * 2페이지 이상이라 클릭 검증이 가능한 첫 번째 페이지네이션을 반환한다.
+   */
+  getMultiPagePagination(): Locator {
+    return this.page
+      .locator('nav[aria-label="Pagination"]')
+      .filter({
+        has: this.page.getByRole("button", { name: "2", exact: true }),
+      })
+      .first();
   }
 
   // --------------------------------------------------------------------------
