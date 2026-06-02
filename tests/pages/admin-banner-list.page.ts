@@ -35,9 +35,6 @@ export class BannerListPage extends AdminBasePage {
   readonly countModalCancelButton: Locator;
   readonly countModalConfirmButton: Locator;
 
-  // 배너 목록 — 종류 라벨 (전시중 탭의 "메인" 칩)
-  readonly displayedMainTypeChips: Locator;
-
   // 배너 등록 모달
   readonly registerModalHeading: Locator;
   readonly registerModalCloseButton: Locator;
@@ -107,10 +104,6 @@ export class BannerListPage extends AdminBasePage {
     this.countModalConfirmButton = countModalScope.getByRole("button", {
       name: "확인",
     });
-
-    // 종류=메인 칩 — list row 안에 단독 "메인" 텍스트로 렌더 (트리거 "메인배너 갯수 설정"·등록 모달 "메인 배너"와 exact match로 격리).
-    // page-level scope. 등록 모달은 닫힌 상태 전제, 미리보기에는 "메인 배너 미리보기" 같이 단독 "메인"이 아닐 가능성 높음.
-    this.displayedMainTypeChips = page.getByText("메인", { exact: true });
 
     // 배너 등록 모달 — heading은 <div>"배너 등록하기"</div>, role 미사용
     // 모달 scope = 등록 모달 unique 라벨("연결하는 대분류")을 가진 가장 외부 컨테이너
@@ -224,13 +217,22 @@ export class BannerListPage extends AdminBasePage {
   }
 
   /**
-   * 메인배너 갯수를 n으로 설정한다. (모달 열기 → 값 입력 → 확인 → 모달 닫힘 대기)
+   * 메인배너 갯수를 n으로 설정하고 update_main_banner_count PUT 응답을 반환한다.
+   * (모달 열기 → 값 입력 → 확인 클릭과 동시에 응답 캡처 → 모달 닫힘 대기)
    *
    * 모달 input은 React/Vue가 제어하므로 native setter + input/change 디스패치로
-   * 프레임워크 상태를 강제 갱신한다. 모달 input 표시값이 항상 "1"로 보정되는
-   * stage 특이동작이 있어, 변경 실효 검증은 호출 측에서 list 종류 라벨 카운트로 확인할 것.
+   * 프레임워크 상태를 강제 갱신한다. 표시값은 stage에서 항상 "1"로 보정되지만
+   * PUT 요청 본문에는 n이 실린다.
+   *
+   * stage에는 설정값을 되읽을 UI·API 수단이 없다(모달 input은 항상 "1",
+   * list_displaying_banner는 배너 목록만 반환). 따라서 백엔드 반영 검증은
+   * 호출 측에서 이 PUT 응답의 status/result로만 가능하다.
+   *
+   * @returns update_main_banner_count PUT의 HTTP status와 응답 result 플래그
    */
-  async setMainBannerCount(n: number): Promise<void> {
+  async setMainBannerCount(
+    n: number,
+  ): Promise<{ status: number; result: boolean }> {
     await this.openMainBannerCountModal();
     await this.countModalInput.evaluate(
       (el: HTMLInputElement, value: string) => {
@@ -244,19 +246,27 @@ export class BannerListPage extends AdminBasePage {
       },
       String(n),
     );
-    await this.countModalConfirmButton.click();
+    const [response] = await Promise.all([
+      this.page.waitForResponse(
+        (r) =>
+          /update_main_banner_count/i.test(r.url()) &&
+          r.request().method() === "PUT",
+        { timeout: this.timeouts.long },
+      ),
+      this.countModalConfirmButton.click(),
+    ]);
     await this.countModalHeading.waitFor({
       state: "hidden",
       timeout: this.timeouts.medium,
     });
-  }
-
-  /**
-   * 현재 화면에 노출된 "메인" 종류 칩 개수.
-   * 전시중 탭이 활성화된 상태에서 호출해야 의미가 있다.
-   */
-  async countDisplayedMainTypeChips(): Promise<number> {
-    return this.displayedMainTypeChips.count();
+    let result = false;
+    try {
+      const body = (await response.json()) as { result?: boolean };
+      result = body?.result === true;
+    } catch {
+      result = false;
+    }
+    return { status: response.status(), result };
   }
 
   /** 배너 등록 모달 열기 */

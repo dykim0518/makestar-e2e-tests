@@ -81,58 +81,37 @@ test.describe("Admin 배너설정 @feature:admin_makestar.banner.list", () => {
       await expect(bannerPage.countModalHeading).toBeHidden();
     });
 
-    // 갯수 모달 input 표시값은 stage에서 항상 "1"로 보정되므로 input value 비교는 무의미.
-    // 대신 "전시중인 배너" 목록의 종류=메인 라벨 카운트가 새 갯수에 맞춰 변경되고
-    // 새로고침 후에도 유지되는지로 백엔드 반영을 검증한다. finally에서 원래 값으로 복원.
-    test("BNR-ACTION-03: 갯수 변경 시 종류=메인 라벨 카운트 반영 및 새로고침 후 유지 @write", async ({
-      page,
-    }) => {
-      await bannerPage.switchTab("displayed");
-      await waitForPageStable(page);
-
-      const original = await bannerPage.countDisplayedMainTypeChips();
-      expect(
-        original,
-        "❌ 전시중 탭에 종류=메인 라벨이 1개 이상 있어야 함 (시드 데이터 확인)",
-      ).toBeGreaterThanOrEqual(1);
-
-      const target = original >= 2 ? 1 : 2;
+    // stage에는 설정값을 되읽을 UI·API 수단이 없다(모달 input은 항상 "1"로 보정,
+    // list_displaying_banner는 배너 목록만 반환). "종류=메인" 칩 수도 설정 갯수가 아니라
+    // 실제 전시중 배너 수에 종속되어 설정값 검증에 쓸 수 없다.
+    // 따라서 갯수 변경의 백엔드 반영은 update_main_banner_count PUT 응답(200 + result:true)으로만
+    // 검증 가능하다(영속성/UI 반영 검증은 수단 부재로 불가). finally에서 기존 값으로 복원.
+    test("BNR-ACTION-03: 메인배너 갯수 변경 요청이 백엔드에서 수락됨 (PUT 200·result) @write", async () => {
+      // 모달 input이 항상 "1"이라 현재 설정값을 읽을 수 없어, stage 시드 기준값(1)을
+      // 복원값으로 두고 1 → 2 → 1 변경 쌍으로만 다룬다.
+      const original = 1;
+      const target = 2;
 
       try {
-        await bannerPage.setMainBannerCount(target);
-        await waitForPageStable(page);
-
-        await expect
-          .poll(async () => bannerPage.countDisplayedMainTypeChips(), {
-            message: `❌ 갯수 변경 직후 종류=메인 라벨 카운트가 ${target}이어야 함 (원래 ${original})`,
-            timeout: 5_000,
-          })
-          .toBe(target);
-
-        await page.reload();
-        await bannerPage.waitForReady();
-        await waitForPageStable(page);
-        await bannerPage.switchTab("displayed");
-
-        await expect
-          .poll(async () => bannerPage.countDisplayedMainTypeChips(), {
-            message: `❌ 새로고침 후에도 종류=메인 라벨 카운트가 ${target}이어야 함 (백엔드 저장 검증)`,
-            timeout: 5_000,
-          })
-          .toBe(target);
+        const changed = await bannerPage.setMainBannerCount(target);
+        expect(
+          changed.status,
+          `❌ 갯수 변경 PUT이 200이어야 함 (받은 status: ${changed.status})`,
+        ).toBe(200);
+        expect(
+          changed.result,
+          "❌ 갯수 변경 PUT 응답 result가 true여야 함 (백엔드 수락 검증)",
+        ).toBe(true);
       } finally {
-        await bannerPage.setMainBannerCount(original);
-        await waitForPageStable(page);
-        await page.reload();
-        await bannerPage.waitForReady();
-        await waitForPageStable(page);
-        await bannerPage.switchTab("displayed");
-        await expect
-          .poll(async () => bannerPage.countDisplayedMainTypeChips(), {
-            message: `❌ 원상복귀 실패: 종류=메인 라벨 카운트가 ${original}이어야 함`,
-            timeout: 5_000,
-          })
-          .toBe(original);
+        const restored = await bannerPage.setMainBannerCount(original);
+        expect(
+          restored.status,
+          `❌ 원상복귀 PUT이 200이어야 함 (받은 status: ${restored.status})`,
+        ).toBe(200);
+        expect(
+          restored.result,
+          "❌ 원상복귀 PUT 응답 result가 true여야 함",
+        ).toBe(true);
       }
     });
   });
