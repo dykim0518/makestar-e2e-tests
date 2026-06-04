@@ -1,3 +1,6 @@
+> ⚠️ **이 레포는 [makestarlab/makestar-e2e-tests](https://github.com/makestarlab/makestar-e2e-tests)로 이전되었습니다.**
+> 활성 개발은 회사 레포에서 진행됩니다. 이 레포는 이관 시점(2026-06-04)의 백업입니다.
+
 # Makestar E2E Tests
 
 Makestar.com 서비스 E2E 모니터링 테스트 (Playwright + Page Object Model)
